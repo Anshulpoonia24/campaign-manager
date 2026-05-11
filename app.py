@@ -1381,10 +1381,10 @@ def send_campaign(campaign_id):
 
     # Load SMTP settings from DB
     smtp_server = get_setting('smtp_server')
-    smtp_port = int(get_setting('smtp_port'))
+    smtp_port = int(get_setting('smtp_port') or 587)
     smtp_username = get_setting('smtp_username')
     smtp_password = get_setting('smtp_password')
-    from_email = get_setting('from_email')
+    from_email = get_setting('from_email') or smtp_username
     from_name = get_setting('from_name')
     reply_to = get_setting('reply_to')
     bcc = get_setting('bcc_emails')
@@ -1431,7 +1431,8 @@ def send_campaign(campaign_id):
                 msg['From'] = formataddr((from_name, from_email))
                 msg['To'] = contact['email']
                 msg['Reply-To'] = reply_to
-                msg['Bcc'] = bcc
+                if bcc and bcc.strip():
+                    msg['Bcc'] = bcc
                 msg.add_alternative(tracked_body, subtype='html')
 
                 if attachment and os.path.exists(os.path.join(ATTACHMENT_DIR, attachment)):
