@@ -1365,8 +1365,19 @@ def campaign_detail(campaign_id):
 def send_campaign(campaign_id):
     subject_template = request.form.get('subject', 'Helping {company} scale engineering faster')
     body_template = request.form.get('body', '')
-    attachment = request.form.get('attachment', '')
     contact_ids = request.form.getlist('contact_ids')
+
+    # Handle file upload
+    attachment_filename = ''
+    uploaded_file = request.files.get('attachment_file')
+    if uploaded_file and uploaded_file.filename:
+        from werkzeug.utils import secure_filename
+        filename = secure_filename(uploaded_file.filename)
+        filepath = os.path.join(ATTACHMENT_DIR, filename)
+        uploaded_file.save(filepath)
+        attachment_filename = filename
+    else:
+        attachment_filename = request.form.get('attachment', '')
 
     print(f'[SEND] Campaign {campaign_id} | Subject: {subject_template} | Contacts: {contact_ids} | Body length: {len(body_template)}')
 
@@ -1435,8 +1446,8 @@ def send_campaign(campaign_id):
                     msg['Bcc'] = bcc
                 msg.add_alternative(tracked_body, subtype='html')
 
-                if attachment and os.path.exists(os.path.join(ATTACHMENT_DIR, attachment)):
-                    filepath = os.path.join(ATTACHMENT_DIR, attachment)
+                if attachment_filename and os.path.exists(os.path.join(ATTACHMENT_DIR, attachment_filename)):
+                    filepath = os.path.join(ATTACHMENT_DIR, attachment_filename)
                     mime_type, _ = mimetypes.guess_type(filepath)
                     if mime_type:
                         maintype, subtype = mime_type.split('/', 1)

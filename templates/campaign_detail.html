@@ -53,7 +53,7 @@
         {% if available %}
         <div class="compose-box">
             <h5 class="mb-3">✉️ Compose & Send</h5>
-            <form method="POST" action="/campaign/{{ campaign.id }}/send" id="sendForm">
+            <form method="POST" action="/campaign/{{ campaign.id }}/send" id="sendForm" enctype="multipart/form-data">
 
                 <div class="mb-3">
                     <label class="form-label">Subject (use {name} and {company})</label>
@@ -93,8 +93,8 @@ Anshul<br>
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Attachment filename (optional)</label>
-                    <input type="text" name="attachment" class="form-control" value="Shiksha_Infotech_v3_Final (2).pptx">
+                    <label class="form-label">Attachment (upload file)</label>
+                    <input type="file" name="attachment_file" class="form-control">
                 </div>
 
                 <div class="mb-3">
