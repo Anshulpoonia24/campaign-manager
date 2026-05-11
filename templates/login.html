@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Campaign Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #0B1F3A;
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            background: #fff;
+            border-radius: 16px;
+            padding: 48px 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .login-card .brand {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .login-card .brand i {
+            font-size: 2.5rem;
+            color: #1DBF73;
+            margin-bottom: 12px;
+            display: block;
+        }
+        .login-card .brand h2 {
+            font-weight: 700;
+            color: #0B1F3A;
+            font-size: 1.4rem;
+            margin: 0;
+        }
+        .login-card .brand small {
+            color: #6B7280;
+            font-size: 0.85rem;
+        }
+        .form-control {
+            background: #F8FAFC;
+            border: 1px solid #E5E7EB;
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-size: 14px;
+        }
+        .form-control:focus {
+            border-color: #1DBF73;
+            box-shadow: 0 0 0 3px rgba(29,191,115,0.12);
+            background: #fff;
+        }
+        .btn-login {
+            background: #1DBF73;
+            border: none;
+            color: #fff;
+            font-weight: 600;
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 15px;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        .btn-login:hover { background: #17a862; color: #fff; }
+        .alert { border-radius: 10px; font-size: 13px; border: none; }
+        .alert-danger { background: #fef2f2; color: #991b1b; }
+        .alert-success { background: #ecfdf5; color: #065f46; }
+        .input-group-text {
+            background: #F8FAFC;
+            border: 1px solid #E5E7EB;
+            border-right: none;
+            border-radius: 10px 0 0 10px;
+            color: #6B7280;
+        }
+        .input-group .form-control { border-left: none; border-radius: 0 10px 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="brand">
+            <i class="fas fa-paper-plane"></i>
+            <h2>Campaign Manager</h2>
+            <small>Login to continue</small>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for cat, msg in messages %}
+        <div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} mb-3">{{ msg }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <form method="POST">
+            <div class="mb-3">
+                <label class="form-label" style="font-weight:500;font-size:13px;color:#374151;">Username</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-user"></i></span>
+                    <input type="text" name="username" class="form-control" placeholder="Enter username" required autofocus>
+                </div>
+            </div>
+            <div class="mb-4">
+                <label class="form-label" style="font-weight:500;font-size:13px;color:#374151;">Password</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                    <input type="password" name="password" class="form-control" placeholder="Enter password" required>
+                </div>
+            </div>
+            <button type="submit" class="btn-login"><i class="fas fa-sign-in-alt me-2"></i>Login</button>
+        </form>
+    </div>
+</body>
+</html>

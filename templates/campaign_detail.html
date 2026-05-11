@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>Campaign - {{ campaign.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+    <style>
+        .btn-purple { background:#8b5cf6; color:#fff; border:none; }
+        .btn-purple:hover { background:#7c3aed; color:#fff; }
+        .ai-preview-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:15px; margin-bottom:10px; }
+        .ai-preview-card h6 { color:#3b82f6; }
+        .spin-sm { display:inline-block; width:14px; height:14px; border:2px solid #e2e8f0; border-top:2px solid #8b5cf6; border-radius:50%; animation:spin 0.6s linear infinite; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
+        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
+        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
+        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+        <a href="/campaigns" class="active"><i class="fas fa-bullhorn"></i> Campaigns</a>
+        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
+        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
+        <a href="/logs"><i class="fas fa-list-alt"></i> Logs</a>
+        <hr style="border-color:#e2e8f0">
+        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+    <div class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endif %}{% endwith %}
+        <h3 class="mb-4">📢 {{ campaign.name }} <span class="badge bg-{{ 'success' if campaign.status=='sent' else 'warning' }}">{{ campaign.status }}</span></h3>
+
+        {% if emails %}
+        <div class="card-box mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Sent Emails ({{ emails|length }})</h5>
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted" id="sentPageInfo"></small>
+                    <nav><ul class="pagination pagination-sm mb-0" id="sentPagination"></ul></nav>
+                </div>
+            </div>
+            <table class="table table-hover mb-0">
+                <thead><tr><th>Name</th><th>Company</th><th>Email</th><th>Status</th><th>Reason</th><th>Replied</th><th>Sent At</th><th></th></tr></thead>
+                <tbody id="sentBody">
+                {% for e in emails %}<tr class="sent-row"><td>{{ e.name }}</td><td>{{ e.company }}</td><td>{{ e.email }}</td><td><span class="badge bg-{{ 'success' if e.status=='sent' else 'danger' }}">{{ e.status }}</span></td><td><small class="text-danger">{{ e.bounce_reason or '-' }}</small></td><td>{{ '✅' if e.replied else '—' }}</td><td>{{ e.sent_at[:16] if e.sent_at else '-' }}</td><td id="camp-action-{{ e.id }}">{% if e.status in ['failed','bounced'] %}<button class="btn btn-warning btn-sm py-0 px-2" onclick="retryCampaign({{ e.id }}, this)" title="Retry"><i class="fas fa-redo"></i></button>{% endif %}</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if available %}
+        <div class="compose-box">
+            <h5 class="mb-3">✉️ Compose & Send</h5>
+            <form method="POST" action="/campaign/{{ campaign.id }}/send" id="sendForm">
+
+                <div class="mb-3">
+                    <label class="form-label">Subject (use {name} and {company})</label>
+                    <input type="text" name="subject" class="form-control" value="Helping {company} scale engineering faster" required>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">Email Body (HTML)</label>
+                        <div>
+                            <button type="button" class="btn btn-purple btn-sm" onclick="generateAIPreview()" id="aiBtn">
+                                <i class="fas fa-magic"></i> Generate AI Emails
+                            </button>
+                            <small class="text-muted ms-2">Uses prompt from Settings</small>
+                        </div>
+                    </div>
+                    <textarea name="body" class="form-control" rows="14" id="emailBody" required><p>Hi {name},</p>
+
+<p>{company} is doing solid work. Scaling engineering at this stage usually means you need reliable talent, fast.</p>
+
+<p>Here's what we bring to the table:</p>
+<ul>
+<li>🏢 <b>Shiksha Infotech</b> — Est. 2009, 400+ engineers</li>
+<li>🎓 Founded by alumni of top Indian engineering schools</li>
+<li>🌍 Offices in US & India</li>
+<li>💰 <b>Pre-vetted AI/ML engineers at $30–55/hr</b> (vs $100–150/hr US rates)</li>
+<li>⚡ Onboarded in just <b>2–3 weeks</b></li>
+</ul>
+
+<p>Open to a quick 15-minute chat?</p>
+
+<p>Best,<br>
+Anshul<br>
+<b>Shiksha Infotech</b> | Est. 2009<br>
+<a href="https://shikshainfotech.com">shikshainfotech.com</a></p></textarea>
+                    <small class="text-muted">💡 Use {name} and {company} placeholders. Or click "Generate AI Emails" for personalized content per contact.</small>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Attachment filename (optional)</label>
+                    <input type="text" name="attachment" class="form-control" value="Shiksha_Infotech_v3_Final (2).pptx">
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">Select Contacts ({{ available|length }} available)</label>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="text" id="contactSearch" class="form-control form-control-sm" style="width:200px" placeholder="Search name, email..." oninput="searchAvail(this.value)">
+                            <span class="badge bg-primary" id="selectedCount">0 selected</span>
+                            <small class="text-muted" id="availPageInfo"></small>
+                            <nav><ul class="pagination pagination-sm mb-0" id="availPagination"></ul></nav>
+                        </div>
+                    </div>
+                    <div style="max-height:400px;overflow-y:auto;background:#f8fafc;border-radius:8px;padding:15px;border:1px solid #e2e8f0;">
+                        <div class="form-check mb-2"><input type="checkbox" id="selectAll" class="form-check-input" onclick="toggleAll(this)"><label class="form-check-label" for="selectAll"><strong>Select All (all pages)</strong></label></div><hr>
+                        <div id="availBody">
+                        {% for c in available %}<div class="form-check mb-1 avail-row"><input type="checkbox" name="contact_ids" value="{{ c.id }}" class="form-check-input contact-cb" id="c{{ c.id }}" data-name="{{ c.name }}" data-company="{{ c.company }}" onchange="updateCount()"><label class="form-check-label" for="c{{ c.id }}">{{ c.name or 'Unknown' }} ({{ c.company or '-' }}) - {{ c.email }}</label></div>{% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-success btn-lg w-100" onclick="return confirm('Send template email to selected contacts?')">
+                            <i class="fas fa-paper-plane"></i> Send Template
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-purple btn-lg w-100" formaction="/campaign/{{ campaign.id }}/send_ai" onclick="return confirm('AI will generate personalized email for each contact and send. This may take time. Continue?')">
+                            <i class="fas fa-magic"></i> Send AI Personalized
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="button" class="btn btn-outline-primary btn-lg w-100" onclick="generateAIPreview()">
+                            <i class="fas fa-eye"></i> Preview AI Emails
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- AI Preview Section -->
+            <div id="aiPreview" style="display:none;margin-top:20px;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">🤖 AI Generated Previews</h5>
+                    <span id="aiProgress" class="text-muted"></span>
+                </div>
+                <div id="aiResults"></div>
+            </div>
+        </div>
+        {% elif not emails %}<div class="text-center text-muted mt-5"><p>No valid contacts. <a href="/upload">Upload more</a> or <a href="/contacts">verify emails</a> first.</p></div>{% endif %}
+    </div>
+
+    <script>
+    // Pagination helper
+    function paginate(rowClass, bodyId, paginationId, infoId, perPage) {
+        const rows = Array.from(document.querySelectorAll('#' + bodyId + ' .' + rowClass));
+        let page = 1;
+        function render(p) {
+            page = p;
+            const start = (p-1)*perPage, end = start+perPage;
+            rows.forEach((r,i) => { r.style.display = (i>=start && i<end)?'':'none'; });
+            const total = Math.ceil(rows.length/perPage);
+            if (document.getElementById(infoId))
+                document.getElementById(infoId).textContent = rows.length ? `${start+1}–${Math.min(end,rows.length)} of ${rows.length}` : '';
+            const ul = document.getElementById(paginationId); ul.innerHTML='';
+            if(total<=1) return;
+            const btn=(label,pg,dis,act)=>{ const li=document.createElement('li'); li.className='page-item'+(dis?' disabled':'')+(act?' active':''); li.innerHTML='<a class="page-link" href="#">'+label+'</a>'; if(!dis) li.onclick=(e)=>{e.preventDefault();render(pg);}; ul.appendChild(li); };
+            btn('‹',page-1,page===1,false);
+            for(let i=1;i<=total;i++) btn(i,i,false,i===page);
+            btn('›',page+1,page===total,false);
+        }
+        if(rows.length) render(1);
+    }
+
+    // Paginate sent emails (20 per page)
+    paginate('sent-row','sentBody','sentPagination','sentPageInfo',20);
+
+    function retryCampaign(id, btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spin-sm"></div>';
+        fetch('/api/retry/' + id, {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            const td = document.getElementById('camp-action-' + id);
+            if (data.success) {
+                td.innerHTML = '<span style="color:#198754;font-weight:bold"><i class="fas fa-check"></i> Sent!</span>';
+            } else {
+                td.innerHTML = '<span style="color:#dc3545;font-size:0.8rem">' + (data.error || 'Failed') + '</span>';
+            }
+        })
+        .catch(() => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-redo"></i>'; });
+    }
+
+    function toggleAll(el) {
+        document.querySelectorAll('.contact-cb').forEach(cb => { cb.checked = el.checked; });
+        updateCount();
+    }
+
+    function updateCount() {
+        const count = document.querySelectorAll('.contact-cb:checked').length;
+        document.getElementById('selectedCount').textContent = count + ' selected';
+    }
+
+    // Paginate available contacts (30 per page)
+    function searchAvail(query) {
+        query = query.toLowerCase();
+        document.querySelectorAll('#availBody .avail-row').forEach(r => {
+            const text = r.textContent.toLowerCase();
+            r.dataset.hidden = (!query || text.includes(query)) ? '0' : '1';
+        });
+        paginateAvail(1);
+    }
+
+    function paginateAvail(page) {
+        const rows = Array.from(document.querySelectorAll('#availBody .avail-row')).filter(r => r.dataset.hidden !== '1');
+        const perPage = 30;
+        const total = Math.ceil(rows.length / perPage);
+        page = Math.min(page, total || 1);
+        const start = (page-1)*perPage, end = start+perPage;
+        document.querySelectorAll('#availBody .avail-row').forEach(r => r.style.display = 'none');
+        rows.forEach((r,i) => { r.style.display = (i>=start && i<end)?'':'none'; });
+        if(document.getElementById('availPageInfo'))
+            document.getElementById('availPageInfo').textContent = rows.length ? `${start+1}\u2013${Math.min(end,rows.length)} of ${rows.length}` : '0 results';
+        const ul = document.getElementById('availPagination'); ul.innerHTML='';
+        if(total<=1) return;
+        const btn=(label,pg,dis,act)=>{ const li=document.createElement('li'); li.className='page-item'+(dis?' disabled':'')+(act?' active':''); li.innerHTML='<a class="page-link" href="#">'+label+'</a>'; if(!dis) li.onclick=(e)=>{e.preventDefault();paginateAvail(pg);}; ul.appendChild(li); };
+        btn('\u2039',page-1,page===1,false);
+        for(let i=1;i<=total;i++) btn(i,i,false,i===page);
+        btn('\u203a',page+1,page===total,false);
+    }
+    paginateAvail(1);
+
+    function generateAIPreview() {
+        const checked = document.querySelectorAll('.contact-cb:checked');
+        if (checked.length === 0) { alert('Pehle contacts select karo!'); return; }
+
+        const btn = document.getElementById('aiBtn');
+        btn.innerHTML = '<div class="spin-sm"></div> Generating...';
+        btn.disabled = true;
+
+        document.getElementById('aiPreview').style.display = 'block';
+        document.getElementById('aiResults').innerHTML = '';
+
+        let completed = 0;
+        const total = checked.length;
+
+        checked.forEach((cb, idx) => {
+            const name = cb.dataset.name;
+            const company = cb.dataset.company;
+
+            setTimeout(() => {
+                document.getElementById('aiProgress').textContent = `${completed}/${total} done...`;
+
+                fetch('/api/generate_email', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: name, company: company, contact_id: cb.value})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    completed++;
+                    document.getElementById('aiProgress').textContent = `${completed}/${total} done`;
+
+                    const div = document.createElement('div');
+                    div.className = 'ai-preview-card';
+                    if (data.success) {
+                        div.innerHTML = `<h6>${name} (${company})</h6><div style="font-size:0.9rem">${data.body}</div>`;
+                    } else {
+                        div.innerHTML = `<h6>${name} (${company})</h6><span class="text-danger">${data.error}</span>`;
+                    }
+                    document.getElementById('aiResults').appendChild(div);
+
+                    if (completed === total) {
+                        btn.innerHTML = '<i class="fas fa-magic"></i> Generate AI Emails';
+                        btn.disabled = false;
+                        document.getElementById('aiProgress').textContent = `✅ All ${total} done!`;
+                    }
+                });
+            }, idx * 2000);
+        });
+    }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

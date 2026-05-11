@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unsubscribe</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #f8fafc; font-family: 'Inter', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .card { background: #fff; border-radius: 16px; padding: 48px 40px; max-width: 480px; width: 100%; box-shadow: 0 4px 20px rgba(0,0,0,0.08); text-align: center; }
+        .card h2 { font-size: 1.3rem; color: #111827; margin-bottom: 12px; }
+        .card p { color: #6b7280; font-size: 0.9rem; margin-bottom: 20px; }
+        .email-badge { background: #f1f5f9; color: #334155; padding: 8px 16px; border-radius: 8px; font-weight: 500; display: inline-block; margin-bottom: 20px; }
+        .btn { background: #ef4444; color: #fff; border: none; padding: 12px 32px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #dc2626; }
+        .btn-back { background: #e2e8f0; color: #475569; margin-left: 10px; }
+        .btn-back:hover { background: #cbd5e1; }
+        textarea { width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; font-size: 13px; resize: none; margin-bottom: 16px; font-family: inherit; }
+        textarea:focus { outline: none; border-color: #3b82f6; }
+        .success-icon { font-size: 3rem; margin-bottom: 16px; }
+        .error-msg { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        {% if success == True %}
+            <div class="success-icon">✅</div>
+            <h2>Unsubscribed Successfully</h2>
+            <p>{{ email }} has been removed from our mailing list. You will no longer receive emails from us.</p>
+        {% elif success == False %}
+            <div class="success-icon">⚠️</div>
+            <h2>Invalid Link</h2>
+            <p class="error-msg">{{ error or 'This unsubscribe link is not valid or has expired.' }}</p>
+        {% else %}
+            <h2>Unsubscribe</h2>
+            <p>You are about to unsubscribe this email from future communications:</p>
+            <div class="email-badge">{{ email }}</div>
+            <form method="POST">
+                <textarea name="reason" rows="3" placeholder="Optional: Tell us why you're unsubscribing..."></textarea>
+                <div>
+                    <button type="submit" class="btn">Unsubscribe</button>
+                </div>
+            </form>
+        {% endif %}
+    </div>
+</body>
+</html>

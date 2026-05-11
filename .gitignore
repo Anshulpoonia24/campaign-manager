@@ -1,0 +1,39 @@
+# Secrets
+.env
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+logs/
+
+# Exports
+export_*.xlsx
+
+# Attachments (uploaded files)
+attachments/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Debug files
+debug_*.html
+test_output.html
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Azure
+.azure/

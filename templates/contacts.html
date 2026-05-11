@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>Contacts</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+    <style>
+        .table td, .table th { vertical-align:middle; }
+        .email-cell { max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .spin { display:inline-block; width:16px; height:16px; border:2px solid #e2e8f0; border-top:2px solid #3b82f6; border-radius:50%; animation:spin 0.6s linear infinite; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        .verify-bar { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 20px; display:none; align-items:center; gap:15px; }
+        .verify-bar .progress { flex:1; height:8px; border-radius:4px; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
+        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
+        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
+        <a href="/contacts" class="active"><i class="fas fa-users"></i> Contacts</a>
+        <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
+        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
+        <a href="/logs"><i class="fas fa-list-alt"></i> Logs</a>
+        <hr style="border-color:#e2e8f0">
+        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+    <div class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}
+        <div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+        {% endfor %}{% endif %}{% endwith %}
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3>👥 Contacts ({{ contacts|length }})</h3>
+            <div>
+                <input type="text" id="contactSearch" class="form-control form-control-sm d-inline-block" style="width:200px" placeholder="Search name, email..." oninput="searchContacts(this.value)">
+                <form method="POST" action="/verify_emails" style="display:inline" id="verifyNewForm">
+                    <input type="hidden" name="reverify" value="0">
+                    <button class="btn btn-warning btn-sm"><i class="fas fa-check-double"></i> Verify New</button>
+                </form>
+                <form method="POST" action="/verify_emails" style="display:inline" id="reverifyForm">
+                    <input type="hidden" name="reverify" value="1">
+                    <button class="btn btn-outline-warning btn-sm"><i class="fas fa-sync"></i> Re-verify All</button>
+                </form>
+                <a href="/upload" class="btn btn-primary btn-sm ms-2"><i class="fas fa-plus"></i> Add More</a>
+                <button class="btn btn-info btn-sm ms-2" onclick="enrichAll(false)" id="researchBtn"><i class="fas fa-globe"></i> Research New</button>
+                <button class="btn btn-outline-info btn-sm ms-1" onclick="enrichAll(true)" id="enrichBtn"><i class="fas fa-magic"></i> Enrich All</button>
+            </div>
+        </div>
+
+        <!-- Live verify progress bar -->
+        <div class="verify-bar mb-3" id="verifyBar">
+            <div class="spin"></div>
+            <span id="verifyText">Verifying...</span>
+            <div class="progress"><div class="progress-bar bg-primary" id="verifyProgress" style="width:0%"></div></div>
+            <small id="verifyCount">0/0</small>
+        </div>
+
+        <div class="mb-3">
+            <a href="/contacts?filter=all" class="filter-btn {{ 'active' if filter_type=='all' }}">All</a>
+            <a href="/contacts?filter=new" class="filter-btn {{ 'active' if filter_type=='new' }}">New</a>
+            <a href="/contacts?filter=valid" class="filter-btn {{ 'active' if filter_type=='valid' }}">✅ Valid</a>
+            <a href="/contacts?filter=invalid" class="filter-btn {{ 'active' if filter_type=='invalid' }}">❌ Invalid</a>
+            <a href="/contacts?filter=sent" class="filter-btn {{ 'active' if filter_type=='sent' }}">📨 Sent</a>
+        </div>
+
+        <div class="card-box" style="overflow-x:auto;">
+            <div class="d-flex justify-content-between align-items-center mb-3 px-1">
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted">Show</small>
+                    <select class="form-select form-select-sm" style="width:80px" onchange="changePerPage(this.value)" id="perPageSelect">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="30">30</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                    <small class="text-muted" id="pageInfo"></small>
+                </div>
+                <nav><ul class="pagination pagination-sm mb-0" id="paginationTop"></ul></nav>
+            </div>
+            <table class="table table-hover mb-0" id="contactsTable">
+                <thead><tr>
+                    <th style="width:40px">#</th>
+                    <th>Name</th>
+                    <th>Company</th>
+                    <th>Email</th>
+                    <th>Website</th>
+                    <th>Context</th>
+                    <th style="width:110px;text-align:center">Valid</th>
+                    <th style="width:80px;text-align:center">Status</th>
+                    <th style="width:80px"></th>
+                </tr></thead>
+                <tbody id="contactsBody">
+                {% for c in contacts %}
+                <tr id="row-{{ c.id }}">
+                    <td>{{ loop.index }}</td>
+                    <td><strong>{{ c.name or '-' }}</strong></td>
+                    <td>{{ c.company or '-' }}</td>
+                    <td class="email-cell" title="{{ c.email }}">{{ c.email }}</td>
+                    <td style="max-width:150px;font-size:0.8rem;">{% if c.website %}<a href="{{ c.website }}" target="_blank" title="{{ c.website }}">{{ c.website|replace('https://','')|replace('http://','')|truncate(25) }}</a>{% else %}<small class="text-muted">-</small>{% endif %}</td>
+                    <td style="max-width:250px;font-size:0.8rem;color:#64748b;" id="ctx-{{ c.id }}">
+                        {% if c.context %}{{ c.context }}{% else %}<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="fetchContext({{ c.id }},this)" title="Fetch context"><i class="fas fa-search"></i> Research</button>{% endif %}
+                    </td>
+                    <td style="text-align:center" id="valid-{{ c.id }}">
+                        {% if c.email_valid == 1 %}<span class="badge bg-success">✅ Valid</span>
+                        {% elif c.email_valid == 0 %}<span class="badge bg-danger">❌ Invalid</span>
+                        {% else %}<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="verifySingle({{ c.id }},this)" title="Verify this email"><i class="fas fa-search"></i></button>{% endif %}
+                    </td>
+                    <td style="text-align:center">
+                        {% if c.status == 'sent' %}<span class="badge bg-info">Sent</span>
+                        {% else %}<span class="badge bg-secondary">New</span>{% endif %}
+                    </td>
+                    <td style="white-space:nowrap">
+                        <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openEdit({{ c.id }},'{{ c.name|replace("'","") }}','{{ c.company|replace("'","") }}','{{ c.email }}','{{ c.designation|default("",true)|replace("'","") }}')"><i class="fas fa-edit"></i></button> <button class="btn btn-outline-danger btn-sm py-0 px-1" data-id="{{ c.id }}" data-name="{{ c.name }}" onclick="deleteContact(this)"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <div class="d-flex justify-content-between align-items-center mt-3 px-1" id="paginationWrap">
+                <small class="text-muted" id="pageInfoBottom"></small>
+                <nav><ul class="pagination pagination-sm mb-0" id="pagination"></ul></nav>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Edit Contact</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <form id="editForm" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3"><label class="form-label">Name</label><input type="text" name="name" id="edit_name" class="form-control"></div>
+                    <div class="mb-3"><label class="form-label">Company</label><input type="text" name="company" id="edit_company" class="form-control"></div>
+                    <div class="mb-3"><label class="form-label">Email</label><input type="text" name="email" id="edit_email" class="form-control"></div>
+                    <div class="mb-3"><label class="form-label">Website</label><input type="text" name="website" id="edit_website" class="form-control" placeholder="https://..."></div>
+                    <div class="mb-3"><label class="form-label">Designation</label><input type="text" name="designation" id="edit_designation" class="form-control"></div>
+                    <div class="mb-3"><label class="form-label">Context</label><textarea name="context" id="edit_context" class="form-control" rows="3" placeholder="Company context for AI email generation"></textarea></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function openEdit(id, name, company, email, designation) {
+        document.getElementById('edit_name').value = name;
+        document.getElementById('edit_company').value = company;
+        document.getElementById('edit_email').value = email;
+        document.getElementById('edit_designation').value = designation;
+        document.getElementById('edit_context').value = '';
+        document.getElementById('edit_website').value = '';
+        document.getElementById('editForm').action = '/contact/edit/' + id;
+        fetch('/api/contact/' + id)
+        .then(r => r.json())
+        .then(data => {
+            if(data.context) document.getElementById('edit_context').value = data.context;
+            if(data.website) document.getElementById('edit_website').value = data.website;
+        });
+        new bootstrap.Modal(document.getElementById('editModal')).show();
+    }
+
+    function deleteContact(btn) {
+        var id = btn.dataset.id;
+        var name = btn.dataset.name;
+        if (!confirm('"' + name + '" ko delete karna hai? Ye action undo nahi hoga!')) return;
+        fetch('/api/contact/delete/' + id, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('row-' + id).remove();
+            } else {
+                alert('Delete failed: ' + (data.error || 'Unknown error'));
+            }
+        });
+    }
+
+    // Pagination
+    let PER_PAGE = 50;
+    let currentPage = 1;
+    const allRows = Array.from(document.querySelectorAll('#contactsBody tr'));
+
+    function changePerPage(val) { PER_PAGE = parseInt(val); renderPage(1); }
+
+    function renderPage(page) {
+        currentPage = page;
+        const start = (page - 1) * PER_PAGE;
+        const end = start + PER_PAGE;
+        allRows.forEach((row, i) => { row.style.display = (i >= start && i < end) ? '' : 'none'; });
+        const totalPages = Math.ceil(allRows.length / PER_PAGE);
+        const info = `Showing ${Math.min(start+1, allRows.length)}–${Math.min(end, allRows.length)} of ${allRows.length}`;
+        document.getElementById('pageInfo').textContent = info;
+        document.getElementById('pageInfoBottom').textContent = info;
+        function buildPagination(ulId) {
+            const ul = document.getElementById(ulId);
+            ul.innerHTML = '';
+            if (totalPages <= 1) return;
+            const addBtn = (label, p, disabled, active) => {
+                ul.innerHTML += `<li class="page-item ${disabled?'disabled':''} ${active?'active':''}"><a class="page-link" href="#" onclick="event.preventDefault();${disabled?'':('renderPage('+p+')')}">` + label + `</a></li>`;
+            };
+            addBtn('&laquo;', page-1, page===1, false);
+            for (let p = 1; p <= totalPages; p++) {
+                if (totalPages > 7 && Math.abs(p - page) > 2 && p !== 1 && p !== totalPages) {
+                    if (p === 2 || p === totalPages-1) ul.innerHTML += '<li class="page-item disabled"><a class="page-link">…</a></li>';
+                    continue;
+                }
+                addBtn(p, p, false, p===page);
+            }
+            addBtn('&raquo;', page+1, page===totalPages, false);
+        }
+        buildPagination('paginationTop');
+        buildPagination('pagination');
+    }
+    renderPage(1);
+
+    // Search contacts
+    function searchContacts(query) {
+        query = query.toLowerCase();
+        allRows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.dataset.hidden = (!query || text.includes(query)) ? '0' : '1';
+        });
+        renderFilteredPage(1);
+    }
+
+    function renderFilteredPage(page) {
+        const visible = allRows.filter(r => r.dataset.hidden !== '1');
+        const totalPages = Math.ceil(visible.length / PER_PAGE);
+        currentPage = Math.min(page, totalPages || 1);
+        const start = (currentPage - 1) * PER_PAGE;
+        const end = start + PER_PAGE;
+        allRows.forEach(r => r.style.display = 'none');
+        visible.forEach((r, i) => { r.style.display = (i >= start && i < end) ? '' : 'none'; });
+        const info = visible.length ? `Showing ${start+1}–${Math.min(end, visible.length)} of ${visible.length}` : '0 results';
+        document.getElementById('pageInfo').textContent = info;
+        document.getElementById('pageInfoBottom').textContent = info;
+        function buildPagination(ulId) {
+            const ul = document.getElementById(ulId);
+            ul.innerHTML = '';
+            if (totalPages <= 1) return;
+            const addBtn = (label, p, disabled, active) => {
+                ul.innerHTML += `<li class="page-item ${disabled?'disabled':''} ${active?'active':''}"><a class="page-link" href="#" onclick="event.preventDefault();${disabled?'':('renderFilteredPage('+p+')')}">` + label + `</a></li>`;
+            };
+            addBtn('&laquo;', currentPage-1, currentPage===1, false);
+            for (let p = 1; p <= totalPages; p++) {
+                if (totalPages > 7 && Math.abs(p - currentPage) > 2 && p !== 1 && p !== totalPages) {
+                    if (p === 2 || p === totalPages-1) ul.innerHTML += '<li class="page-item disabled"><a class="page-link">…</a></li>';
+                    continue;
+                }
+                addBtn(p, p, false, p===currentPage);
+            }
+            addBtn('&raquo;', currentPage+1, currentPage===totalPages, false);
+        }
+        buildPagination('paginationTop');
+        buildPagination('pagination');
+    }
+
+    // Single email verify
+    function verifySingle(id, btn) {
+        btn.innerHTML = '<div class="spin"></div>';
+        fetch('/api/verify_single/' + id)
+        .then(r => r.json())
+        .then(data => {
+            if (data.valid) {
+                btn.parentElement.innerHTML = '<span class="badge bg-success">✅ Valid</span>';
+            } else {
+                btn.parentElement.innerHTML = '<span class="badge bg-danger">❌ Invalid</span>';
+            }
+        })
+        .catch(() => { btn.innerHTML = '<i class="fas fa-search"></i>'; });
+    }
+
+    // Fetch company context
+    function fetchContext(id, btn) {
+        btn.innerHTML = '<div class="spin"></div>';
+        fetch('/api/fetch_context/' + id)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('ctx-' + id).innerHTML = data.context;
+            } else {
+                btn.innerHTML = '<i class="fas fa-search"></i> Retry';
+            }
+        })
+        .catch(() => { btn.innerHTML = '<i class="fas fa-search"></i> Retry'; });
+    }
+
+
+    // Enrich (website scrape + AI)
+    function enrichAll(force) {
+        var msg = force ? 'Saare contacts ko website + AI se enrich karega (purana context overwrite hoga). Continue?' : 'Jinke paas context nahi hai unko website + AI se enrich karega. Continue?';
+        if (!confirm(msg)) return;
+        var btn = force ? document.getElementById('enrichBtn') : document.getElementById('researchBtn');
+        btn.innerHTML = '<div class="spin"></div> Enriching...';
+        btn.disabled = true;
+        fetch('/api/enrich_all', {method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({force: force})})
+        .then(r => r.json())
+        .then(data => {
+            btn.innerHTML = force ? '<i class="fas fa-magic"></i> Enrich All' : '<i class="fas fa-globe"></i> Research New';
+            btn.disabled = false;
+            alert('Enriched: ' + data.enriched + ' contacts. Failed: ' + data.failed);
+            if (data.enriched > 0) location.reload();
+        })
+        .catch(() => { btn.innerHTML = force ? '<i class="fas fa-magic"></i> Enrich All' : '<i class="fas fa-globe"></i> Research New'; btn.disabled = false; });
+    }
+
+    let polling = false;
+
+    function startPolling() {
+        polling = true;
+        document.getElementById('verifyBar').style.display = 'flex';
+        poll();
+    }
+
+    function poll() {
+        if (!polling) return;
+        fetch('/api/verify_status')
+        .then(r => r.json())
+        .then(data => {
+            const pct = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
+            document.getElementById('verifyProgress').style.width = pct + '%';
+            document.getElementById('verifyCount').textContent = data.done + '/' + data.total;
+            document.getElementById('verifyText').textContent = data.current_email ? '→ ' + data.current_email : 'Verifying...';
+
+            // Update each row's valid status
+            if (data.results) {
+                data.results.forEach(r => {
+                    const validCell = document.getElementById('valid-' + r.id);
+                    if (validCell) {
+                        if (r.valid === 1) {
+                            validCell.innerHTML = '<span class="badge bg-success">✅ Valid</span>';
+                        } else if (r.valid === 0) {
+                            validCell.innerHTML = '<span class="badge bg-danger">❌ Invalid</span>';
+                        }
+                    }
+                });
+            }
+
+            if (data.running) {
+                // Show spinner on emails still being verified
+                document.querySelectorAll('td:nth-child(5)').forEach(td => {
+                    if (td.querySelector('.badge.bg-secondary')) {
+                        td.innerHTML = '<div class="spin"></div>';
+                    }
+                });
+                setTimeout(poll, 800);
+            } else if (data.done > 0) {
+                document.getElementById('verifyText').textContent = '✅ Done!';
+                document.getElementById('verifyBar').style.display = 'flex';
+                polling = false;
+                // Reload page after 1 sec to show final state
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                polling = false;
+                document.getElementById('verifyBar').style.display = 'none';
+            }
+        })
+        .catch(() => { if (polling) setTimeout(poll, 2000); });
+    }
+
+    // Check if verification is already running on page load
+    fetch('/api/verify_status').then(r=>r.json()).then(data => {
+        if (data.running) startPolling();
+    });
+
+    // Intercept verify form submissions
+    document.getElementById('verifyNewForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch('/verify_emails', {method:'POST', body: new FormData(this)}).then(() => startPolling());
+    });
+    document.getElementById('reverifyForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch('/verify_emails', {method:'POST', body: new FormData(this)}).then(() => startPolling());
+    });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

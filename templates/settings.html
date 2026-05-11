@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>Settings</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="sidebar">
+        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
+        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
+        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
+        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+        <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
+        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
+        <a href="/logs"><i class="fas fa-list-alt"></i> Logs</a>
+        <hr style="border-color:#e2e8f0">
+        <a href="/settings" class="active"><i class="fas fa-cog"></i> Settings</a>
+        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+    <div class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endif %}{% endwith %}
+
+        <h3 class="mb-4">⚙️ Settings</h3>
+
+        <!-- Change Password -->
+        <div class="card-box mb-4">
+            <h5 class="mb-3"><i class="fas fa-lock" style="color:#ef4444"></i> Change Password</h5>
+            <form method="POST" action="/change_password">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Current Password</label>
+                        <input type="password" name="current_password" class="form-control" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">New Password</label>
+                        <input type="password" name="new_password" class="form-control" required minlength="6">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Confirm New Password</label>
+                        <input type="password" name="confirm_password" class="form-control" required minlength="6">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-outline-danger btn-sm mt-3"><i class="fas fa-key"></i> Change Password</button>
+            </form>
+        </div>
+
+        <form method="POST" id="settingsForm">
+
+            <!-- AI Priority -->
+            <div class="card-box mb-4">
+                <h5 class="mb-3"><i class="fas fa-layer-group" style="color:#f59e0b"></i> AI Fallback Chain</h5>
+                <p class="text-muted small">Order mein try karega. Pehla kaam kare toh baaki skip. Comma separated: ollama, groq, gemini</p>
+                <input type="text" name="ai_priority" class="form-control" value="{{ settings.ai_priority }}" placeholder="ollama,groq,gemini">
+                <div class="mt-2">
+                    <small>
+                        <span class="badge bg-success">1. Ollama</span> FREE local model →
+                        <span class="badge bg-primary">2. Groq</span> FREE API (14400/day) →
+                        <span class="badge bg-warning text-dark">3. Gemini</span> Paid fallback
+                    </small>
+                </div>
+            </div>
+
+            <!-- Ollama -->
+            <div class="card-box mb-4">
+                <h5 class="mb-3"><i class="fas fa-desktop" style="color:#22c55e"></i> Local Model (Ollama) — FREE</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Ollama URL</label>
+                        <input type="text" name="ollama_url" class="form-control" value="{{ settings.ollama_url }}" placeholder="http://localhost:11434">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Model Name</label>
+                        <input type="text" name="ollama_model" class="form-control" value="{{ settings.ollama_model }}" placeholder="phi3:mini">
+                        <small class="text-muted">Options: phi3:mini (3.8GB), qwen2:1.5b (1.5GB), tinyllama (1GB)</small>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <button type="button" class="btn btn-outline-success btn-sm" onclick="testOllama()"><i class="fas fa-plug"></i> Test Connection</button>
+                    <span id="ollamaStatus" class="ms-2"></span>
+                </div>
+                <div class="mt-2 p-2" style="background:#f0fdf4;border-radius:8px;">
+                    <small><b>Setup:</b> Install <a href="https://ollama.com/download" target="_blank">Ollama</a> → Run: <code>ollama pull phi3:mini</code></small>
+                </div>
+            </div>
+
+            <!-- Groq -->
+            <div class="card-box mb-4">
+                <h5 class="mb-3"><i class="fas fa-bolt" style="color:#3b82f6"></i> Groq API — FREE (14,400 req/day)</h5>
+                <div class="mb-3">
+                    <label class="form-label">Groq API Keys (comma separated, multiple accounts)</label>
+                    <textarea name="groq_api_keys" class="form-control" rows="3" placeholder="gsk_abc123..., gsk_def456..., gsk_ghi789...">{{ settings.groq_api_keys }}</textarea>
+                    <small class="text-muted">Get from: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> — Auto-rotates between keys when rate limited</small>
+                </div>
+                <div class="d-flex gap-2 align-items-center">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="testGroq()"><i class="fas fa-plug"></i> Test Groq</button>
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="checkGroqUsage()"><i class="fas fa-chart-bar"></i> Check Usage</button>
+                    <span id="groqStatus" class="ms-2"></span>
+                </div>
+                <!-- Groq Usage Dashboard -->
+                <div id="groqUsagePanel" style="display:none;margin-top:15px;">
+                    <div class="p-3" style="background:#f0f9ff;border-radius:10px;border:1px solid #bae6fd;">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong style="color:#0369a1;"><i class="fas fa-tachometer-alt"></i> Groq Quota Status</strong>
+                            <small class="text-muted" id="groqLastChecked"></small>
+                        </div>
+                        <div id="groqUsageBody"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gemini -->
+            <div class="card-box mb-4">
+                <h5 class="mb-3"><i class="fas fa-robot" style="color:#8b5cf6"></i> Gemini API — Paid Fallback</h5>
+                <div class="mb-3">
+                    <label class="form-label">Gemini API Key</label>
+                    <div class="input-group">
+                        <input type="password" name="gemini_api_key" id="apiKey" class="form-control" value="{{ settings.gemini_api_key }}" placeholder="AIzaSy...">
+                        <button type="button" class="btn btn-outline-secondary" onclick="toggle('apiKey')"><i class="fas fa-eye"></i></button>
+                    </div>
+                    <small class="text-muted">Get from: <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a></small>
+                </div>
+            </div>
+
+            <!-- SMTP -->
+            <div class="card-box mb-4">
+                <h5 class="mb-3"><i class="fas fa-server" style="color:#3b82f6"></i> SMTP Configuration</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">SMTP Server</label>
+                        <input type="text" name="smtp_server" class="form-control" value="{{ settings.smtp_server }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">SMTP Port</label>
+                        <input type="text" name="smtp_port" class="form-control" value="{{ settings.smtp_port }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">SMTP Username</label>
+                        <input type="text" name="smtp_username" class="form-control" value="{{ settings.smtp_username }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">SMTP Password</label>
+                        <div class="input-group">
+                            <input type="password" name="smtp_password" id="smtpPass" class="form-control" value="{{ settings.smtp_password }}">
+                            <button type="button" class="btn btn-outline-secondary" onclick="toggle('smtpPass')"><i class="fas fa-eye"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email Identity -->
+            <div class="card-box mb-4">
+                <h5 class="mb-3"><i class="fas fa-id-card" style="color:#22c55e"></i> Email Identity</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">From Email</label>
+                        <input type="email" name="from_email" class="form-control" value="{{ settings.from_email }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">From Name</label>
+                        <input type="text" name="from_name" class="form-control" value="{{ settings.from_name }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Reply-To Email</label>
+                        <input type="email" name="reply_to" class="form-control" value="{{ settings.reply_to }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">BCC Emails (comma separated)</label>
+                        <input type="text" name="bcc_emails" class="form-control" value="{{ settings.bcc_emails }}">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email Prompt -->
+            <div class="card-box mb-4">
+                <h5 class="mb-3"><i class="fas fa-magic" style="color:#f59e0b"></i> AI Email Prompt</h5>
+                <p class="text-muted small">Use <code>{name}</code> and <code>{company}</code> as placeholders.</p>
+                <textarea name="email_prompt" class="form-control" rows="16" style="font-family:monospace;font-size:0.85rem;">{{ settings.email_prompt }}</textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-lg px-5"><i class="fas fa-save"></i> Save All Settings</button>
+        </form>
+
+        <!-- Floating save button -->
+        <div style="position:fixed;bottom:20px;right:30px;z-index:999;">
+            <button type="submit" form="settingsForm" class="btn btn-primary btn-lg shadow-lg px-4"><i class="fas fa-save"></i> Save</button>
+        </div>
+    </div>
+
+    <script>
+    function toggle(id) { var e=document.getElementById(id); e.type=e.type==='password'?'text':'password'; }
+
+    function testOllama() {
+        document.getElementById('ollamaStatus').innerHTML = '⏳ Testing...';
+        var url = document.querySelector('[name=ollama_url]').value || 'http://localhost:11434';
+        fetch(url + '/api/tags').then(r=>r.json()).then(data => {
+            var models = data.models ? data.models.map(m=>m.name).join(', ') : 'none';
+            document.getElementById('ollamaStatus').innerHTML = '<span class="text-success">✅ Connected! Models: ' + models + '</span>';
+        }).catch(() => {
+            document.getElementById('ollamaStatus').innerHTML = '<span class="text-danger">❌ Not running. Install from ollama.com</span>';
+        });
+    }
+
+    function testGroq() {
+        document.getElementById('groqStatus').innerHTML = '⏳ Testing...';
+        var keys = document.querySelector('[name=groq_api_keys]').value;
+        var key = keys.split(',')[0].trim();
+        if (!key) { document.getElementById('groqStatus').innerHTML = '<span class="text-danger">❌ No key</span>'; return; }
+        fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method:'POST',
+            headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},
+            body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:'Say OK'}],max_tokens:5})
+        }).then(r=>r.json()).then(data => {
+            if (data.choices) {
+                document.getElementById('groqStatus').innerHTML = '<span class="text-success">✅ Working!</span>';
+            } else {
+                document.getElementById('groqStatus').innerHTML = '<span class="text-danger">❌ ' + (data.error?.message || 'Error') + '</span>';
+            }
+        }).catch(e => {
+            document.getElementById('groqStatus').innerHTML = '<span class="text-danger">❌ Failed</span>';
+        });
+    }
+
+    function checkGroqUsage() {
+        document.getElementById('groqUsagePanel').style.display = 'block';
+        document.getElementById('groqUsageBody').innerHTML = '<div class="text-center py-2"><div class="spin"></div> Checking all keys...</div>';
+        fetch('/api/groq_usage').then(r=>r.json()).then(data => {
+            if (data.error) {
+                document.getElementById('groqUsageBody').innerHTML = '<span class="text-danger">' + data.error + '</span>';
+                return;
+            }
+            let html = '';
+            data.keys.forEach(k => {
+                const info = k.info;
+                if (info.error) {
+                    html += `<div class="mb-2 p-2" style="background:#fff;border-radius:8px;border:1px solid #fecaca;">
+                        <strong>Key ${k.key_index}</strong> (${k.key_hint}) — <span class="text-danger">${info.error}</span>
+                    </div>`;
+                    return;
+                }
+                const reqUsed = info.limit_requests !== '?' ? (parseInt(info.limit_requests) - parseInt(info.remaining_requests)) : '?';
+                const reqTotal = info.limit_requests || '?';
+                const reqRemain = info.remaining_requests || '?';
+                const tokRemain = info.remaining_tokens || '?';
+                const tokTotal = info.limit_tokens || '?';
+                const pctUsed = (reqTotal !== '?' && reqRemain !== '?') ? Math.round(((reqTotal - reqRemain) / reqTotal) * 100) : 0;
+                const barColor = pctUsed > 80 ? '#ef4444' : pctUsed > 50 ? '#f59e0b' : '#22c55e';
+                html += `<div class="mb-2 p-2" style="background:#fff;border-radius:8px;border:1px solid #e2e8f0;">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <strong>Key ${k.key_index}</strong> <small>(${k.key_hint})</small>
+                        <small class="text-muted">Checked: ${info.last_checked || '-'}</small>
+                    </div>
+                    <div class="d-flex gap-3 mb-1" style="font-size:0.85rem;">
+                        <span>📨 Requests: <b>${reqUsed}</b> used / <b>${reqTotal}</b> total</span>
+                        <span>✅ Remaining: <b style="color:#22c55e">${reqRemain}</b></span>
+                    </div>
+                    <div class="progress" style="height:6px;margin-bottom:6px;">
+                        <div class="progress-bar" style="width:${pctUsed}%;background:${barColor}"></div>
+                    </div>
+                    <div class="d-flex gap-3" style="font-size:0.8rem;color:#6b7280;">
+                        <span>🪙 Tokens remaining: <b>${tokRemain}</b> / ${tokTotal}</span>
+                        ${info.reset_requests ? '<span>🔄 Resets: ' + info.reset_requests + '</span>' : ''}
+                    </div>
+                    <div style="font-size:0.8rem;color:#6b7280;margin-top:4px;">
+                        <span>📊 From DB — Today: <b>${k.today_used_db}</b> calls | All time: <b>${k.total_used_db}</b> calls</span>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('groqUsageBody').innerHTML = html;
+            document.getElementById('groqLastChecked').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+        }).catch(e => {
+            document.getElementById('groqUsageBody').innerHTML = '<span class="text-danger">Failed to fetch</span>';
+        });
+    }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

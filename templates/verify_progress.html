@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>Verifying Emails...</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+    <style>
+        .progress-box { background:#fff; border-radius:12px; padding:30px; border:1px solid #e2e8f0; text-align:center; }
+        .progress { height:30px; border-radius:15px; background:#e2e8f0; }
+        .progress-bar { background:linear-gradient(90deg,#3b82f6,#22c55e); border-radius:15px; transition:width 0.3s; font-weight:600; font-size:0.9rem; }
+        .current-email { color:#3b82f6; font-weight:600; font-size:1.1rem; }
+        .result-row { padding:8px 15px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; }
+        .result-row:hover { background:#f8fafc; }
+        .results-box { background:#fff; border-radius:12px; border:1px solid #e2e8f0; max-height:500px; overflow-y:auto; }
+        .spinner-sm { width:20px; height:20px; border:3px solid #e2e8f0; border-top:3px solid #3b82f6; border-radius:50%; animation:spin 0.8s linear infinite; display:inline-block; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
+        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
+        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
+        <a href="/contacts" class="active"><i class="fas fa-users"></i> Contacts</a>
+        <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
+        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
+        <hr style="border-color:#e2e8f0">
+        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+    <div class="main">
+        <h3 class="mb-4">🔍 Email Verification</h3>
+
+        <div class="progress-box mb-4">
+            <div id="status-icon" class="mb-3"><div class="spinner-sm"></div></div>
+            <h5 id="status-text">Starting verification...</h5>
+            <p class="current-email" id="current-email"></p>
+            <div class="progress mb-2">
+                <div class="progress-bar" id="progress-bar" style="width:0%">0%</div>
+            </div>
+            <small class="text-muted" id="counter">0 / 0 verified</small>
+        </div>
+
+        <div class="results-box" id="results-box">
+            <div class="p-3 text-center text-muted" id="no-results">Waiting for results...</div>
+        </div>
+
+        <a href="/contacts" class="btn btn-primary mt-3" id="done-btn" style="display:none"><i class="fas fa-arrow-left"></i> Back to Contacts</a>
+    </div>
+
+    <script>
+    function poll() {
+        fetch('/api/verify_status')
+        .then(r => r.json())
+        .then(data => {
+            const pct = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
+            document.getElementById('progress-bar').style.width = pct + '%';
+            document.getElementById('progress-bar').textContent = pct + '%';
+            document.getElementById('counter').textContent = data.done + ' / ' + data.total + ' verified';
+
+            if (data.running) {
+                document.getElementById('status-text').textContent = 'Verifying emails...';
+                document.getElementById('current-email').textContent = '→ ' + data.current_email;
+            } else if (data.done > 0) {
+                document.getElementById('status-text').textContent = '✅ Verification Complete!';
+                document.getElementById('current-email').textContent = '';
+                document.getElementById('status-icon').innerHTML = '<i class="fas fa-check-circle fa-3x" style="color:#22c55e"></i>';
+                document.getElementById('done-btn').style.display = 'inline-block';
+            }
+
+            // Show results
+            if (data.results && data.results.length > 0) {
+                document.getElementById('no-results').style.display = 'none';
+                let html = '';
+                data.results.forEach(r => {
+                    const badge = r.valid === 1
+                        ? '<span class="badge bg-success">✅ Valid</span>'
+                        : '<span class="badge bg-danger">❌ Invalid</span>';
+                    html += `<div class="result-row">
+                        <div><strong>${r.name}</strong> <small class="text-muted">${r.email}</small></div>
+                        <div>${badge}</div>
+                    </div>`;
+                });
+                document.getElementById('results-box').innerHTML = html;
+            }
+
+            if (data.running) {
+                setTimeout(poll, 1000);
+            }
+        })
+        .catch(() => setTimeout(poll, 2000));
+    }
+
+    poll();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

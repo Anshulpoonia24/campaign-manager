@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>Sending Emails...</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+    <style>
+        .progress { height:30px; border-radius:15px; background:#e2e8f0; }
+        .progress-bar { border-radius:15px; font-weight:700; font-size:0.95rem; transition:width 0.5s; }
+        .stats-row { display:flex; gap:15px; justify-content:center; margin:15px 0; }
+        .stat-box { padding:8px 20px; border-radius:8px; font-weight:600; font-size:0.9rem; }
+        .stat-sent { background:#dcfce7; color:#16a34a; }
+        .stat-failed { background:#fee2e2; color:#dc2626; }
+        .stat-pending { background:#fef3c7; color:#d97706; }
+        .log-entry { padding:10px 15px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; font-size:0.9rem; }
+        .log-entry:last-child { border-bottom:none; }
+        .log-box { background:#fff; border-radius:12px; border:1px solid #e2e8f0; max-height:600px; overflow-y:auto; }
+        .top-box { background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:20px 25px; }
+        .current-txt { color:#64748b; font-size:0.85rem; margin-top:8px; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
+        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
+        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
+        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+        <a href="/campaigns" class="active"><i class="fas fa-bullhorn"></i> Campaigns</a>
+        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
+        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
+        <hr style="border-color:#e2e8f0">
+        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+    <div class="main">
+        <h3 class="mb-4">📨 Sending Emails</h3>
+
+        <div class="top-box mb-4">
+            <div class="progress mb-2">
+                <div class="progress-bar bg-primary" id="bar" style="width:0%">0%</div>
+            </div>
+            <div class="stats-row">
+                <span class="stat-box stat-sent" id="sSent">✅ 0 Sent</span>
+                <span class="stat-box stat-failed" id="sFailed">❌ 0 Failed</span>
+                <span class="stat-box stat-pending" id="sPending">⏳ 0 Pending</span>
+            </div>
+            <div class="current-txt" id="current"></div>
+            <div id="doneArea" style="display:none;text-align:center;margin-top:15px;">
+                <a href="/campaign/{{ campaign_id }}" class="btn btn-primary"><i class="fas fa-arrow-left"></i> Back to Campaign</a>
+            </div>
+        </div>
+
+        <h5 class="mb-3">📋 Log</h5>
+        <div class="log-box" id="logBox"></div>
+    </div>
+
+    <script>
+    let lastCount = 0;
+
+    function poll() {
+        fetch('/api/send_status')
+        .then(r => r.json())
+        .then(data => {
+            const pct = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
+            document.getElementById('bar').style.width = pct + '%';
+            document.getElementById('bar').textContent = data.done + '/' + data.total + ' (' + pct + '%)';
+            document.getElementById('sSent').textContent = '✅ ' + data.sent + ' Sent';
+            document.getElementById('sFailed').textContent = '❌ ' + data.failed + ' Failed';
+            document.getElementById('sPending').textContent = '⏳ ' + (data.total - data.done) + ' Pending';
+
+            if (data.running && data.current) {
+                document.getElementById('current').textContent = 'Sending → ' + data.current;
+            }
+
+            // Add new log entries
+            if (data.recent && data.recent.length > lastCount) {
+                let html = '';
+                data.recent.forEach(r => {
+                    if (r.status === 'sent') {
+                        html += '<div class="log-entry"><div>✅ <strong>' + r.name + '</strong> (' + r.company + ') — ' + r.email + '</div><div><span class="badge bg-success">Sent</span></div></div>';
+                    } else {
+                        html += '<div class="log-entry"><div>❌ <strong>' + r.name + '</strong> (' + r.company + ') — ' + r.email + '<br><small class="text-danger">' + (r.reason || '').substring(0,80) + '</small></div><div><span class="badge bg-danger">Failed</span></div></div>';
+                    }
+                });
+                document.getElementById('logBox').innerHTML = html;
+                lastCount = data.recent.length;
+                // Auto scroll to bottom
+                const box = document.getElementById('logBox');
+                box.scrollTop = box.scrollHeight;
+            }
+
+            if (!data.running && data.done > 0) {
+                document.getElementById('current').textContent = '';
+                document.getElementById('bar').classList.remove('bg-primary');
+                document.getElementById('bar').classList.add(data.failed > 0 ? 'bg-warning' : 'bg-success');
+                document.getElementById('doneArea').style.display = 'block';
+            } else if (data.running) {
+                setTimeout(poll, 1500);
+            } else {
+                setTimeout(poll, 2000);
+            }
+        })
+        .catch(() => setTimeout(poll, 3000));
+    }
+    poll();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

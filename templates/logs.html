@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>Email Logs</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .log-row { cursor:pointer; transition:background 0.2s; }
+        .log-row:hover { background:#f1f5f9 !important; }
+        .log-detail { display:none; background:#f8fafc; border-left:4px solid #3b82f6; }
+        .log-detail.show { display:table-row; }
+        .log-detail td { padding:15px 20px; }
+        .email-body-preview { max-height:300px; overflow-y:auto; background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:15px; font-size:0.9rem; }
+        .tech-info { font-family:monospace; font-size:0.8rem; background:#1e293b; color:#e2e8f0; padding:12px; border-radius:8px; }
+        .filter-btn.active { background:#3b82f6 !important; color:#fff !important; border-color:#3b82f6 !important; }
+        .stat-mini { text-align:center; padding:12px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0; }
+        .stat-mini h4 { margin:0; font-weight:700; }
+        .stat-mini small { color:#64748b; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
+        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
+        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
+        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+        <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
+        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
+        <a href="/logs" class="active"><i class="fas fa-list-alt"></i> Logs</a>
+        <hr style="border-color:#e2e8f0">
+        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+    <div class="main">
+        <h3 class="mb-4">📋 Email Logs (All Campaigns)</h3>
+
+        <!-- Stats Row -->
+        <div class="row g-3 mb-4">
+            <div class="col"><div class="stat-mini"><h4 style="color:#22c55e">{{ stats.sent }}</h4><small>Sent</small></div></div>
+            <div class="col"><div class="stat-mini"><h4 style="color:#ef4444">{{ stats.failed }}</h4><small>Failed</small></div></div>
+            <div class="col"><div class="stat-mini"><h4 style="color:#f97316">{{ stats.bounced }}</h4><small>Bounced</small></div></div>
+            <div class="col"><div class="stat-mini"><h4 style="color:#06b6d4">{{ stats.opened }}</h4><small>Opened</small></div></div>
+            <div class="col"><div class="stat-mini"><h4 style="color:#94a3b8">{{ stats.not_opened }}</h4><small>Not Opened</small></div></div>
+            <div class="col"><div class="stat-mini"><h4 style="color:#3b82f6">{{ stats.total }}</h4><small>Total</small></div></div>
+            <div class="col"><div class="stat-mini"><h4 style="color:#f59e0b">{{ "%.1f"|format(stats.success_rate) }}%</h4><small>Success Rate</small></div></div>
+        </div>
+
+        <!-- Charts -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card-box" style="padding:15px">
+                    <h6 class="mb-2">Status Breakdown</h6>
+                    <canvas id="statusChart" height="160"></canvas>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card-box" style="padding:15px">
+                    <h6 class="mb-2">Open Rate</h6>
+                    <canvas id="openChart" height="160"></canvas>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card-box" style="padding:15px">
+                    <h6 class="mb-2">Emails Sent Over Time</h6>
+                    <canvas id="timeChart" height="160"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="card-box mb-4">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <strong class="me-2">Filter:</strong>
+                <button class="btn btn-outline-secondary btn-sm filter-btn active" onclick="filterLogs('all')">All ({{ stats.total }})</button>
+                <button class="btn btn-outline-success btn-sm filter-btn" onclick="filterLogs('sent')">✅ Sent ({{ stats.sent }})</button>
+                <button class="btn btn-outline-danger btn-sm filter-btn" onclick="filterLogs('failed')">❌ Failed ({{ stats.failed }})</button>
+                <button class="btn btn-outline-warning btn-sm filter-btn" onclick="filterLogs('bounced')">⚠️ Bounced ({{ stats.bounced }})</button>
+                <button class="btn btn-outline-info btn-sm filter-btn" onclick="filterLogs('opened')">👁️ Opened ({{ stats.opened }})</button>
+                <button class="btn btn-outline-dark btn-sm filter-btn" onclick="filterLogs('not_opened')">🙈 Not Opened ({{ stats.not_opened }})</button>
+                <span class="ms-auto">
+                    <input type="text" id="searchBox" class="form-control form-control-sm" placeholder="Search name, email, company..." style="width:250px" oninput="searchLogs(this.value)">
+                </span>
+            </div>
+        </div>
+
+        <!-- Logs Table -->
+        <div class="card-box" style="overflow-x:auto">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <small class="text-muted" id="pageInfo"></small>
+                <nav><ul class="pagination pagination-sm mb-0" id="pagination"></ul></nav>
+            </div>
+            <table class="table table-hover mb-0" style="min-width:900px">
+                <thead>
+                    <tr><th>#</th><th>Name</th><th>Company</th><th>Email</th><th>Campaign</th><th>Status</th><th>Date</th><th></th></tr>
+                </thead>
+                <tbody id="logsBody">
+                {% for log in logs %}
+                <tr class="log-row" data-status="{{ log.status }}" data-opened="{{ log.opened }}" data-search="{{ log.name|lower }} {{ log.email|lower }} {{ log.company|lower }}" onclick="toggleDetail({{ log.id }})">
+                    <td>{{ loop.index }}</td>
+                    <td>{{ log.name }}</td>
+                    <td>{{ log.company or '-' }}</td>
+                    <td><small>{{ log.email }}</small></td>
+                    <td><span class="badge bg-secondary">{{ log.campaign_name }}</span></td>
+                    <td>
+                        {% if log.status == 'sent' %}<span class="badge bg-success">✅ Sent</span>
+                        {% elif log.status == 'failed' %}<span class="badge bg-danger">❌ Failed</span>
+                        {% elif log.status == 'bounced' %}<span class="badge bg-warning text-dark">⚠️ Bounced</span>
+                        {% else %}<span class="badge bg-info">{{ log.status }}</span>{% endif %}
+                        {% if log.opened %}<span class="badge bg-info ms-1">👁️</span>{% endif %}
+                    </td>
+                    <td><small>{{ log.sent_at[:16] if log.sent_at else '-' }}</small></td>
+                    <td><i class="fas fa-chevron-down text-muted" id="arrow-{{ log.id }}"></i></td>
+                </tr>
+                <tr class="log-detail" id="detail-{{ log.id }}">
+                    <td colspan="8">
+                        <div class="row">
+                            <div class="col-md-7">
+                                <h6><i class="fas fa-envelope"></i> Email Body</h6>
+                                <div class="email-body-preview">
+                                    <strong>Subject:</strong> {{ log.subject or 'N/A' }}<hr>
+                                    {{ log.body|safe if log.body else '<em class="text-muted">No body recorded</em>' }}
+                                </div>
+                            </div>
+                            <div class="col-md-5">
+                                <h6><i class="fas fa-terminal"></i> Technical Log</h6>
+                                <div class="tech-info">
+                                    <div><span style="color:#94a3b8">ID:</span> {{ log.id }}</div>
+                                    <div><span style="color:#94a3b8">To:</span> {{ log.email }}</div>
+                                    <div><span style="color:#94a3b8">Campaign:</span> {{ log.campaign_name }} (#{{ log.campaign_id }})</div>
+                                    <div><span style="color:#94a3b8">Status:</span> {{ log.status }}</div>
+                                    <div><span style="color:#94a3b8">Sent At:</span> {{ log.sent_at or 'N/A' }}</div>
+                                    <div><span style="color:#94a3b8">Opened:</span> {{ 'Yes' if log.opened else 'No' }}</div>
+                                    <div><span style="color:#94a3b8">Replied:</span> {{ 'Yes' if log.replied else 'No' }}</div>
+                                    {% if log.bounce_reason %}<div style="margin-top:8px;padding:8px;background:#dc354520;border-radius:4px;"><span style="color:#f87171">Error:</span> {{ log.bounce_reason }}</div>{% endif %}
+                                </div>
+                                {% if log.status in ['failed','bounced'] %}
+                                <button class="btn btn-outline-success btn-sm mt-2" onclick="event.stopPropagation(); retryFromLog({{ log.id }}, this)"><i class="fas fa-redo"></i> Retry</button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not logs %}<tr><td colspan="8" class="text-center text-muted py-4">No emails sent yet</td></tr>{% endif %}
+                </tbody>
+            </table>
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <small class="text-muted" id="pageInfoBottom"></small>
+                <nav><ul class="pagination pagination-sm mb-0" id="paginationBottom"></ul></nav>
+            </div>
+        </div>
+
+        <a href="/export/sent" class="btn btn-outline-primary btn-sm mt-3"><i class="fas fa-download"></i> Export Sent</a>
+        <a href="/export/bounced" class="btn btn-outline-danger btn-sm mt-3"><i class="fas fa-download"></i> Export Failed</a>
+    </div>
+
+    <script>
+    // Toggle detail row
+    function toggleDetail(id) {
+        const detail = document.getElementById('detail-' + id);
+        const arrow = document.getElementById('arrow-' + id);
+        detail.classList.toggle('show');
+        arrow.classList.toggle('fa-chevron-down');
+        arrow.classList.toggle('fa-chevron-up');
+    }
+
+    // Filter
+    let currentFilter = 'all';
+    function filterLogs(status) {
+        currentFilter = status;
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+        applyFilters();
+    }
+
+    // Search
+    function searchLogs(query) {
+        applyFilters(query.toLowerCase());
+    }
+
+    function applyFilters(search) {
+        search = search || document.getElementById('searchBox').value.toLowerCase();
+        const rows = document.querySelectorAll('.log-row');
+        rows.forEach(r => {
+            const matchStatus = currentFilter === 'all' || r.dataset.status === currentFilter
+                || (currentFilter === 'opened' && r.dataset.opened === '1')
+                || (currentFilter === 'not_opened' && r.dataset.opened === '0' && r.dataset.status === 'sent');
+            const matchSearch = !search || r.dataset.search.includes(search);
+            r.style.display = (matchStatus && matchSearch) ? '' : 'none';
+            // Hide detail too
+            const id = r.getAttribute('onclick').match(/\d+/)[0];
+            document.getElementById('detail-' + id).classList.remove('show');
+        });
+        paginateVisible();
+    }
+
+    // Pagination
+    const PER_PAGE = 25;
+    let currentPage = 1;
+    function paginateVisible() {
+        const rows = Array.from(document.querySelectorAll('.log-row')).filter(r => r.style.display !== 'none');
+        const total = Math.ceil(rows.length / PER_PAGE);
+        currentPage = Math.min(currentPage, total || 1);
+        const start = (currentPage - 1) * PER_PAGE;
+        const end = start + PER_PAGE;
+        rows.forEach((r, i) => {
+            r.style.display = (i >= start && i < end) ? '' : 'none';
+        });
+        const info = rows.length ? `${start+1}–${Math.min(end, rows.length)} of ${rows.length}` : '0 results';
+        document.getElementById('pageInfo').textContent = info;
+        document.getElementById('pageInfoBottom').textContent = info;
+        buildPagination('pagination', total);
+        buildPagination('paginationBottom', total);
+    }
+
+    function buildPagination(ulId, total) {
+        const ul = document.getElementById(ulId);
+        ul.innerHTML = '';
+        if (total <= 1) return;
+        const btn = (label, p, dis, act) => {
+            const li = document.createElement('li');
+            li.className = 'page-item' + (dis ? ' disabled' : '') + (act ? ' active' : '');
+            li.innerHTML = '<a class="page-link" href="#">' + label + '</a>';
+            if (!dis) li.onclick = (e) => { e.preventDefault(); currentPage = p; paginateVisible(); };
+            ul.appendChild(li);
+        };
+        btn('‹', currentPage-1, currentPage===1, false);
+        for (let i = 1; i <= total; i++) {
+            if (total > 7 && Math.abs(i-currentPage) > 2 && i !== 1 && i !== total) {
+                if (i === 2 || i === total-1) { const li=document.createElement('li'); li.className='page-item disabled'; li.innerHTML='<a class="page-link">…</a>'; ul.appendChild(li); }
+                continue;
+            }
+            btn(i, i, false, i===currentPage);
+        }
+        btn('›', currentPage+1, currentPage===total, false);
+    }
+
+    // Retry from log
+    function retryFromLog(id, btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Retrying...';
+        fetch('/api/retry/' + id, {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                btn.innerHTML = '<i class="fas fa-check"></i> Sent!';
+                btn.className = 'btn btn-success btn-sm mt-2';
+            } else {
+                btn.innerHTML = '<i class="fas fa-times"></i> ' + (data.error || 'Failed');
+                btn.className = 'btn btn-danger btn-sm mt-2';
+            }
+        });
+    }
+
+    // Init pagination
+    paginateVisible();
+
+    // Charts
+    const statusData = {{ stats_json|safe }};
+    new Chart(document.getElementById('statusChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Sent', 'Failed', 'Bounced'],
+            datasets: [{
+                data: [statusData.sent, statusData.failed, statusData.bounced],
+                backgroundColor: ['#22c55e', '#ef4444', '#f97316'],
+                borderWidth: 2, borderColor: '#fff'
+            }]
+        },
+        options: { responsive:true, plugins:{ legend:{ position:'bottom' } } }
+    });
+
+    // Open Rate Chart
+    new Chart(document.getElementById('openChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Opened', 'Not Opened'],
+            datasets: [{
+                data: [statusData.opened, statusData.not_opened],
+                backgroundColor: ['#06b6d4', '#e2e8f0'],
+                borderWidth: 2, borderColor: '#fff'
+            }]
+        },
+        options: { responsive:true, plugins:{ legend:{ position:'bottom' } } }
+    });
+
+    const timeData = {{ time_data_json|safe }};
+    if (timeData.labels.length > 0) {
+        new Chart(document.getElementById('timeChart'), {
+            type: 'bar',
+            data: {
+                labels: timeData.labels,
+                datasets: [
+                    { label:'Sent', data:timeData.sent, backgroundColor:'#22c55e88', borderColor:'#22c55e', borderWidth:1 },
+                    { label:'Failed', data:timeData.failed, backgroundColor:'#ef444488', borderColor:'#ef4444', borderWidth:1 }
+                ]
+            },
+            options: { responsive:true, scales:{ x:{stacked:true}, y:{stacked:true, beginAtZero:true} }, plugins:{ legend:{ position:'bottom' } } }
+        });
+    }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

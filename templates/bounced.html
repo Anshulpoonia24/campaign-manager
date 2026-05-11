@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>Bounced</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+    <style>
+        .spin-sm { display:inline-block; width:14px; height:14px; border:2px solid #e2e8f0; border-top:2px solid #198754; border-radius:50%; animation:spin 0.6s linear infinite; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        .retry-done { color:#198754; font-weight:bold; }
+        .retry-fail { color:#dc3545; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
+        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
+        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
+        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+        <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
+        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
+        <a href="/logs"><i class="fas fa-list-alt"></i> Logs</a>
+        <hr style="border-color:#e2e8f0">
+        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+    <div class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endif %}{% endwith %}
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="mb-0">⚠️ Bounced / Failed ({{ bounced|length }})</h3>
+            {% if bounced %}
+            <button class="btn btn-success" id="retryAllBtn" onclick="retryAll()">
+                <i class="fas fa-redo"></i> Retry All ({{ bounced|length }})
+            </button>
+            {% endif %}
+        </div>
+        <div class="card-box" style="overflow-x:auto">
+            <div class="d-flex justify-content-between align-items-center mb-3 px-1">
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted">Show</small>
+                    <select class="form-select form-select-sm" style="width:80px" onchange="changePerPage(this.value)">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="30">30</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                    <small class="text-muted" id="pageInfo"></small>
+                </div>
+                <nav><ul class="pagination pagination-sm mb-0" id="paginationTop"></ul></nav>
+            </div>
+            <table class="table table-hover mb-0" style="min-width:900px">
+                <thead><tr><th>#</th><th>Name</th><th>Company</th><th>Email</th><th>Reason</th><th>Date</th><th>Action</th></tr></thead>
+                <tbody id="bouncedBody">
+                {% for b in bounced %}<tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ b.name }}</td>
+                    <td>{{ b.company }}</td>
+                    <td>{{ b.email }}</td>
+                    <td><small class="text-danger">{{ b.bounce_reason or 'No reason recorded' }}</small></td>
+                    <td>{{ b.sent_at[:16] if b.sent_at else '-' }}</td>
+                    <td id="action-{{ b.id }}">
+                        <button class="btn btn-outline-success btn-sm retry-btn" data-id="{{ b.id }}" onclick="retrySingle({{ b.id }}, this)" title="Retry">
+                            <i class="fas fa-redo"></i> Retry
+                        </button>
+                    </td>
+                </tr>{% endfor %}
+                {% if not bounced %}<tr><td colspan="7" class="text-center text-muted">No bounced emails 🎉</td></tr>{% endif %}
+                </tbody>
+            </table>
+            <div class="d-flex justify-content-between align-items-center mt-3 px-1">
+                <small class="text-muted" id="pageInfoBottom"></small>
+                <nav><ul class="pagination pagination-sm mb-0" id="pagination"></ul></nav>
+            </div>
+        </div>
+        <a href="/export/bounced" class="btn btn-outline-primary btn-sm mt-3"><i class="fas fa-download"></i> Export</a>
+    </div>
+    <script>
+    // Retry single email with loader
+    function retrySingle(id, btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spin-sm"></div> Retrying...';
+        fetch('/api/retry/' + id, {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            const td = document.getElementById('action-' + id);
+            if (data.success) {
+                td.innerHTML = '<span class="retry-done"><i class="fas fa-check"></i> Sent!</span>';
+            } else {
+                td.innerHTML = '<span class="retry-fail"><i class="fas fa-times"></i> ' + (data.error || 'Failed') + '</span>';
+                setTimeout(() => {
+                    td.innerHTML = '<button class="btn btn-outline-success btn-sm retry-btn" data-id="'+id+'" onclick="retrySingle('+id+', this)"><i class="fas fa-redo"></i> Retry</button>';
+                }, 3000);
+            }
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-redo"></i> Retry';
+        });
+    }
+
+    // Retry all bounced emails
+    function retryAll() {
+        const btn = document.getElementById('retryAllBtn');
+        if (!confirm('Saare bounced emails retry karna hai?')) return;
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spin-sm"></div> Retrying All...';
+
+        const retryBtns = document.querySelectorAll('.retry-btn');
+        let idx = 0;
+        function next() {
+            if (idx >= retryBtns.length) {
+                btn.innerHTML = '<i class="fas fa-check"></i> Done!';
+                setTimeout(() => location.reload(), 1500);
+                return;
+            }
+            const rb = retryBtns[idx];
+            const id = rb.dataset.id;
+            rb.disabled = true;
+            rb.innerHTML = '<div class="spin-sm"></div>';
+            fetch('/api/retry/' + id, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                const td = document.getElementById('action-' + id);
+                if (data.success) {
+                    td.innerHTML = '<span class="retry-done"><i class="fas fa-check"></i> Sent!</span>';
+                } else {
+                    td.innerHTML = '<span class="retry-fail"><i class="fas fa-times"></i> Failed</span>';
+                }
+                btn.innerHTML = '<div class="spin-sm"></div> ' + (idx+1) + '/' + retryBtns.length;
+                idx++;
+                setTimeout(next, 3000); // 3s gap between retries
+            })
+            .catch(() => { idx++; setTimeout(next, 1000); });
+        }
+        next();
+    }
+
+    let PER_PAGE = 50;
+    let currentPage = 1;
+    const allRows = Array.from(document.querySelectorAll('#bouncedBody tr'));
+    function changePerPage(val) { PER_PAGE = parseInt(val); renderPage(1); }
+    function renderPage(page) {
+        currentPage = page;
+        const start = (page-1)*PER_PAGE, end = start+PER_PAGE;
+        allRows.forEach((r,i) => { r.style.display = (i>=start && i<end)?'':'none'; });
+        const total = Math.ceil(allRows.length/PER_PAGE);
+        const info = `Showing ${Math.min(start+1,allRows.length)}–${Math.min(end,allRows.length)} of ${allRows.length}`;
+        document.getElementById('pageInfo').textContent = info;
+        document.getElementById('pageInfoBottom').textContent = info;
+        function build(ulId) {
+            const ul = document.getElementById(ulId); ul.innerHTML='';
+            if(total<=1) return;
+            const btn=(label,p,dis,act)=>{ ul.innerHTML+=`<li class="page-item ${dis?'disabled':''} ${act?'active':''}"><a class="page-link" href="#" onclick="event.preventDefault();${dis?'':('renderPage('+p+')')}">` +label+`</a></li>`; };
+            btn('&laquo;',page-1,page===1,false);
+            for(let p=1;p<=total;p++){
+                if(total>7&&Math.abs(p-page)>2&&p!==1&&p!==total){ if(p===2||p===total-1) ul.innerHTML+='<li class="page-item disabled"><a class="page-link">…</a></li>'; continue; }
+                btn(p,p,false,p===page);
+            }
+            btn('&raquo;',page+1,page===total,false);
+        }
+        build('paginationTop'); build('pagination');
+    }
+    renderPage(1);
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
