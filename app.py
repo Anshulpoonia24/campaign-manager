@@ -203,6 +203,7 @@ def set_setting(key, value):
 
 
 def get_db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -310,6 +311,10 @@ def init_db():
     conn.commit()
 
     conn.close()
+
+
+# Initialize DB immediately at module load (before any request can hit load_user)
+init_db()
 
 
 # ==============================
