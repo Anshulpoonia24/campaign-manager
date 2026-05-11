@@ -5,7 +5,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DB_PATH = os.getenv('DB_PATH', 'campaigns.db')
+# PERSISTENT STORAGE: Azure uses /home, local uses project dir
+if os.path.isdir('/home') and os.name != 'nt':
+    DATA_DIR = '/home/data'
+else:
+    DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+os.makedirs(DATA_DIR, exist_ok=True)
+
+DB_PATH = os.path.join(DATA_DIR, 'campaigns.db')
 
 DEFAULT_SETTINGS = {
     'gemini_api_key': os.getenv('GEMINI_API_KEY', ''),
@@ -43,9 +50,10 @@ RULES:
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
     return conn
 
 

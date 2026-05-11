@@ -27,30 +27,33 @@ load_dotenv()
 # BASE PATHS (Azure/Linux compatible)
 # ==============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Azure persistent storage: /home is persistent across restarts
-# On Windows/local dev, falls back to project-relative paths
-def _resolve_dir(env_key, fallback_name):
-    path = os.getenv(env_key, '')
-    if path:
-        try:
-            os.makedirs(path, exist_ok=True)
-            return path
-        except OSError:
-            pass
-    local = os.path.join(BASE_DIR, fallback_name)
-    os.makedirs(local, exist_ok=True)
-    return local
 
-DATA_DIR = _resolve_dir('DATA_DIR', 'data')
+# PERSISTENT STORAGE: Azure uses /home which survives restarts/redeploys
+# Local dev falls back to project directory
+if os.path.isdir('/home') and os.name != 'nt':
+    # Azure App Service Linux
+    DATA_DIR = '/home/data'
+    LOG_DIR = '/home/logs'
+    UPLOAD_DIR = '/home/uploads'
+else:
+    # Local development (Windows/Mac)
+    DATA_DIR = os.path.join(BASE_DIR, 'data')
+    LOG_DIR = os.path.join(BASE_DIR, 'logs')
+    UPLOAD_DIR = os.path.join(BASE_DIR, 'attachments')
+
+# Create directories
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'CHANGE-ME-generate-with-python-secrets')
-DB_PATH = os.path.join(DATA_DIR, os.getenv('DB_NAME', 'campaigns.db'))
+DB_PATH = os.path.join(DATA_DIR, 'campaigns.db')
 
 # ==============================
 # LOGGING (production-safe, rotating)
 # ==============================
-LOG_DIR = _resolve_dir('LOG_DIR', 'logs')
+LOG_DIR = LOG_DIR  # already set above
 
 # Main app logger
 app_logger = logging.getLogger('campaign')
@@ -130,7 +133,7 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
     conn.close()
@@ -806,7 +809,7 @@ def contacts():
 # Verification progress tracking
 verify_progress = {'running': False, 'total': 0, 'done': 0, 'current_email': ''}
 
-ATTACHMENT_DIR = _resolve_dir('UPLOAD_DIR', 'attachments')
+ATTACHMENT_DIR = UPLOAD_DIR  # already set above
 
 
 @app.route('/verify_emails', methods=['POST'])
@@ -1760,7 +1763,7 @@ USE the above context to write a SPECIFIC opening line. Do NOT write generic ema
         
         # Track usage
         try:
-            conn = sqlite3.connect(DB_PATH, timeout=5)
+            conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
             conn.execute("INSERT INTO ai_usage (provider, purpose, success) VALUES (?,?,?)",
                 (provider, 'email', 1 if body else 0))
             conn.commit()
