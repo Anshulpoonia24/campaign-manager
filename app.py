@@ -39,8 +39,15 @@ try:
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-except OSError:
-    # Fallback for local Windows dev
+    # Test write permission
+    test_file = os.path.join(DATA_DIR, '.write_test')
+    with open(test_file, 'w') as f:
+        f.write('ok')
+    os.remove(test_file)
+    print(f'[STARTUP] Using persistent path: {DATA_DIR} (writable)')
+except (OSError, PermissionError) as e:
+    # Fallback for local Windows dev OR if /home/data not writable
+    print(f'[STARTUP] /home/data failed: {e}, falling back to local')
     DATA_DIR = os.path.join(BASE_DIR, 'data')
     LOG_DIR = os.path.join(BASE_DIR, 'logs')
     UPLOAD_DIR = os.path.join(BASE_DIR, 'attachments')
@@ -134,11 +141,14 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = get_db()
-    row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
-    conn.close()
-    if row:
-        return User(row['id'], row['username'], row['role'])
+    try:
+        conn = get_db()
+        row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        conn.close()
+        if row:
+            return User(row['id'], row['username'], row['role'])
+    except Exception:
+        pass
     return None
 
 # ==============================
