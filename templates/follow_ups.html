@@ -22,7 +22,14 @@
     </div>
     <div class="main">
         {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endif %}{% endwith %}
-        <h3 class="mb-4">💬 Follow-ups ({{ follow_ups|length }})</h3>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="mb-0">💬 Follow-ups ({{ follow_ups|length }})</h3>
+            <div>
+                <button class="btn btn-info btn-sm" onclick="checkReplies(this)" id="checkBtn"><i class="fas fa-sync"></i> Check Replies Now</button>
+                <button class="btn btn-outline-secondary btn-sm ms-1" onclick="imapStatus()"><i class="fas fa-server"></i> IMAP Status</button>
+            </div>
+        </div>
+        <div id="imapInfo" style="display:none" class="alert alert-info mb-3"></div>
         <div class="add-box mb-4">
             <h6>Add Reply/Follow-up</h6>
             <form method="POST" action="/follow_up/add" class="row g-2">
@@ -42,6 +49,43 @@
         </div>
         <a href="/export/follow_ups" class="btn btn-outline-primary btn-sm mt-3"><i class="fas fa-download"></i> Export</a>
     </div>
+    <script>
+    function checkReplies(btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+        fetch('/api/check_replies', {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                btn.innerHTML = '<i class="fas fa-check"></i> ' + data.logged + ' new replies!';
+                if (data.logged > 0) setTimeout(() => location.reload(), 1500);
+                else setTimeout(() => { btn.innerHTML = '<i class="fas fa-sync"></i> Check Replies Now'; btn.disabled = false; }, 2000);
+            } else {
+                btn.innerHTML = '<i class="fas fa-times"></i> ' + (data.error || 'Failed');
+                setTimeout(() => { btn.innerHTML = '<i class="fas fa-sync"></i> Check Replies Now'; btn.disabled = false; }, 3000);
+            }
+        })
+        .catch(() => { btn.innerHTML = '<i class="fas fa-sync"></i> Check Replies Now'; btn.disabled = false; });
+    }
+
+    function imapStatus() {
+        const div = document.getElementById('imapInfo');
+        div.style.display = 'block';
+        div.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+        fetch('/api/imap_status')
+        .then(r => r.json())
+        .then(data => {
+            if (data.configured) {
+                div.innerHTML = '<b>IMAP Status:</b> ' + (data.running ? '\u2705 Running' : '\u274c Stopped') +
+                    ' | Server: ' + data.server + ' | User: ' + data.username + ' | Check every: ' + data.interval + 's';
+                div.className = 'alert alert-' + (data.running ? 'success' : 'warning') + ' mb-3';
+            } else {
+                div.innerHTML = '<b>IMAP not configured!</b> Go to Settings and add IMAP server, username, password.';
+                div.className = 'alert alert-danger mb-3';
+            }
+        });
+    }
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

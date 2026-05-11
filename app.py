@@ -157,6 +157,11 @@ DEFAULT_SETTINGS = {
     'reply_to': os.getenv('REPLY_TO', ''),
     'bcc_emails': os.getenv('BCC_EMAILS', ''),
     'tracking_host': os.getenv('TRACKING_HOST', ''),
+    'imap_server': os.getenv('IMAP_SERVER', ''),
+    'imap_port': os.getenv('IMAP_PORT', '993'),
+    'imap_username': os.getenv('IMAP_USERNAME', ''),
+    'imap_password': os.getenv('IMAP_PASSWORD', ''),
+    'imap_check_interval': os.getenv('IMAP_CHECK_INTERVAL', '180'),
     'email_prompt': """Write a cold outreach email to {name}, founder/executive at {company}.
 
 RULES:
@@ -456,6 +461,158 @@ def is_unsubscribed(email):
     row = conn.execute("SELECT id FROM unsubscribes WHERE email=?", (email.lower(),)).fetchone()
     conn.close()
     return row is not None
+
+
+# ==============================
+# IMAP REPLY CHECKER (Auto-detect replies)
+# ==============================
+import imaplib
+import email as email_lib
+from email.header import decode_header
+
+imap_checker_running = False
+
+
+def decode_email_header(header):
+    """Decode email header (subject, from) to string"""
+    if not header:
+        return ''
+    decoded = decode_header(header)
+    parts = []
+    for part, charset in decoded:
+        if isinstance(part, bytes):
+            parts.append(part.decode(charset or 'utf-8', errors='ignore'))
+        else:
+            parts.append(part)
+    return ' '.join(parts)
+
+
+def extract_email_address(from_header):
+    """Extract email from 'Name <email@domain.com>' format"""
+    if '<' in from_header and '>' in from_header:
+        return from_header.split('<')[1].split('>')[0].strip().lower()
+    return from_header.strip().lower()
+
+
+def check_replies():
+    """Check IMAP inbox for new replies and auto-log them"""
+    imap_server = get_setting('imap_server')
+    imap_port = int(get_setting('imap_port') or 993)
+    imap_username = get_setting('imap_username')
+    imap_password = get_setting('imap_password')
+
+    if not all([imap_server, imap_username, imap_password]):
+        return 0
+
+    try:
+        mail = imaplib.IMAP4_SSL(imap_server, imap_port)
+        mail.login(imap_username, imap_password)
+        mail.select('INBOX')
+
+        # Search for UNSEEN emails
+        status, messages = mail.search(None, 'UNSEEN')
+        if status != 'OK' or not messages[0]:
+            mail.logout()
+            return 0
+
+        email_ids = messages[0].split()
+        logged = 0
+        conn = get_db()
+
+        for eid in email_ids:
+            try:
+                status, msg_data = mail.fetch(eid, '(RFC822)')
+                if status != 'OK':
+                    continue
+
+                msg = email_lib.message_from_bytes(msg_data[0][1])
+                from_header = decode_email_header(msg.get('From', ''))
+                sender_email = extract_email_address(from_header)
+                subject = decode_email_header(msg.get('Subject', ''))
+                date_str = msg.get('Date', '')
+
+                # Extract body
+                body_text = ''
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        if part.get_content_type() == 'text/plain':
+                            payload = part.get_payload(decode=True)
+                            if payload:
+                                body_text = payload.decode('utf-8', errors='ignore')[:500]
+                                break
+                else:
+                    payload = msg.get_payload(decode=True)
+                    if payload:
+                        body_text = payload.decode('utf-8', errors='ignore')[:500]
+
+                # Match sender to our contacts
+                contact = conn.execute("SELECT * FROM contacts WHERE email=?", (sender_email,)).fetchone()
+
+                # Check if already logged (avoid duplicates)
+                already_logged = conn.execute(
+                    "SELECT id FROM follow_ups WHERE email=? AND notes LIKE ?",
+                    (sender_email, f'%{subject[:50]}%')
+                ).fetchone()
+                if already_logged:
+                    continue
+
+                # Log the reply
+                notes = f"Subject: {subject}\n{body_text[:300]}"
+                if contact:
+                    conn.execute("""
+                        INSERT INTO follow_ups (contact_id, email, name, company, notes)
+                        VALUES (?,?,?,?,?)
+                    """, (contact['id'], sender_email, contact['name'], contact['company'], notes))
+                    conn.execute("UPDATE emails_sent SET replied=1 WHERE contact_id=?", (contact['id'],))
+                    conn.execute("UPDATE contacts SET status='replied' WHERE id=?", (contact['id'],))
+                else:
+                    conn.execute("""
+                        INSERT INTO follow_ups (contact_id, email, name, company, notes)
+                        VALUES (?,?,?,?,?)
+                    """, (0, sender_email, from_header.split('<')[0].strip() or sender_email, 'Unknown', notes))
+
+                conn.commit()
+                logged += 1
+                app_logger.info(f'REPLY AUTO-LOGGED | From: {sender_email} | Subject: {subject[:50]}')
+
+            except Exception as e:
+                error_logger.error(f'IMAP parse error for email {eid}: {str(e)}')
+                continue
+
+        conn.close()
+        mail.logout()
+        return logged
+
+    except imaplib.IMAP4.error as e:
+        error_logger.error(f'IMAP auth/connection error: {str(e)}')
+        return 0
+    except Exception as e:
+        error_logger.error(f'IMAP checker error: {str(e)}')
+        return 0
+
+
+def start_imap_checker():
+    """Background thread that checks for replies periodically"""
+    global imap_checker_running
+    if imap_checker_running:
+        return
+    imap_checker_running = True
+
+    def run_checker():
+        global imap_checker_running
+        app_logger.info('IMAP reply checker started')
+        while imap_checker_running:
+            try:
+                interval = int(get_setting('imap_check_interval') or 180)
+                logged = check_replies()
+                if logged > 0:
+                    app_logger.info(f'IMAP checker: {logged} new replies logged')
+            except Exception as e:
+                error_logger.error(f'IMAP checker loop error: {str(e)}')
+            time.sleep(interval)
+
+    t = threading.Thread(target=run_checker, daemon=True)
+    t.start()
 
 
 # ==============================
@@ -1606,6 +1763,71 @@ def follow_ups():
     return render_template('follow_ups.html', follow_ups=rows)
 
 
+@app.route('/api/check_replies', methods=['POST'])
+@login_required
+@limiter.limit("3 per minute")
+def api_check_replies():
+    """Manually trigger IMAP reply check"""
+    try:
+        logged = check_replies()
+        return jsonify({'success': True, 'logged': logged})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)[:100]})
+
+
+@app.route('/api/imap_status')
+@login_required
+def api_imap_status():
+    """Check if IMAP checker is configured and running"""
+    imap_server = get_setting('imap_server')
+    imap_username = get_setting('imap_username')
+    configured = bool(imap_server and imap_username)
+    return jsonify({
+        'configured': configured,
+        'running': imap_checker_running,
+        'server': imap_server or 'Not set',
+        'username': imap_username or 'Not set',
+        'interval': get_setting('imap_check_interval') or '180'
+    })
+
+
+@app.route('/api/smtp_test')
+@login_required
+def api_smtp_test():
+    """Test SMTP connection and show current settings (for debugging)"""
+    smtp_server = get_setting('smtp_server')
+    smtp_port = get_setting('smtp_port')
+    smtp_username = get_setting('smtp_username')
+    smtp_password = get_setting('smtp_password')
+    from_email = get_setting('from_email')
+
+    result = {
+        'smtp_server': smtp_server or 'NOT SET',
+        'smtp_port': smtp_port or 'NOT SET',
+        'smtp_username': smtp_username or 'NOT SET',
+        'smtp_password_set': bool(smtp_password),
+        'from_email': from_email or 'NOT SET',
+        'db_path': DB_PATH,
+        'connection_test': None
+    }
+
+    if not all([smtp_server, smtp_port, smtp_username, smtp_password]):
+        result['connection_test'] = 'FAILED - Missing SMTP settings'
+        return jsonify(result)
+
+    try:
+        server = smtplib.SMTP(smtp_server, int(smtp_port), timeout=10)
+        server.starttls()
+        server.login(smtp_username, smtp_password)
+        server.quit()
+        result['connection_test'] = 'SUCCESS - Connected and authenticated'
+    except Exception as e:
+        result['connection_test'] = f'FAILED - {str(e)[:200]}'
+        error_logger.error(f'SMTP test failed: {str(e)}')
+
+    return jsonify(result)
+
+
 @app.route('/follow_up/add', methods=['POST'])
 @login_required
 def add_follow_up():
@@ -1909,6 +2131,7 @@ def export_data(export_type):
 
 if __name__ == '__main__':
     init_db()
+    start_imap_checker()
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', '0') == '1'
     print(f"\n=== Email Campaign Manager ===")
@@ -1919,3 +2142,4 @@ if __name__ == '__main__':
 else:
     # Gunicorn / production WSGI entry
     init_db()
+    start_imap_checker()
