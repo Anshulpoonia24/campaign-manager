@@ -170,6 +170,11 @@
                         <label class="form-label">BCC Emails (comma separated)</label>
                         <input type="text" name="bcc_emails" class="form-control" value="{{ settings.bcc_emails }}">
                     </div>
+                    <div class="col-md-12">
+                        <label class="form-label">Tracking Host (your production URL)</label>
+                        <input type="text" name="tracking_host" class="form-control" value="{{ settings.tracking_host }}" placeholder="https://ertyui.online">
+                        <small class="text-muted">Used for open tracking pixel + unsubscribe links. Must be your live domain.</small>
+                    </div>
                 </div>
             </div>
 

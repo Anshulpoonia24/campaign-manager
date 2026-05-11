@@ -1824,6 +1824,7 @@ def api_smtp_test():
     smtp_username = get_setting('smtp_username')
     smtp_password = get_setting('smtp_password')
     from_email = get_setting('from_email')
+    tracking_host = get_setting('tracking_host')
 
     result = {
         'smtp_server': smtp_server or 'NOT SET',
@@ -1831,6 +1832,7 @@ def api_smtp_test():
         'smtp_username': smtp_username or 'NOT SET',
         'smtp_password_set': bool(smtp_password),
         'from_email': from_email or 'NOT SET',
+        'tracking_host': tracking_host or 'NOT SET',
         'db_path': DB_PATH,
         'connection_test': None
     }
@@ -1850,6 +1852,14 @@ def api_smtp_test():
         error_logger.error(f'SMTP test failed: {str(e)}')
 
     return jsonify(result)
+
+
+@app.route('/api/fix_tracking_host')
+@login_required
+def fix_tracking_host():
+    """One-time fix: set tracking_host to production URL"""
+    set_setting('tracking_host', 'https://ertyui.online')
+    return jsonify({'success': True, 'tracking_host': 'https://ertyui.online'})
 
 
 @app.route('/follow_up/add', methods=['POST'])
