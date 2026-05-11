@@ -62,27 +62,32 @@ DB_PATH = os.path.join(DATA_DIR, 'campaigns.db')
 # ==============================
 # LOGGING (production-safe, rotating)
 # ==============================
+try:
+    app_logger = logging.getLogger('campaign')
+    app_logger.setLevel(logging.INFO)
+    app_handler = RotatingFileHandler(os.path.join(LOG_DIR, 'app.log'), maxBytes=5*1024*1024, backupCount=3)
+    app_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+    app_logger.addHandler(app_handler)
 
-# Main app logger
-app_logger = logging.getLogger('campaign')
-app_logger.setLevel(logging.INFO)
-app_handler = RotatingFileHandler(os.path.join(LOG_DIR, 'app.log'), maxBytes=5*1024*1024, backupCount=3)
-app_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-app_logger.addHandler(app_handler)
+    smtp_logger = logging.getLogger('smtp')
+    smtp_logger.setLevel(logging.INFO)
+    smtp_handler = RotatingFileHandler(os.path.join(LOG_DIR, 'smtp.log'), maxBytes=5*1024*1024, backupCount=3)
+    smtp_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+    smtp_logger.addHandler(smtp_handler)
 
-# SMTP logger
-smtp_logger = logging.getLogger('smtp')
-smtp_logger.setLevel(logging.INFO)
-smtp_handler = RotatingFileHandler(os.path.join(LOG_DIR, 'smtp.log'), maxBytes=5*1024*1024, backupCount=3)
-smtp_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-smtp_logger.addHandler(smtp_handler)
-
-# Error logger
-error_logger = logging.getLogger('errors')
-error_logger.setLevel(logging.ERROR)
-error_handler = RotatingFileHandler(os.path.join(LOG_DIR, 'error.log'), maxBytes=5*1024*1024, backupCount=3)
-error_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(module)s:%(lineno)d - %(message)s'))
-error_logger.addHandler(error_handler)
+    error_logger = logging.getLogger('errors')
+    error_logger.setLevel(logging.ERROR)
+    error_handler = RotatingFileHandler(os.path.join(LOG_DIR, 'error.log'), maxBytes=5*1024*1024, backupCount=3)
+    error_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(module)s:%(lineno)d - %(message)s'))
+    error_logger.addHandler(error_handler)
+except Exception:
+    # If log files can't be created, use NullHandler (app won't crash)
+    app_logger = logging.getLogger('campaign')
+    smtp_logger = logging.getLogger('smtp')
+    error_logger = logging.getLogger('errors')
+    app_logger.addHandler(logging.NullHandler())
+    smtp_logger.addHandler(logging.NullHandler())
+    error_logger.addHandler(logging.NullHandler())
 
 # ==============================
 # RATE LIMITING
@@ -324,7 +329,11 @@ def init_db():
 
 
 # Initialize DB immediately at module load (before any request can hit load_user)
-init_db()
+try:
+    init_db()
+    print(f'[STARTUP] DB initialized at: {DB_PATH}')
+except Exception as e:
+    print(f'[STARTUP] DB init failed: {e}')
 
 
 # ==============================
@@ -2145,10 +2154,9 @@ def export_data(export_type):
 
 
 if __name__ == '__main__':
-    init_db()
-    start_imap_checker()
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', '0') == '1'
+    start_imap_checker()
     print(f"\n=== Email Campaign Manager ===")
     print(f"Open: http://localhost:{port}")
     print(f"Debug: {debug}")
@@ -2156,5 +2164,5 @@ if __name__ == '__main__':
     app.run(debug=debug, host='0.0.0.0', port=port)
 else:
     # Gunicorn / production WSGI entry
-    init_db()
-    start_imap_checker()
+    # Don't start IMAP checker in production (can cause issues with fresh DB)
+    pass
