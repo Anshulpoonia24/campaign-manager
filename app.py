@@ -28,23 +28,25 @@ load_dotenv()
 # ==============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# PERSISTENT STORAGE: Azure uses /home which survives restarts/redeploys
-# Local dev falls back to project directory
-if os.path.isdir('/home') and os.name != 'nt':
-    # Azure App Service Linux
-    DATA_DIR = '/home/data'
-    LOG_DIR = '/home/logs'
-    UPLOAD_DIR = '/home/uploads'
-else:
-    # Local development (Windows/Mac)
+# HARDCODED persistent path for Azure App Service
+# /home is the ONLY persistent directory on Azure Linux App Service
+DATA_DIR = '/home/data'
+LOG_DIR = '/home/logs'
+UPLOAD_DIR = '/home/uploads'
+
+# Create directories (will work on Azure, may fail on Windows - that's OK)
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(LOG_DIR, exist_ok=True)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+except OSError:
+    # Fallback for local Windows dev
     DATA_DIR = os.path.join(BASE_DIR, 'data')
     LOG_DIR = os.path.join(BASE_DIR, 'logs')
     UPLOAD_DIR = os.path.join(BASE_DIR, 'attachments')
-
-# Create directories
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(LOG_DIR, exist_ok=True)
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(LOG_DIR, exist_ok=True)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'CHANGE-ME-generate-with-python-secrets')
@@ -53,7 +55,6 @@ DB_PATH = os.path.join(DATA_DIR, 'campaigns.db')
 # ==============================
 # LOGGING (production-safe, rotating)
 # ==============================
-LOG_DIR = LOG_DIR  # already set above
 
 # Main app logger
 app_logger = logging.getLogger('campaign')
