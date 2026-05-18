@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analytics — OutreachOS</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { background: linear-gradient(160deg, #f8fafc 0%, #f1f5ff 60%, #f8fafc 100%); }
+
+/* KPI cards */
+.kpi-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 18px;
+  padding: 22px 24px; box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+  transition: box-shadow 0.2s, transform 0.15s; height: 100%;
+}
+.kpi-card:hover { box-shadow: 0 6px 22px rgba(15,23,42,0.08); transform: translateY(-1px); }
+.kpi-icon { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 16px; margin-bottom: 14px; }
+.ki-indigo  { background: #eef2ff; color: #6366f1; }
+.ki-emerald { background: #f0fdf4; color: #10b981; }
+.ki-violet  { background: #f5f3ff; color: #8b5cf6; }
+.ki-amber   { background: #fffbeb; color: #f59e0b; }
+.ki-rose    { background: #fff1f2; color: #f43f5e; }
+.ki-blue    { background: #eff6ff; color: #3b82f6; }
+.kpi-val { font-size: 2rem; font-weight: 800; color: #0f172a; letter-spacing: -1px; line-height: 1; margin-bottom: 4px; }
+.kpi-lbl { font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.kpi-trend { font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 4px; }
+.trend-up   { color: #10b981; }
+.trend-down { color: #ef4444; }
+.trend-neu  { color: #9CA3AF; }
+
+/* Chart cards */
+.chart-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 18px;
+  padding: 22px 24px; box-shadow: 0 2px 8px rgba(15,23,42,0.04); height: 100%;
+}
+.chart-title { font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+.chart-sub   { font-size: 12px; color: #9CA3AF; margin-bottom: 18px; }
+
+/* AI Insights */
+.insight-card {
+  background: linear-gradient(135deg, #fafbff, #f5f3ff);
+  border: 1px solid #e0e7ff; border-radius: 14px; padding: 14px 16px;
+  margin-bottom: 10px; transition: box-shadow 0.15s;
+}
+.insight-card:hover { box-shadow: 0 4px 14px rgba(99,102,241,0.08); }
+.insight-card .ic-icon { width: 28px; height: 28px; border-radius: 7px; background: #eef2ff; color: #6366f1; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+.insight-card .ic-text { font-size: 12.5px; color: #374151; line-height: 1.5; }
+.insight-card .ic-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; background: #eef2ff; color: #4338ca; white-space: nowrap; }
+
+/* Empty state */
+.empty-chart {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 40px 20px; text-align: center; min-height: 180px;
+}
+.empty-chart .ec-icon { width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(135deg, #eef2ff, #f5f3ff); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #6366f1; margin: 0 auto 14px; }
+
+/* Timeframe selector */
+.timeframe-btn {
+  padding: 6px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 500;
+  border: 1px solid #e5e7eb; background: #fff; color: #6B7280; cursor: pointer;
+  transition: all 0.15s;
+}
+.timeframe-btn.active, .timeframe-btn:hover { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+
+/* Provider badge */
+.provider-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f9fafb; }
+.provider-row:last-child { border-bottom: none; }
+.provider-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.provider-name { font-size: 13px; font-weight: 600; color: #374151; flex: 1; }
+.provider-count { font-size: 13px; font-weight: 700; color: #0f172a; }
+.provider-bar { height: 4px; border-radius: 99px; background: #f3f4f6; overflow: hidden; margin-top: 4px; }
+.provider-fill { height: 100%; border-radius: 99px; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics" class="active"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#f87171;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<div class="main">
+
+  <!-- HEADER -->
+  <div class="d-flex align-items-start justify-content-between mb-4" style="margin-bottom:28px!important;">
+    <div>
+      <h1 style="font-size:1.75rem;font-weight:800;color:#0f172a;letter-spacing:-0.6px;margin-bottom:5px;">Analytics</h1>
+      <p style="font-size:14px;color:#6B7280;margin:0;">Real-time outbound performance, engagement intelligence, and AI campaign insights.</p>
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      <div class="d-flex gap-1">
+        <button class="timeframe-btn active" onclick="setTimeframe(this,'7d')">7 days</button>
+        <button class="timeframe-btn" onclick="setTimeframe(this,'30d')">30 days</button>
+        <button class="timeframe-btn" onclick="setTimeframe(this,'all')">All time</button>
+      </div>
+      <a href="/export/sent" class="btn btn-outline-secondary btn-sm" style="border-radius:9px;">
+        <i class="fas fa-download me-1"></i>Export
+      </a>
+    </div>
+  </div>
+
+  <!-- KPI CARDS -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-indigo"><i class="fas fa-paper-plane"></i></div>
+        <div class="kpi-lbl">Emails Sent</div>
+        <div class="kpi-val">{{ total_sent }}</div>
+        <div class="kpi-trend trend-neu"><i class="fas fa-minus" style="font-size:9px;"></i> All time</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-emerald"><i class="fas fa-eye"></i></div>
+        <div class="kpi-lbl">Open Rate</div>
+        <div class="kpi-val" style="color:#10b981;">{{ open_rate }}%</div>
+        <div class="kpi-trend {{ 'trend-up' if open_rate >= 20 else 'trend-down' }}">
+          <i class="fas fa-arrow-{{ 'up' if open_rate >= 20 else 'down' }}" style="font-size:9px;"></i>
+          {{ total_opened }} opens
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-violet"><i class="fas fa-reply"></i></div>
+        <div class="kpi-lbl">Reply Rate</div>
+        <div class="kpi-val" style="color:#8b5cf6;">{{ reply_rate }}%</div>
+        <div class="kpi-trend {{ 'trend-up' if reply_rate >= 5 else 'trend-down' }}">
+          <i class="fas fa-arrow-{{ 'up' if reply_rate >= 5 else 'down' }}" style="font-size:9px;"></i>
+          {{ total_replied }} replies
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-amber"><i class="fas fa-mouse-pointer"></i></div>
+        <div class="kpi-lbl">Click Rate</div>
+        <div class="kpi-val" style="color:#f59e0b;">{{ click_rate }}%</div>
+        <div class="kpi-trend {{ 'trend-up' if click_rate >= 3 else 'trend-neu' }}">
+          <i class="fas fa-arrow-{{ 'up' if click_rate >= 3 else 'right' }}" style="font-size:9px;"></i>
+          {{ total_clicks }} clicks
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-rose"><i class="fas fa-exclamation-triangle"></i></div>
+        <div class="kpi-lbl">Bounce Rate</div>
+        <div class="kpi-val" style="color:{% if bounce_rate > 5 %}#ef4444{% elif bounce_rate > 2 %}#f59e0b{% else %}#10b981{% endif %};">{{ bounce_rate }}%</div>
+        <div class="kpi-trend {{ 'trend-down' if bounce_rate > 5 else 'trend-up' }}">
+          <i class="fas fa-arrow-{{ 'down' if bounce_rate > 5 else 'up' }}" style="font-size:9px;"></i>
+          {{ total_bounced }} bounced
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-blue"><i class="fas fa-envelope-open"></i></div>
+        <div class="kpi-lbl">Total Opens</div>
+        <div class="kpi-val" style="color:#3b82f6;">{{ total_opened }}</div>
+        <div class="kpi-trend trend-neu"><i class="fas fa-minus" style="font-size:9px;"></i> Unique opens</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHARTS ROW -->
+  <div class="row g-3 mb-4">
+    <div class="col-lg-8">
+      <div class="chart-card">
+        <div class="chart-title">Outbound Performance Over Time</div>
+        <div class="chart-sub">Emails sent and opened by day</div>
+        {% set td = time_data | tojson %}
+        <div id="timeChartWrap">
+          {% set parsed = time_data | tojson %}
+          <canvas id="timeChart" height="90"></canvas>
+          {% if not (time_data | tojson | length > 20) %}
+          <div class="empty-chart" id="timeEmpty">
+            <div class="ec-icon"><i class="fas fa-chart-line"></i></div>
+            <div style="font-size:13.5px;font-weight:600;color:#374151;margin-bottom:6px;">No data yet</div>
+            <div style="font-size:12.5px;color:#9CA3AF;max-width:240px;">Analytics will appear once campaigns start sending emails.</div>
+            <a href="/campaign/new" class="btn btn-primary btn-sm mt-3" style="border-radius:9px;">Launch Campaign</a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="chart-card">
+        <div class="chart-title">AI Provider Usage</div>
+        <div class="chart-sub">Calls by provider</div>
+        <div id="aiProviderWrap">
+          {% if ai_providers %}
+          {% set total_ai = ai_providers | sum(attribute='total') %}
+          {% for p in ai_providers %}
+          {% set pct = ((p.total / total_ai * 100) | round | int) if total_ai > 0 else 0 %}
+          {% set colors = {'groq': '#6366f1', 'gemini': '#8b5cf6', 'ollama': '#10b981'} %}
+          {% set col = colors.get(p.provider, '#9CA3AF') %}
+          <div class="provider-row">
+            <div class="provider-dot" style="background:{{ col }};"></div>
+            <div style="flex:1;">
+              <div class="d-flex justify-content-between">
+                <span class="provider-name">{{ p.provider | capitalize }}</span>
+                <span class="provider-count">{{ p.total }}</span>
+              </div>
+              <div class="provider-bar"><div class="provider-fill" style="width:{{ pct }}%;background:{{ col }};"></div></div>
+            </div>
+          </div>
+          {% endfor %}
+          {% else %}
+          <div class="empty-chart">
+            <div class="ec-icon"><i class="fas fa-robot"></i></div>
+            <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:4px;">No AI usage yet</div>
+            <div style="font-size:12px;color:#9CA3AF;">Generate emails to see provider stats.</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI INSIGHTS + RATE BREAKDOWN -->
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="chart-card">
+        <div class="chart-title"><i class="fas fa-robot me-2" style="color:#6366f1;"></i>AI Outbound Insights</div>
+        <div class="chart-sub">Intelligent observations from your outreach data</div>
+        {% if total_sent > 0 %}
+        <div class="insight-card d-flex align-items-start gap-10" style="gap:10px;">
+          <div class="ic-icon"><i class="fas fa-chart-line"></i></div>
+          <div style="flex:1;">
+            <div class="ic-text">
+              {% if open_rate >= 20 %}Your open rate of <strong>{{ open_rate }}%</strong> is above industry average (20%). Strong subject lines detected.
+              {% elif open_rate >= 10 %}Open rate of <strong>{{ open_rate }}%</strong> is near average. Consider A/B testing subject lines.
+              {% else %}Open rate of <strong>{{ open_rate }}%</strong> is below average. Review subject lines and sending times.{% endif %}
+            </div>
+          </div>
+          <span class="ic-badge">Opens</span>
+        </div>
+        <div class="insight-card d-flex align-items-start gap-10" style="gap:10px;">
+          <div class="ic-icon"><i class="fas fa-reply"></i></div>
+          <div style="flex:1;">
+            <div class="ic-text">
+              {% if reply_rate >= 5 %}Reply rate of <strong>{{ reply_rate }}%</strong> is strong. AI personalization is working effectively.
+              {% elif reply_rate >= 2 %}Reply rate of <strong>{{ reply_rate }}%</strong> is moderate. Enable AI context enrichment for better results.
+              {% else %}Reply rate of <strong>{{ reply_rate }}%</strong> needs improvement. Enrich contacts with AI context before sending.{% endif %}
+            </div>
+          </div>
+          <span class="ic-badge">Replies</span>
+        </div>
+        <div class="insight-card d-flex align-items-start gap-10" style="gap:10px;">
+          <div class="ic-icon"><i class="fas fa-shield-alt"></i></div>
+          <div style="flex:1;">
+            <div class="ic-text">
+              {% if bounce_rate <= 2 %}Bounce rate of <strong>{{ bounce_rate }}%</strong> is excellent. Deliverability infrastructure is healthy.
+              {% elif bounce_rate <= 5 %}Bounce rate of <strong>{{ bounce_rate }}%</strong> is acceptable. Monitor SMTP health scores.
+              {% else %}Bounce rate of <strong>{{ bounce_rate }}%</strong> is high. Review email validation and SMTP rotation.{% endif %}
+            </div>
+          </div>
+          <span class="ic-badge">Health</span>
+        </div>
+        {% else %}
+        <div class="empty-chart">
+          <div class="ec-icon"><i class="fas fa-lightbulb"></i></div>
+          <div style="font-size:13.5px;font-weight:600;color:#374151;margin-bottom:6px;">No insights yet</div>
+          <div style="font-size:12.5px;color:#9CA3AF;max-width:220px;">AI insights appear after your first campaign sends.</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-lg-7">
+      <div class="chart-card">
+        <div class="chart-title">Engagement Rate Breakdown</div>
+        <div class="chart-sub">Open, reply, and click rates compared</div>
+        <canvas id="rateChart" height="120"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div><!-- main -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const TD = {{ time_data | safe }};
+const hasData = TD.labels && TD.labels.length > 0;
+
+// Time chart
+if(hasData) {
+  const timeEmpty = document.getElementById('timeEmpty');
+  if(timeEmpty) timeEmpty.style.display = 'none';
+  new Chart(document.getElementById('timeChart'), {
+    type: 'line',
+    data: {
+      labels: TD.labels,
+      datasets: [
+        {
+          label: 'Sent', data: TD.sent,
+          borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.06)',
+          tension: 0.4, fill: true, pointRadius: 3, pointBackgroundColor: '#6366f1',
+          borderWidth: 2
+        },
+        {
+          label: 'Opened', data: TD.opened,
+          borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.06)',
+          tension: 0.4, fill: true, pointRadius: 3, pointBackgroundColor: '#10b981',
+          borderWidth: 2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 12 }, usePointStyle: true, padding: 16 } } },
+      scales: {
+        x: { grid: { color: '#f9fafb' }, ticks: { font: { family: 'Inter', size: 11 }, color: '#9CA3AF' } },
+        y: { beginAtZero: true, grid: { color: '#f9fafb' }, ticks: { font: { family: 'Inter', size: 11 }, color: '#9CA3AF' } }
+      }
+    }
+  });
+} else {
+  document.getElementById('timeChart').style.display = 'none';
+}
+
+// Rate breakdown chart
+const openRate  = {{ open_rate }};
+const replyRate = {{ reply_rate }};
+const clickRate = {{ click_rate }};
+const bounceRate = {{ bounce_rate }};
+
+new Chart(document.getElementById('rateChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Open Rate', 'Reply Rate', 'Click Rate', 'Bounce Rate'],
+    datasets: [{
+      data: [openRate, replyRate, clickRate, bounceRate],
+      backgroundColor: ['rgba(99,102,241,0.15)', 'rgba(139,92,246,0.15)', 'rgba(245,158,11,0.15)', 'rgba(239,68,68,0.15)'],
+      borderColor: ['#6366f1', '#8b5cf6', '#f59e0b', '#ef4444'],
+      borderWidth: 2, borderRadius: 8
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { family: 'Inter', size: 12 }, color: '#6B7280' } },
+      y: { beginAtZero: true, max: 100, grid: { color: '#f9fafb' }, ticks: { font: { family: 'Inter', size: 11 }, color: '#9CA3AF', callback: v => v + '%' } }
+    }
+  }
+});
+
+function setTimeframe(btn, tf) {
+  document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>

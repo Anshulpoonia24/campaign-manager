@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tenant Management — OutreachOS Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; background: linear-gradient(160deg, #f8fafc, #f1f5ff); min-height: 100vh; font-size: 14px; -webkit-font-smoothing: antialiased; }
+
+/* Top nav */
+.admin-nav {
+  background: #0f172a; padding: 0 28px; height: 52px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.admin-nav .brand { font-size: 14px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }
+.admin-nav .brand span { background: linear-gradient(135deg,#6366f1,#8b5cf6); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; }
+.admin-nav a { color: rgba(255,255,255,0.5); text-decoration: none; font-size: 13px; margin-left: 20px; transition: color 0.15s; }
+.admin-nav a:hover { color: #fff; }
+.admin-nav a.active { color: #a5b4fc; }
+
+/* Content */
+.content { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+/* KPI row */
+.kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 28px; }
+.kpi-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 18px 20px; box-shadow: 0 2px 8px rgba(15,23,42,0.04); }
+.kpi-card .kv { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.8px; }
+.kpi-card .kl { font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+/* Table card */
+.table-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 2px 8px rgba(15,23,42,0.04); overflow: hidden; }
+.table-card .tc-header { padding: 18px 22px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; }
+.table-card .tc-title { font-size: 14px; font-weight: 700; color: #0f172a; }
+
+.table { font-size: 13px; margin: 0; }
+.table th { background: #f9fafb; color: #6B7280; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #f3f4f6; padding: 10px 16px; }
+.table td { padding: 12px 16px; border-bottom: 1px solid #f9fafb; vertical-align: middle; color: #111827; }
+.table-hover tbody tr:hover { background: #fafbff; }
+
+/* Badges */
+.plan-free  { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+.plan-pro   { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+.plan-enterprise { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+
+/* Buttons */
+.btn-primary { background: linear-gradient(135deg,#6366f1,#8b5cf6) !important; border: none !important; color: #fff !important; font-weight: 600; border-radius: 9px; font-size: 13px; box-shadow: 0 2px 8px rgba(99,102,241,0.25); }
+.btn-outline-secondary { border-radius: 9px; font-size: 13px; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+.alert { border-radius: 10px; font-size: 13px; }
+.alert-success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.alert-danger  { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+</style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<div class="admin-nav">
+  <div class="brand">
+    <i class="fas fa-paper-plane" style="color:#6366f1;"></i>
+    OutreachOS <span>ADMIN</span>
+  </div>
+  <div>
+    <a href="/admin" class="active"><i class="fas fa-building me-1"></i>Tenants</a>
+    <a href="/admin/create"><i class="fas fa-plus me-1"></i>New Tenant</a>
+    <a href="/"><i class="fas fa-th-large me-1"></i>Dashboard</a>
+    <a href="/admin/logout" style="color:#f87171;"><i class="fas fa-sign-out-alt me-1"></i>Logout</a>
+  </div>
+</div>
+
+<div class="content">
+
+  {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show mb-4 py-2">
+    {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}{% endif %}{% endwith %}
+
+  <!-- HEADER -->
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h1 style="font-size:1.5rem;font-weight:800;color:#0f172a;letter-spacing:-0.4px;margin:0 0 4px;">Tenant Management</h1>
+      <p style="font-size:13px;color:#6B7280;margin:0;">Manage workspaces, users, and tenant data.</p>
+    </div>
+    <a href="/admin/create" class="btn btn-primary"><i class="fas fa-plus me-2"></i>New Tenant</a>
+  </div>
+
+  <!-- KPI CARDS -->
+  <div class="kpi-row" id="kpiRow">
+    <div class="kpi-card"><div class="kv" style="color:#6366f1;">{{ workspaces|length }}</div><div class="kl">Workspaces</div></div>
+    <div class="kpi-card"><div class="kv" id="kpi-users" style="color:#10b981;">—</div><div class="kl">Total Users</div></div>
+    <div class="kpi-card"><div class="kv" id="kpi-contacts" style="color:#8b5cf6;">—</div><div class="kl">Total Contacts</div></div>
+    <div class="kpi-card"><div class="kv" id="kpi-sent" style="color:#f59e0b;">—</div><div class="kl">Emails Sent</div></div>
+  </div>
+
+  <!-- TENANT TABLE -->
+  <div class="table-card">
+    <div class="tc-header">
+      <span class="tc-title"><i class="fas fa-building me-2" style="color:#6366f1;"></i>All Workspaces</span>
+      <input type="text" class="form-control form-control-sm" style="width:200px;border-radius:8px;" placeholder="Search..." oninput="filterTable(this.value)">
+    </div>
+    <div style="overflow-x:auto;">
+    <table class="table table-hover mb-0" id="tenantTable">
+      <thead>
+        <tr>
+          <th>Workspace</th>
+          <th>Plan</th>
+          <th>Users</th>
+          <th>Contacts</th>
+          <th>Campaigns</th>
+          <th>SMTP</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for w in workspaces %}
+      <tr data-name="{{ w.name|lower }}">
+        <td>
+          <div style="font-weight:700;color:#0f172a;">{{ w.name }}</div>
+          <div style="font-size:11px;color:#9CA3AF;">{{ w.slug }}</div>
+        </td>
+        <td>
+          <span class="plan-{{ w.plan }}">{{ w.plan.upper() }}</span>
+        </td>
+        <td><strong>{{ w.user_count }}</strong></td>
+        <td>{{ w.contact_count }}</td>
+        <td>{{ w.campaign_count }}</td>
+        <td>{{ w.smtp_count }}</td>
+        <td><small class="text-muted">{{ w.created_at[:10] if w.created_at else '—' }}</small></td>
+        <td>
+          <a href="/admin/tenant/{{ w.id }}" class="btn btn-sm btn-outline-secondary me-1">
+            <i class="fas fa-eye"></i>
+          </a>
+          {% if w.id != 1 %}
+          <form method="POST" action="/admin/tenant/{{ w.id }}/delete" style="display:inline;"
+                onsubmit="return confirm('Delete workspace {{ w.name }}? ALL data will be permanently removed.')">
+            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not workspaces %}
+      <tr><td colspan="8" class="text-center text-muted py-4">No workspaces yet.</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// Load KPI stats
+fetch('/admin/api/stats').then(r=>r.json()).then(d=>{
+  document.getElementById('kpi-users').textContent    = d.users;
+  document.getElementById('kpi-contacts').textContent = d.contacts;
+  document.getElementById('kpi-sent').textContent     = d.emails_sent;
+}).catch(()=>{});
+
+function filterTable(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('#tenantTable tbody tr').forEach(r => {
+    r.style.display = (!q || r.dataset.name.includes(q)) ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>

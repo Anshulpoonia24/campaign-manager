@@ -1,0 +1,244 @@
+"""
+routes/admin.py — Tenant Management Admin Panel
+================================================
+Completely separate from tenant login.
+Admin login: /admin/login  (username: admin, password: admin123)
+Tenant login: /login
+"""
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, session
+from functools import wraps
+from utils.db import get_db
+from werkzeug.security import generate_password_hash
+from datetime import datetime
+import os
+
+admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
+
+ADMIN_SESSION_KEY = 'admin_logged_in'
+
+
+def admin_required(f):
+    """Check admin session — completely separate from Flask-Login."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get(ADMIN_SESSION_KEY):
+            from flask import current_app
+            return redirect('/admin/login')
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ── ADMIN LOGIN ───────────────────────────────────────────────
+@admin_bp.route('/login', methods=['GET', 'POST'])
+def admin_login():
+    if session.get(ADMIN_SESSION_KEY):
+        return redirect(url_for('admin.tenant_list'))
+    error = None
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        # Check ONLY against .env — no DB, no tenant access
+        admin_user = os.getenv('ADMIN_USERNAME', 'superadmin')
+        admin_pass = os.getenv('ADMIN_PASSWORD', '')
+        if username == admin_user and password == admin_pass and admin_pass:
+            session[ADMIN_SESSION_KEY] = True
+            session['admin_username'] = username
+            return redirect(url_for('admin.tenant_list'))
+        error = 'Invalid admin credentials.'
+    return render_template('admin/login.html', error=error)
+
+
+# ── ADMIN LOGOUT ──────────────────────────────────────────────
+@admin_bp.route('/logout')
+def admin_logout():
+    session.pop(ADMIN_SESSION_KEY, None)
+    session.pop('admin_username', None)
+    return redirect(url_for('admin.admin_login'))
+
+
+# ── TENANT LIST ───────────────────────────────────────────────
+@admin_bp.route('/')
+@admin_required
+def tenant_list():
+    conn = get_db()
+    workspaces = conn.execute("""
+        SELECT w.*,
+            COUNT(DISTINCT u.id)  as user_count,
+            COUNT(DISTINCT c.id)  as contact_count,
+            COUNT(DISTINCT ca.id) as campaign_count,
+            COUNT(DISTINCT s.id)  as smtp_count
+        FROM workspaces w
+        LEFT JOIN users u         ON u.workspace_id  = w.id
+        LEFT JOIN contacts c      ON c.workspace_id  = w.id
+        LEFT JOIN campaigns ca    ON ca.workspace_id = w.id
+        LEFT JOIN smtp_accounts s ON s.workspace_id  = w.id
+        GROUP BY w.id
+        ORDER BY w.created_at DESC
+    """).fetchall()
+    conn.close()
+    return render_template('admin/tenants.html', workspaces=workspaces)
+
+
+# ── CREATE TENANT ─────────────────────────────────────────────
+@admin_bp.route('/create', methods=['GET', 'POST'])
+@admin_required
+def create_tenant():
+    if request.method == 'POST':
+        workspace_name = request.form.get('workspace_name', '').strip()
+        username       = request.form.get('username', '').strip()
+        password       = request.form.get('password', '').strip()
+        plan           = request.form.get('plan', 'free')
+
+        if not workspace_name or not username or not password:
+            flash('All fields required.', 'error')
+            return render_template('admin/create_tenant.html')
+
+        if len(password) < 6:
+            flash('Password must be at least 6 characters.', 'error')
+            return render_template('admin/create_tenant.html')
+
+        conn = get_db()
+
+        # Check username unique
+        if conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone():
+            conn.close()
+            flash(f'Username "{username}" already exists.', 'error')
+            return render_template('admin/create_tenant.html')
+
+        # Create workspace
+        from services.workspace_service import create_workspace
+        import importlib, sys
+        # Re-import to get fresh module
+        wid = create_workspace(workspace_name)
+
+        # Update plan
+        conn.execute("UPDATE workspaces SET plan=? WHERE id=?", (plan, wid))
+
+        # Create user
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role, workspace_id) VALUES (?,?,?,?)",
+            (username, generate_password_hash(password), 'admin', wid)
+        )
+
+        # Copy default settings
+        from app import DEFAULT_SETTINGS
+        for k, v in DEFAULT_SETTINGS.items():
+            conn.execute("INSERT INTO settings (key, value, workspace_id) VALUES (?,?,?)", (k, v, wid))
+
+        # Copy default automation rules
+        for rule_key, enabled, delay_days, max_followups in [
+            ('no_reply_followup', 1, 2, 3),
+            ('opened_multiple_times', 1, 1, 2),
+            ('interested_pause', 1, 0, 0),
+            ('ooo_retry', 1, 7, 1),
+            ('bounce_pause', 1, 0, 0),
+        ]:
+            conn.execute(
+                "INSERT INTO automation_settings (rule_key,enabled,delay_days,max_followups,workspace_id) VALUES (?,?,?,?,?)",
+                (rule_key, enabled, delay_days, max_followups, wid)
+            )
+
+        conn.commit()
+        conn.close()
+
+        flash(f'Tenant "{workspace_name}" created. Login: {username} / {password}', 'success')
+        return redirect(url_for('admin.tenant_list'))
+
+    return render_template('admin/create_tenant.html')
+
+
+# ── TENANT DETAIL ─────────────────────────────────────────────
+@admin_bp.route('/tenant/<int:wid>')
+@admin_required
+def tenant_detail(wid):
+    conn = get_db()
+    workspace = conn.execute("SELECT * FROM workspaces WHERE id=?", (wid,)).fetchone()
+    if not workspace:
+        conn.close()
+        flash('Workspace not found.', 'error')
+        return redirect(url_for('admin.tenant_list'))
+
+    users     = conn.execute("SELECT id, username, role, created_at FROM users WHERE workspace_id=?", (wid,)).fetchall()
+    campaigns = conn.execute("SELECT id, name, status, created_at FROM campaigns WHERE workspace_id=? ORDER BY created_at DESC LIMIT 10", (wid,)).fetchall()
+    smtp_accs = conn.execute("SELECT id, email, health_score, warmup_stage, active, sent_today FROM smtp_accounts WHERE workspace_id=?", (wid,)).fetchall()
+
+    stats = {
+        'contacts':  conn.execute("SELECT COUNT(*) FROM contacts  WHERE workspace_id=?", (wid,)).fetchone()[0],
+        'campaigns': conn.execute("SELECT COUNT(*) FROM campaigns WHERE workspace_id=?", (wid,)).fetchone()[0],
+        'sent':      conn.execute("SELECT COUNT(*) FROM emails_sent WHERE workspace_id=? AND status='sent'", (wid,)).fetchone()[0],
+        'threads':   conn.execute("SELECT COUNT(*) FROM threads WHERE workspace_id=?", (wid,)).fetchone()[0],
+    }
+    conn.close()
+    return render_template('admin/tenant_detail.html',
+        workspace=workspace, users=users, campaigns=campaigns,
+        smtp_accs=smtp_accs, stats=stats)
+
+
+# ── RESET PASSWORD ────────────────────────────────────────────
+@admin_bp.route('/tenant/<int:wid>/reset_password/<int:user_id>', methods=['POST'])
+@admin_required
+def reset_password(wid, user_id):
+    new_pw = request.form.get('new_password', '').strip()
+    if not new_pw or len(new_pw) < 6:
+        flash('Password must be at least 6 characters.', 'error')
+        return redirect(url_for('admin.tenant_detail', wid=wid))
+    conn = get_db()
+    conn.execute("UPDATE users SET password_hash=? WHERE id=? AND workspace_id=?",
+                 (generate_password_hash(new_pw), user_id, wid))
+    conn.commit()
+    conn.close()
+    flash('Password reset successfully.', 'success')
+    return redirect(url_for('admin.tenant_detail', wid=wid))
+
+
+# ── TOGGLE TENANT PLAN ────────────────────────────────────────
+@admin_bp.route('/tenant/<int:wid>/plan', methods=['POST'])
+@admin_required
+def update_plan(wid):
+    plan = request.form.get('plan', 'free')
+    conn = get_db()
+    conn.execute("UPDATE workspaces SET plan=?, updated_at=? WHERE id=?", (plan, datetime.now(), wid))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'plan': plan})
+
+
+# ── DELETE TENANT ─────────────────────────────────────────────
+@admin_bp.route('/tenant/<int:wid>/delete', methods=['POST'])
+@admin_required
+def delete_tenant(wid):
+    if wid == 1:
+        flash('Cannot delete Default Workspace.', 'error')
+        return redirect(url_for('admin.tenant_list'))
+    conn = get_db()
+    # Cascade delete all tenant data
+    for table in ['email_clicks', 'emails_sent', 'messages', 'threads',
+                  'follow_ups', 'automation_settings', 'ai_usage',
+                  'smtp_accounts', 'campaigns', 'contacts', 'settings', 'users']:
+        try:
+            conn.execute(f"DELETE FROM {table} WHERE workspace_id=?", (wid,))
+        except Exception:
+            pass
+    conn.execute("DELETE FROM workspaces WHERE id=?", (wid,))
+    conn.commit()
+    conn.close()
+    flash('Tenant deleted.', 'success')
+    return redirect(url_for('admin.tenant_list'))
+
+
+# ── API: TENANT STATS ─────────────────────────────────────────
+@admin_bp.route('/api/stats')
+@admin_required
+def api_stats():
+    conn = get_db()
+    total_workspaces = conn.execute("SELECT COUNT(*) FROM workspaces").fetchone()[0]
+    total_users      = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    total_contacts   = conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0]
+    total_sent       = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
+    conn.close()
+    return jsonify({
+        'workspaces': total_workspaces,
+        'users': total_users,
+        'contacts': total_contacts,
+        'emails_sent': total_sent,
+    })

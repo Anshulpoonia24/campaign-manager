@@ -1,0 +1,107 @@
+
+=== SETUP ===
+
+=== AUTH ===
+OK   302 Login page GET (redirects when logged in)
+OK   302 Logout redirect
+
+=== CONTACTS ===
+OK   200 Add contact
+OK   200 Add duplicate contact (should flash error)
+OK   200 Contacts list
+OK   200 Contacts filter all
+OK   200 Contacts filter valid
+OK   200 Contacts filter invalid
+OK   200 Contacts filter new
+OK   200 Contacts filter sent
+OK   200 API get contact
+OK   200 Edit contact
+OK   200 Verify single
+OK   200 Verify status API
+
+=== CAMPAIGNS ===
+OK   200 Campaign new page GET
+OK   200 Create campaign POST
+OK   200 Campaigns list
+OK   200 Campaign detail
+OK   200 Edit campaign
+OK   200 Send campaign no contacts (should redirect)
+
+=== INBOX ===
+OK   200 Inbox page
+OK   200 Inbox filter interested
+OK   200 Inbox filter meeting
+OK   200 Inbox filter booked
+OK   200 Inbox filter closed
+OK   200 Inbox filter ignored
+OK   200 Inbox stats API [total=4]
+OK   200 Check replies API [success=True]
+OK   404 Thread data 404
+OK   404 Contact by thread 404
+
+=== AUTOMATIONS ===
+OK   200 Automations page
+OK   200 Automation stats [active_rules=5]
+OK   200 Save automation rule [success=True]
+OK   200 Run automations [success=True]
+OK   200 Followup draft [success=False]
+
+=== SMTP ===
+OK   200 SMTP accounts list [accounts=[{'active': 1, 'bcc_emails': '', 'daily_limit': 20, 'email': 'anshul.shiksha@apnagang.com', 'from_name': 'Shiksha', 'health_score': 100, 'id': 8, 'last_used': '2026-05-14 15:27:11.007019', 'reply_to': 'replies@apnagang.com', 'sent_today': 0, 'signature': '', 'smtp_port': 587, 'smtp_server': 'smtp.hostinger.com', 'warmup_stage': 2}, {'active': 1, 'bcc_emails': '', 'daily_limit': 20, 'email': 'outreach@apnagang.com', 'from_name': 'Shiksha Talent', 'health_score': 100, 'id': 9, 'last_used': '2026-05-14 15:25:36.882733', 'reply_to': 'replies@apnagang.com', 'sent_today': 0, 'signature': '', 'smtp_port': 587, 'smtp_server': 'smtp.hostinger.com', 'warmup_stage': 2}]]
+OK   200 Add SMTP account [success=True]
+OK   200 SMTP test [smtp_server=smtp.hostinger.com]
+OK   200 Reset SMTP today [success=True]
+OK   200 Toggle SMTP account [success=True]
+OK   200 Delete SMTP account [success=True]
+
+=== ANALYTICS & DELIVERABILITY ===
+OK   200 Analytics page
+OK   200 Deliverability page
+OK   200 AI usage API [by_provider=[{'provider': 'groq', 'success': 10, 'total': 10}]]
+OK   200 Hot leads API [leads=[]]
+OK   200 Click analytics API [total_clicks=0]
+OK   200 Groq usage API [keys=[]]
+
+=== SETTINGS ===
+OK   200 Settings GET
+OK   200 Settings POST save
+OK   200 IMAP status API [configured=False]
+
+=== DASHBOARD ===
+OK   200 Dashboard
+
+=== UPLOAD ===
+OK   200 Upload page
+
+=== EXPORT ===
+OK   200 Export all contacts
+OK   200 Export sent emails
+OK   200 Export invalid
+OK   200 Export bounced
+
+=== LOGS ===
+OK   200 Logs page
+OK   200 Follow ups page
+OK   200 Bounced page
+
+=== LEAD SCORING ===
+OK   Lead score updated: 135
+OK   Priority hot (score=80): hot
+OK   Priority warm (score=30): warm
+OK   Priority cold (score=5): cold
+OK   get_hot_leads returns list: 1 leads
+
+=== UNSUBSCRIBES ===
+OK   200 Unsubscribes API [unsubscribes=[]]
+
+=== TRACKING ===
+OK   200 Fix tracking host
+OK   200 Track open pixel
+
+=== CLEANUP ===
+Cleanup test contact: 200
+Cleanup test campaign: 200
+
+==================================================
+TOTAL: 67/69 passed
+ALL TESTS PASSED

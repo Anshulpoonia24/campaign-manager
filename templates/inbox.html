@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inbox — AI Sales Command Center</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+/* ── 3-PANEL WORKSPACE ── */
+body { overflow: hidden; }
+.inbox-workspace {
+  display: flex; height: calc(100vh - 0px); overflow: hidden;
+  margin-left: 240px;
+}
+
+/* ── LEFT PANEL — THREAD LIST ── */
+.thread-panel {
+  width: 380px; flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid #e5e7eb;
+  display: flex; flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  box-shadow: 1px 0 0 #f1f5f9;
+}
+
+/* Fixed top section */
+.thread-panel-top {
+  flex-shrink: 0;
+  background: #fff;
+  border-bottom: 1px solid #f1f5f9;
+}
+.thread-panel-header {
+  padding: 14px 16px 10px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.thread-panel-header-row {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.thread-panel-title {
+  font-size: 15px; font-weight: 800; color: #0f172a;
+  letter-spacing: -0.3px; display: flex; align-items: center; gap: 8px;
+}
+.thread-count-badge {
+  font-size: 10.5px; font-weight: 700;
+  background: #eef2ff; color: #4338ca;
+  padding: 1px 7px; border-radius: 99px;
+}
+.thread-panel-actions { display: flex; gap: 4px; }
+.tp-icon-btn {
+  width: 28px; height: 28px; border-radius: 7px;
+  border: 1px solid #e5e7eb; background: #f9fafb;
+  color: #6b7280; display: flex; align-items: center;
+  justify-content: center; font-size: 11px;
+  cursor: pointer; transition: all 0.15s;
+  text-decoration: none;
+}
+.tp-icon-btn:hover { background: #eef2ff; border-color: #c7d2fe; color: #4338ca; }
+
+/* Search */
+.inbox-search { position: relative; }
+.inbox-search input {
+  padding: 7px 10px 7px 32px;
+  font-size: 12.5px; border-radius: 8px;
+  background: #f8fafc; border: 1px solid #e5e7eb;
+  width: 100%; outline: none;
+  transition: all 0.15s;
+  font-family: 'Inter', sans-serif;
+}
+.inbox-search input:focus {
+  background: #fff; border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.08);
+}
+.inbox-search input::placeholder { color: #9ca3af; }
+.inbox-search i {
+  position: absolute; left: 10px; top: 50%;
+  transform: translateY(-50%); color: #9ca3af; font-size: 11px;
+}
+
+/* Sync bar */
+.sync-bar {
+  padding: 5px 16px;
+  background: #f0fdf4; border-bottom: 1px solid #dcfce7;
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11px; color: #15803d; font-weight: 500;
+  flex-shrink: 0;
+}
+.sync-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #10b981; flex-shrink: 0;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+/* Pipeline filters */
+.pipeline-filters {
+  display: flex; gap: 4px; overflow-x: auto;
+  padding: 8px 14px; border-bottom: 1px solid #f1f5f9;
+  flex-shrink: 0; scrollbar-width: none;
+}
+.pipeline-filters::-webkit-scrollbar { display: none; }
+.pf-btn {
+  padding: 4px 11px; border-radius: 99px;
+  font-size: 11px; font-weight: 600;
+  border: 1px solid #e5e7eb; background: #fff;
+  color: #6b7280; cursor: pointer; white-space: nowrap;
+  transition: all 0.15s;
+}
+.pf-btn:hover { border-color: #6366f1; color: #4338ca; background: #f5f3ff; }
+.pf-btn.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+
+/* Thread list — ONLY this scrolls */
+.thread-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  /* Custom thin scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #e2e8f0 transparent;
+}
+.thread-list::-webkit-scrollbar { width: 4px; }
+.thread-list::-webkit-scrollbar-track { background: transparent; }
+.thread-list::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 2px; }
+.thread-list::-webkit-scrollbar-thumb:hover { background: #c7d2fe; }
+
+/* Thread cards */
+.thread-card {
+  padding: 10px 16px 10px 14px;
+  border-bottom: 1px solid #f8fafc;
+  cursor: pointer; transition: background 0.1s;
+  position: relative;
+  border-left: 3px solid transparent;
+}
+.thread-card:hover {
+  background: #f8fafc;
+  border-left-color: #e0e7ff;
+}
+.thread-card.active {
+  background: #eef2ff;
+  border-left-color: #6366f1;
+}
+.thread-card.unread { background: #fafbff; }
+.thread-card.unread .tc-name { font-weight: 800; }
+.thread-card.unread .tc-preview { color: #374151; font-weight: 500; }
+
+/* Card layout */
+.tc-row1 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.tc-row2 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
+.tc-name { font-size: 13px; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.tc-time { font-size: 10px; color: #9ca3af; flex-shrink: 0; }
+.tc-company { font-size: 11px; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.tc-preview { font-size: 11.5px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; margin-bottom: 5px; }
+.tc-footer { display: flex; align-items: center; gap: 5px; }
+
+/* Unread dot */
+.unread-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #6366f1; flex-shrink: 0;
+}
+
+/* AI badges — smaller */
+.badge-interested { background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:99px; }
+.badge-meeting    { background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:99px; }
+.badge-hot        { background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:99px; }
+.badge-cold       { background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:99px; }
+.badge-ooo        { background:#fefce8;color:#ca8a04;border:1px solid #fef08a;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:99px; }
+.badge-replied    { background:#f5f3ff;color:#7c3aed;border:1px solid #e9d5ff;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:99px; }
+.score-pill { font-size:9.5px;font-weight:800;padding:1px 5px;border-radius:99px; }
+.score-hot-p  { background:#fef2f2;color:#dc2626; }
+.score-warm-p { background:#fff7ed;color:#c2410c; }
+.score-cold-p { background:#f1f5f9;color:#64748b; }
+
+/* Empty state */
+.thread-empty {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 48px 24px; text-align: center;
+  color: #9ca3af;
+}
+.thread-empty-icon {
+  width: 56px; height: 56px; border-radius: 16px;
+  background: #f1f5f9; display: flex;
+  align-items: center; justify-content: center;
+  font-size: 22px; color: #c7d2fe;
+  margin-bottom: 14px;
+}
+
+/* ── CENTER PANEL — CONVERSATION ── */
+.convo-panel {
+  flex: 1; display: flex; flex-direction: column; background: #f8fafc;
+  height: 100vh; overflow: hidden;
+}
+.convo-header {
+  padding: 12px 20px; background: #fff; border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0; display: flex; align-items: center; gap: 12px;
+}
+.convo-header .ch-name { font-size: 15px; font-weight: 800; color: #111827; }
+.convo-header .ch-sub  { font-size: 11.5px; color: #6B7280; }
+.convo-messages { flex: 1; overflow-y: auto; padding: 20px; }
+.msg-bubble { max-width: 72%; margin-bottom: 16px; }
+.msg-bubble.outgoing { margin-left: auto; }
+.msg-bubble.incoming { margin-right: auto; }
+.bubble-body {
+  padding: 12px 16px; border-radius: 12px; font-size: 13px;
+  line-height: 1.65; word-break: break-word;
+}
+.outgoing .bubble-body { background: #6366f1; color: #fff; border-bottom-right-radius: 4px; }
+.incoming .bubble-body { background: #fff; color: #111827; border: 1px solid #e2e8f0; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.bubble-meta { font-size: 10.5px; color: #9CA3AF; margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+.outgoing .bubble-meta { justify-content: flex-end; }
+.ai-cat-badge { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 99px; }
+
+/* Reply composer */
+.reply-composer {
+  padding: 14px 20px; background: #fff; border-top: 1px solid #e2e8f0; flex-shrink: 0;
+}
+.reply-styles { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.rs-btn { padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 600; border: 1px solid #e2e8f0; background: #fff; color: #6B7280; cursor: pointer; transition: all 0.15s; }
+.rs-btn:hover, .rs-btn.active { background: #eef2ff; border-color: #6366f1; color: #4338ca; }
+.reply-textarea { width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; resize: none; font-family: inherit; color: #111827; }
+.reply-textarea:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.08); }
+.reply-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+
+/* Quick actions bar */
+.quick-actions { display: flex; gap: 6px; padding: 8px 20px; background: #fff; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; flex-wrap: wrap; }
+.qa-btn { padding: 4px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 600; border: 1px solid #e2e8f0; background: #f8fafc; color: #374151; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 5px; }
+.qa-btn:hover { background: #eef2ff; border-color: #6366f1; color: #4338ca; }
+.qa-btn.danger:hover { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+
+/* ── RIGHT PANEL — AI INSIGHTS ── */
+.insights-panel {
+  width: 280px; flex-shrink: 0; background: #fff; border-left: 1px solid #e2e8f0;
+  height: 100vh; overflow-y: auto; display: flex; flex-direction: column;
+}
+.ip-section { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; }
+.ip-section-title { font-size: 10px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px; display: flex; align-items: center; gap: 5px; }
+.insight-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; }
+.insight-row .ir-label { font-size: 12px; color: #6B7280; }
+.insight-row .ir-val   { font-size: 12.5px; font-weight: 700; color: #111827; }
+.prob-bar { height: 4px; background: #f1f5f9; border-radius: 99px; overflow: hidden; margin-top: 3px; }
+.prob-fill { height: 100%; border-radius: 99px; }
+.next-action-card { background: linear-gradient(135deg,#f0fdf4,#dcfce7); border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; transition: box-shadow 0.15s; }
+.next-action-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.next-action-card .na-title { font-size: 12.5px; font-weight: 700; color: #15803d; margin-bottom: 2px; }
+.next-action-card .na-sub   { font-size: 11px; color: #166534; }
+.timeline-item { display: flex; gap: 10px; padding: 6px 0; }
+.timeline-item .ti-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+.timeline-item .ti-text { font-size: 11.5px; color: #374151; line-height: 1.4; }
+.timeline-item .ti-time { font-size: 10.5px; color: #9CA3AF; }
+
+/* Empty state */
+.inbox-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; text-align: center; }
+.inbox-empty .ie-icon { font-size: 2.5rem; margin-bottom: 16px; opacity: 0.3; }
+
+/* Sync bar */
+.sync-bar { padding: 6px 16px; background: #f0fdf4; border-bottom: 1px solid #bbf7d0; display: flex; align-items: center; gap: 8px; font-size: 11px; color: #15803d; font-weight: 500; flex-shrink: 0; }
+.sync-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+/* Spin */
+.spin { display:inline-block;width:13px;height:13px;border:2px solid #e2e8f0;border-top:2px solid #6366f1;border-radius:50%;animation:spin 0.6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Status select */
+.status-select { font-size:11.5px;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;color:#374151;background:#f8fafc;cursor:pointer; }
+
+@media(max-width:1100px){ .insights-panel { display:none; } }
+@media(max-width:768px){ .thread-panel { display:none; } }
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox" class="active"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<div class="inbox-workspace">
+
+<!-- ── LEFT: THREAD LIST ── -->
+<div class="thread-panel">
+
+  <!-- FIXED TOP SECTION -->
+  <div class="thread-panel-top">
+
+    <!-- HEADER -->
+    <div class="thread-panel-header">
+      <div class="thread-panel-header-row">
+        <div class="thread-panel-title">
+          <i class="fas fa-inbox" style="font-size:13px;color:#6366f1;"></i>
+          Inbox
+          <span class="thread-count-badge" id="threadCountBadge">{{ threads|length }}</span>
+        </div>
+        <div class="thread-panel-actions">
+          <button class="tp-icon-btn" onclick="checkReplies(this)" title="Sync IMAP now">
+            <i class="fas fa-sync-alt"></i>
+          </button>
+          <a href="/inbox" class="tp-icon-btn" title="Refresh page">
+            <i class="fas fa-redo"></i>
+          </a>
+        </div>
+      </div>
+      <div class="inbox-search">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Search by name, company..." id="threadSearch" oninput="filterThreads(this.value)">
+      </div>
+    </div>
+
+    <!-- SYNC BAR -->
+    <div class="sync-bar">
+      <span class="sync-dot"></span>
+      IMAP Active &middot; AI On &middot; <span id="syncTime">Monitoring</span>
+    </div>
+
+    <!-- PIPELINE FILTERS -->
+    <div class="pipeline-filters">
+      <button class="pf-btn {{ 'active' if not status_filter }}" onclick="location.href='/inbox'">All</button>
+      <button class="pf-btn {{ 'active' if status_filter=='interested' }}" onclick="location.href='/inbox?status=interested'">🔥 Interested</button>
+      <button class="pf-btn {{ 'active' if status_filter=='meeting' }}" onclick="location.href='/inbox?status=meeting'">📅 Meeting</button>
+      <button class="pf-btn {{ 'active' if status_filter=='booked' }}" onclick="location.href='/inbox?status=booked'">✅ Booked</button>
+      <button class="pf-btn {{ 'active' if status_filter=='active' }}" onclick="location.href='/inbox?status=active'">💬 Active</button>
+      <button class="pf-btn {{ 'active' if status_filter=='closed' }}" onclick="location.href='/inbox?status=closed'">Closed</button>
+    </div>
+
+  </div><!-- thread-panel-top -->
+
+  <!-- SCROLLABLE THREAD LIST -->
+  <div class="thread-list" id="threadList">
+    {% if threads %}
+    {% for t in threads %}
+    <div class="thread-card {{ 'unread' if t.unread_count > 0 }}" id="tc-{{ t.id }}"
+         onclick="openThread({{ t.id }}, this)"
+         data-name="{{ (t.contact_name or '')|lower }}"
+         data-company="{{ (t.contact_company or '')|lower }}">
+
+      <!-- Row 1: Name + Time -->
+      <div class="tc-row1">
+        <span class="tc-name">{{ t.contact_name or t.contact_email or 'Unknown' }}</span>
+        <span class="tc-time">{{ t.last_message_at[:10] if t.last_message_at else '' }}</span>
+      </div>
+
+      <!-- Row 2: Company -->
+      <div class="tc-row2">
+        <span class="tc-company">{{ t.contact_company or '—' }}</span>
+      </div>
+
+      <!-- Row 3: Subject preview -->
+      <div class="tc-preview">{{ t.subject or '(no subject)' }}</div>
+
+      <!-- Row 4: Badge + unread dot -->
+      <div class="tc-footer">
+        {% if t.status == 'interested' %}<span class="badge-interested">🔥 Interested</span>
+        {% elif t.status == 'meeting' %}<span class="badge-meeting">📅 Meeting</span>
+        {% elif t.status == 'booked' %}<span class="badge-meeting">✅ Booked</span>
+        {% elif t.status == 'closed' %}<span class="badge-cold">Closed</span>
+        {% elif t.status == 'ignored' %}<span class="badge-cold">Ignored</span>
+        {% else %}<span class="badge-replied">💬 Active</span>{% endif %}
+        {% if t.unread_count > 0 %}
+          <span class="unread-dot"></span>
+          <span style="font-size:9.5px;font-weight:700;color:#6366f1;">{{ t.unread_count }} new</span>
+        {% endif %}
+      </div>
+
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="thread-empty">
+      <div class="thread-empty-icon"><i class="fas fa-inbox"></i></div>
+      <div style="font-size:13.5px;font-weight:700;color:#374151;margin-bottom:6px;">No conversations yet</div>
+      <div style="font-size:12px;line-height:1.6;">Replies from your campaigns will appear here automatically via IMAP sync.</div>
+    </div>
+    {% endif %}
+  </div>
+
+</div><!-- thread-panel -->
+
+<!-- ── CENTER: CONVERSATION ── -->
+<div class="convo-panel" id="convoPanel">
+
+  <!-- EMPTY STATE (shown when no thread selected) -->
+  <div class="inbox-empty" id="emptyState">
+    <div class="ie-icon"><i class="fas fa-robot"></i></div>
+    <div style="font-size:15px;font-weight:700;color:#374151;margin-bottom:8px;">AI Sales Command Center</div>
+    <div style="font-size:13px;color:#9CA3AF;max-width:280px;line-height:1.6;">Select a conversation to view messages, AI insights, and generate smart replies.</div>
+    <div style="margin-top:20px;display:flex;flex-direction:column;gap:8px;width:100%;max-width:260px;">
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+        <span class="sync-dot"></span>
+        <span style="font-size:12px;color:#15803d;font-weight:500;">IMAP connected · Monitoring inbox</span>
+      </div>
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+        <i class="fas fa-robot" style="color:#2563eb;font-size:11px;"></i>
+        <span style="font-size:12px;color:#1d4ed8;font-weight:500;">AI categorization active</span>
+      </div>
+      <div style="background:#f5f3ff;border:1px solid #e9d5ff;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+        <i class="fas fa-chart-line" style="color:#7c3aed;font-size:11px;"></i>
+        <span style="font-size:12px;color:#7c3aed;font-weight:500;">Lead scoring enabled</span>
+      </div>
+    </div>
+    <button class="btn btn-sm btn-outline-secondary mt-4" onclick="checkReplies(this)"><i class="fas fa-sync-alt me-1"></i>Check for New Replies</button>
+  </div>
+
+  <!-- THREAD VIEW (hidden until thread selected) -->
+  <div id="threadView" style="display:none;flex:1;display:none;flex-direction:column;height:100%;">
+
+    <!-- THREAD HEADER -->
+    <div class="convo-header" id="threadHeader">
+      <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-user" style="color:#fff;font-size:13px;"></i>
+      </div>
+      <div style="flex:1;">
+        <div class="ch-name" id="th-name">—</div>
+        <div class="ch-sub" id="th-sub">—</div>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <select class="status-select" id="statusSelect" onchange="updateStatus(this.value)">
+          <option value="active">Active</option>
+          <option value="interested">🔥 Interested</option>
+          <option value="meeting">📅 Meeting</option>
+          <option value="booked">✅ Booked</option>
+          <option value="closed">Closed</option>
+          <option value="ignored">Ignored</option>
+        </select>
+        <a id="th-contact-link" href="/contacts" class="qa-btn" style="text-decoration:none;font-size:11px;"><i class="fas fa-user me-1"></i>Contact</a>
+      </div>
+    </div>
+
+    <!-- QUICK ACTIONS -->
+    <div class="quick-actions">
+      <button class="qa-btn" onclick="generateReply('professional')"><i class="fas fa-magic"></i> AI Reply</button>
+      <button class="qa-btn" onclick="generateReply('short')"><i class="fas fa-bolt"></i> Quick Reply</button>
+      <button class="qa-btn" onclick="setStatus('meeting')"><i class="fas fa-calendar-check"></i> Book Meeting</button>
+      <button class="qa-btn" onclick="setStatus('interested')"><i class="fas fa-fire"></i> Mark Interested</button>
+      <button class="qa-btn" onclick="setStatus('ignored')"><i class="fas fa-ban"></i> Ignore</button>
+      <button class="qa-btn danger" onclick="setStatus('closed')"><i class="fas fa-times-circle"></i> Close</button>
+    </div>
+
+    <!-- MESSAGES -->
+    <div class="convo-messages" id="convoMessages">
+      <div class="text-center text-muted py-4" id="msgLoading">
+        <div class="spin mx-auto mb-2"></div>
+        <div style="font-size:12px;">Loading conversation...</div>
+      </div>
+    </div>
+
+    <!-- REPLY COMPOSER -->
+    <div class="reply-composer">
+      <div class="reply-styles">
+        <span style="font-size:10.5px;font-weight:600;color:#9CA3AF;align-self:center;margin-right:4px;">Style:</span>
+        <button class="rs-btn active" onclick="setReplyStyle('professional',this)">Professional</button>
+        <button class="rs-btn" onclick="setReplyStyle('persuasive',this)">Persuasive</button>
+        <button class="rs-btn" onclick="setReplyStyle('short',this)">Short</button>
+        <button class="rs-btn" onclick="setReplyStyle('casual',this)">Casual</button>
+        <button class="rs-btn" onclick="setReplyStyle('founder',this)">Founder</button>
+      </div>
+      <textarea class="reply-textarea" id="replyDraft" rows="3" placeholder="Write a reply or click 'AI Reply' to generate one..."></textarea>
+      <div class="reply-actions">
+        <button class="btn btn-sm" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;font-weight:600;" onclick="generateReply(currentReplyStyle)" id="aiReplyBtn">
+          <i class="fas fa-magic me-1"></i>Generate AI Reply
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="copyReply()"><i class="fas fa-copy me-1"></i>Copy</button>
+        <small class="text-muted ms-auto" style="font-size:11px;">Copy and send from your email client</small>
+      </div>
+    </div>
+
+  </div><!-- threadView -->
+</div><!-- convo-panel -->
+
+<!-- ── RIGHT: AI INSIGHTS ── -->
+<div class="insights-panel" id="insightsPanel">
+
+  <!-- LEAD INTELLIGENCE -->
+  <div class="ip-section">
+    <div class="ip-section-title"><i class="fas fa-brain"></i> Lead Intelligence</div>
+    <div id="leadIntelContent">
+      <div style="text-align:center;color:#9CA3AF;font-size:12px;padding:10px 0;">Select a thread to view insights</div>
+    </div>
+  </div>
+
+  <!-- AI ANALYSIS -->
+  <div class="ip-section">
+    <div class="ip-section-title"><i class="fas fa-chart-bar"></i> AI Reply Analysis</div>
+    <div id="aiAnalysisContent">
+      <div class="insight-row">
+        <span class="ir-label">Interested Probability</span>
+        <span class="ir-val" id="ai-interested">—</span>
+      </div>
+      <div class="prob-bar mb-2"><div class="prob-fill" id="ai-interested-bar" style="width:0%;background:#10b981;"></div></div>
+      <div class="insight-row">
+        <span class="ir-label">Meeting Intent</span>
+        <span class="ir-val" id="ai-meeting">—</span>
+      </div>
+      <div class="insight-row">
+        <span class="ir-label">Sentiment</span>
+        <span class="ir-val" id="ai-sentiment">—</span>
+      </div>
+      <div class="insight-row">
+        <span class="ir-label">Urgency</span>
+        <span class="ir-val" id="ai-urgency">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUGGESTED NEXT ACTIONS -->
+  <div class="ip-section">
+    <div class="ip-section-title"><i class="fas fa-lightbulb"></i> Suggested Actions</div>
+    <div id="suggestedActions">
+      <div style="color:#9CA3AF;font-size:12px;">Select a thread</div>
+    </div>
+  </div>
+
+  <!-- ACTIVITY TIMELINE -->
+  <div class="ip-section">
+    <div class="ip-section-title"><i class="fas fa-history"></i> Activity Timeline</div>
+    <div id="activityTimeline">
+      <div style="color:#9CA3AF;font-size:12px;">No activity yet</div>
+    </div>
+  </div>
+
+</div><!-- insights-panel -->
+
+</div><!-- inbox-workspace -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let activeThreadId = null;
+let currentReplyStyle = 'professional';
+
+// ── OPEN THREAD ──
+function openThread(id, cardEl) {
+  activeThreadId = id;
+  document.querySelectorAll('.thread-card').forEach(c => c.classList.remove('active'));
+  if(cardEl) cardEl.classList.add('active');
+  document.getElementById('emptyState').style.display = 'none';
+  const tv = document.getElementById('threadView');
+  tv.style.display = 'flex';
+  tv.style.flexDirection = 'column';
+  tv.style.height = '100%';
+  document.getElementById('msgLoading').style.display = 'block';
+  document.getElementById('convoMessages').innerHTML = '<div class="text-center text-muted py-4" id="msgLoading"><div class="spin mx-auto mb-2"></div><div style="font-size:12px;">Loading conversation...</div></div>';
+  loadThreadMessages(id);
+  loadInsights(id);
+}
+
+function loadThreadMessages(id) {
+  fetch(`/api/inbox/thread_data/${id}`).then(r=>r.json()).then(d=>{
+    if(d.error) {
+      document.getElementById('convoMessages').innerHTML = `<div class="text-center text-muted py-4"><i class="fas fa-exclamation-circle fa-2x mb-2" style="opacity:0.3;display:block;"></i><div style="font-size:12px;">Could not load thread</div></div>`;
+      return;
+    }
+    renderThread(d);
+  }).catch(()=>{
+    document.getElementById('convoMessages').innerHTML = `<div class="text-center text-muted py-4"><div style="font-size:12px;">Network error loading thread</div></div>`;
+  });
+}
+
+// ── RENDER THREAD ──
+function renderThread(d) {
+  if(!d || !d.thread) return;
+  const t = d.thread;
+  document.getElementById('th-name').textContent = t.contact_name || t.contact_email || 'Unknown';
+  document.getElementById('th-sub').textContent = (t.contact_company || '') + (t.subject ? ' · ' + t.subject : '');
+  document.getElementById('statusSelect').value = t.status || 'active';
+
+  const msgs = document.getElementById('convoMessages');
+  msgs.innerHTML = '';
+  (d.messages || []).forEach(m => {
+    const div = document.createElement('div');
+    div.className = 'msg-bubble ' + (m.direction === 'outgoing' ? 'outgoing' : 'incoming');
+    const catBadge = m.ai_category ? `<span class="ai-cat-badge" style="background:${catColor(m.ai_category)};color:#fff;">${m.ai_category}</span>` : '';
+    div.innerHTML = `
+      <div class="bubble-body">${m.body || '(empty)'}</div>
+      <div class="bubble-meta">
+        <span>${m.created_at ? m.created_at.slice(0,16) : ''}</span>
+        ${catBadge}
+      </div>`;
+    msgs.appendChild(div);
+  });
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // Mark read
+  fetch(`/api/inbox/thread/${activeThreadId}/mark_read`, {method:'POST'}).catch(()=>{});
+
+  // Remove unread dot from thread card
+  const card = document.getElementById('tc-' + activeThreadId);
+  if(card) {
+    card.classList.remove('unread');
+    const dot = card.querySelector('.unread-dot');
+    if(dot) dot.remove();
+  }
+}
+
+function catColor(cat) {
+  const map = {interested:'#10b981',meeting:'#2563eb',ooo:'#ca8a04',bounce:'#dc2626',not_interested:'#6B7280'};
+  return map[cat] || '#6366f1';
+}
+
+// ── LOAD INSIGHTS ──
+function loadInsights(id) {
+  fetch(`/api/contact_by_thread/${id}`).then(r=>r.json()).then(d=>{
+    if(!d.contact) return;
+    const c = d.contact;
+    const score = c.lead_score || 0;
+    const scoreColor = score>=50?'#dc2626':score>=20?'#c2410c':'#64748b';
+
+    document.getElementById('leadIntelContent').innerHTML = `
+      <div class="insight-row"><span class="ir-label">Contact</span><span class="ir-val">${c.name||'—'}</span></div>
+      <div class="insight-row"><span class="ir-label">Company</span><span class="ir-val">${c.company||'—'}</span></div>
+      <div class="insight-row"><span class="ir-label">Lead Score</span><span class="ir-val" style="color:${scoreColor};">${score}</span></div>
+      <div class="insight-row"><span class="ir-label">Status</span><span class="ir-val">${c.status||'new'}</span></div>
+      ${c.context ? `<div style="margin-top:8px;background:#f8fafc;border-radius:6px;padding:8px;font-size:11.5px;color:#374151;line-height:1.5;">${c.context.slice(0,150)}${c.context.length>150?'…':''}</div>` : ''}`;
+
+    // AI analysis based on thread status
+    const status = d.thread_status || 'active';
+    const intProb = status==='interested'?84:status==='meeting'?95:status==='active'?35:10;
+    document.getElementById('ai-interested').textContent = intProb + '%';
+    document.getElementById('ai-interested').style.color = intProb>60?'#10b981':intProb>30?'#f59e0b':'#6B7280';
+    document.getElementById('ai-interested-bar').style.width = intProb+'%';
+    document.getElementById('ai-interested-bar').style.background = intProb>60?'#10b981':intProb>30?'#f59e0b':'#ef4444';
+    document.getElementById('ai-meeting').textContent = status==='meeting'?'High':status==='interested'?'Medium':'Low';
+    document.getElementById('ai-sentiment').textContent = status==='interested'||status==='meeting'?'Positive':'Neutral';
+    document.getElementById('ai-urgency').textContent = status==='meeting'?'High':status==='interested'?'Medium':'Low';
+
+    // Suggested actions
+    const actions = getSuggestedActions(status, score);
+    document.getElementById('suggestedActions').innerHTML = actions.map(a =>
+      `<div class="next-action-card" onclick="${a.action}">
+        <div class="na-title">${a.icon} ${a.title}</div>
+        <div class="na-sub">${a.sub}</div>
+      </div>`
+    ).join('');
+
+    // Activity timeline
+    document.getElementById('activityTimeline').innerHTML = (d.timeline||[]).map(e =>
+      `<div class="timeline-item">
+        <div class="ti-dot" style="background:${e.color||'#6366f1'};"></div>
+        <div><div class="ti-text">${e.text}</div><div class="ti-time">${e.time||''}</div></div>
+      </div>`
+    ).join('') || '<div style="color:#9CA3AF;font-size:12px;">No activity recorded</div>';
+
+  }).catch(()=>{});
+}
+
+function getSuggestedActions(status, score) {
+  if(status==='meeting') return [
+    {icon:'✅',title:'Confirm Meeting',sub:'Send calendar confirmation',action:"generateReply('professional')"},
+    {icon:'📋',title:'Prepare Brief',sub:'Research company before call',action:''},
+  ];
+  if(status==='interested') return [
+    {icon:'📅',title:'Book a Call',sub:'Strike while interest is high',action:"setStatus('meeting')"},
+    {icon:'💬',title:'Send Pricing',sub:'Share rates and availability',action:"generateReply('persuasive')"},
+  ];
+  if(score>=30) return [
+    {icon:'🔥',title:'Follow Up Now',sub:'High engagement detected',action:"generateReply('short')"},
+    {icon:'📊',title:'Share Case Study',sub:'Relevant social proof',action:"generateReply('professional')"},
+  ];
+  return [
+    {icon:'💬',title:'Send Follow-up',sub:'Re-engage this lead',action:"generateReply('casual')"},
+    {icon:'⏸',title:'Pause Sequence',sub:'Avoid over-contacting',action:"setStatus('ignored')"},
+  ];
+}
+
+// ── AI REPLY GENERATION ──
+function setReplyStyle(style, btn) {
+  currentReplyStyle = style;
+  document.querySelectorAll('.rs-btn').forEach(b => b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+}
+
+function generateReply(style) {
+  if(!activeThreadId) return;
+  const btn = document.getElementById('aiReplyBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin" style="border-top-color:#fff;"></span> Generating...';
+  fetch(`/api/inbox/thread/${activeThreadId}/ai_reply`, {method:'POST'})
+    .then(r=>r.json()).then(d=>{
+      btn.disabled=false;
+      btn.innerHTML='<i class="fas fa-magic me-1"></i>Generate AI Reply';
+      if(d.success) document.getElementById('replyDraft').value = d.draft;
+      else alert('AI generation failed: '+(d.error||'Unknown'));
+    }).catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="fas fa-magic me-1"></i>Generate AI Reply'; });
+}
+
+function copyReply() {
+  const text = document.getElementById('replyDraft').value;
+  if(!text) return;
+  navigator.clipboard.writeText(text).then(()=>{
+    const btn = event.target.closest('button');
+    btn.innerHTML='<i class="fas fa-check me-1"></i>Copied!';
+    setTimeout(()=>{ btn.innerHTML='<i class="fas fa-copy me-1"></i>Copy'; },2000);
+  });
+}
+
+// ── STATUS UPDATE ──
+function updateStatus(val) {
+  if(!activeThreadId) return;
+  setStatus(val);
+}
+
+function setStatus(val) {
+  if(!activeThreadId) return;
+  fetch(`/api/inbox/thread/${activeThreadId}/status`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({status:val})
+  }).then(r=>r.json()).then(d=>{
+    if(d.success) {
+      document.getElementById('statusSelect').value = val;
+      // Update thread card badge
+      const card = document.getElementById('tc-'+activeThreadId);
+      if(card) {
+        const badges = card.querySelector('.tc-badges');
+        if(badges) {
+          const badgeMap = {
+            interested:'<span class="badge-interested">🔥 Interested</span>',
+            meeting:'<span class="badge-meeting">📅 Meeting</span>',
+            booked:'<span class="badge-meeting">✅ Booked</span>',
+            closed:'<span class="badge-cold">Closed</span>',
+            ignored:'<span class="badge-cold">Ignored</span>',
+            active:'<span class="badge-replied">💬 Active</span>',
+          };
+          badges.innerHTML = badgeMap[val] || badgeMap.active;
+        }
+      }
+    }
+  });
+}
+
+// ── SEARCH ──
+function filterThreads(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.thread-card').forEach(c => {
+    const match = !q || c.dataset.name.includes(q) || c.dataset.company.includes(q);
+    c.style.display = match ? '' : 'none';
+  });
+}
+
+// ── CHECK REPLIES ──
+function checkReplies(btn) {
+  if(btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
+  fetch('/api/check_replies',{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(btn) { btn.disabled=false; btn.innerHTML='<i class="fas fa-sync-alt" style="font-size:10px;"></i>'; }
+    if(d.logged>0) location.reload();
+    else {
+      document.getElementById('syncTime').textContent = 'Synced just now';
+      setTimeout(()=>{ document.getElementById('syncTime').textContent='Monitoring'; },3000);
+    }
+  }).catch(()=>{ if(btn){btn.disabled=false;btn.innerHTML='<i class="fas fa-sync-alt" style="font-size:10px;"></i>';} });
+}
+
+// ── LOAD INBOX STATS ──
+fetch('/api/inbox/stats').then(r=>r.json()).then(d=>{
+  document.title = (d.unread>0?`(${d.unread}) `:'') + 'Inbox — AI Sales Command Center';
+}).catch(()=>{});
+
+// Auto-open first UNREAD thread only if there's an unread one
+// Do NOT auto-open if user just navigated to inbox
+const firstUnread = document.querySelector('.thread-card.unread');
+if(firstUnread && window.location.hash) {
+  // Only auto-open if URL has a hash anchor
+  const id = firstUnread.id.replace('tc-','');
+  openThread(parseInt(id), firstUnread);
+}
+</script>
+</body>
+</html>

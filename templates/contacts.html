@@ -1,387 +1,846 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><title>Contacts</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="/static/style.css" rel="stylesheet">
-    <style>
-        .table td, .table th { vertical-align:middle; }
-        .email-cell { max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .spin { display:inline-block; width:16px; height:16px; border:2px solid #e2e8f0; border-top:2px solid #3b82f6; border-radius:50%; animation:spin 0.6s linear infinite; }
-        @keyframes spin { to { transform:rotate(360deg); } }
-        .verify-bar { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 20px; display:none; align-items:center; gap:15px; }
-        .verify-bar .progress { flex:1; height:8px; border-radius:4px; }
-    </style>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contacts — AI Intelligence</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+/* ── CONTACTS AI INTELLIGENCE ── */
+.table td, .table th { vertical-align: middle; }
+
+/* AI Context States */
+.ai-state { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; padding:3px 9px; border-radius:99px; white-space:nowrap; cursor:pointer; border:none; transition:all 0.15s; }
+.ai-none   { background:#fef9c3; color:#854d0e; border:1px solid #fde68a; }
+.ai-none:hover { background:#fef08a; }
+.ai-ready  { background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }
+.ai-ready:hover { background:#dcfce7; }
+.ai-loading{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; cursor:default; }
+.ai-error  { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
+
+/* Lead Score */
+.score-badge { display:inline-flex; align-items:center; gap:3px; font-size:12px; font-weight:800; padding:2px 8px; border-radius:99px; }
+.score-cold    { background:#f1f5f9; color:#64748b; }
+.score-engaged { background:#eff6ff; color:#2563eb; }
+.score-warm    { background:#fff7ed; color:#c2410c; }
+.score-hot     { background:#fef2f2; color:#dc2626; }
+.score-meeting { background:#f5f3ff; color:#7c3aed; }
+
+/* Status badges */
+.status-new        { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+.status-researched { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+.status-contacted  { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+.status-engaged    { background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; }
+.status-replied    { background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }
+.status-sent       { background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; }
+.status-interested { background:#fdf4ff; color:#7e22ce; border:1px solid #e9d5ff; }
+.status-meeting    { background:#f0fdf4; color:#166534; border:1px solid #86efac; }
+.status-badge { font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:99px; }
+
+/* Website cell */
+.website-link { display:inline-flex; align-items:center; gap:4px; font-size:12px; color:#3b82f6; text-decoration:none; font-weight:500; }
+.website-link:hover { color:#1d4ed8; text-decoration:underline; }
+
+/* Valid badge */
+.valid-yes { background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:99px; }
+.valid-no  { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:99px; }
+.valid-btn { background:#f8fafc; color:#64748b; border:1px solid #e2e8f0; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:99px; cursor:pointer; }
+.valid-btn:hover { background:#e2e8f0; }
+
+/* Verify bar */
+.verify-bar { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 20px; display:none; align-items:center; gap:15px; margin-bottom:12px; }
+.verify-bar .progress { flex:1; height:6px; border-radius:4px; }
+
+/* Spin */
+.spin { display:inline-block; width:13px; height:13px; border:2px solid #e2e8f0; border-top:2px solid #3b82f6; border-radius:50%; animation:spin 0.6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Filter tabs */
+.filter-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+.ftab { padding:5px 14px; border-radius:8px; font-size:12.5px; font-weight:500; border:1px solid #e2e8f0; background:#fff; color:#6B7280; text-decoration:none; transition:all 0.15s; }
+.ftab:hover, .ftab.active { background:#1DBF73; color:#fff; border-color:#1DBF73; }
+
+/* Enrich progress banner */
+.enrich-banner { background:linear-gradient(135deg,#eff6ff,#f0fdf4); border:1px solid #bfdbfe; border-radius:10px; padding:12px 18px; display:none; align-items:center; gap:12px; margin-bottom:12px; }
+.enrich-banner .progress { flex:1; height:6px; border-radius:4px; }
+
+/* ── INDUSTRY BADGES ── */
+.ind-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: 99px;
+  white-space: nowrap; border: 1px solid;
+}
+
+/* ── ADVANCED FILTER BAR ── */
+.filter-bar {
+  background: #fff; border: 1px solid #e5e7eb;
+  border-radius: 12px; padding: 12px 16px;
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+  box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+}
+.filter-select {
+  padding: 5px 10px; border: 1px solid #e5e7eb;
+  border-radius: 8px; font-size: 12px; font-weight: 500;
+  color: #374151; background: #f9fafb; outline: none;
+  cursor: pointer; transition: all 0.15s;
+  font-family: 'Inter', sans-serif;
+}
+.filter-select:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.1); }
+.filter-active { border-color: #6366f1 !important; background: #eef2ff !important; color: #4338ca !important; }
+.filter-clear-btn {
+  padding: 5px 10px; border: 1px solid #fecaca;
+  border-radius: 8px; font-size: 11.5px; font-weight: 600;
+  color: #dc2626; background: #fef2f2; cursor: pointer;
+  transition: all 0.15s; display: none;
+}
+.filter-clear-btn:hover { background: #fee2e2; }
+.filter-count {
+  margin-left: auto; font-size: 12px; font-weight: 600;
+  color: #6b7280; white-space: nowrap;
+}
+.drawer-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:1040; opacity:0; pointer-events:none; transition:opacity 0.25s; }
+.drawer-overlay.open { opacity:1; pointer-events:all; }
+.ai-drawer { position:fixed; top:0; right:-520px; width:480px; max-width:95vw; height:100vh; background:#fff; z-index:1050; box-shadow:-8px 0 40px rgba(0,0,0,0.12); transition:right 0.3s cubic-bezier(0.4,0,0.2,1); overflow-y:auto; display:flex; flex-direction:column; }
+.ai-drawer.open { right:0; }
+.drawer-header { padding:20px 24px 16px; border-bottom:1px solid #f1f5f9; display:flex; align-items:flex-start; justify-content:space-between; background:linear-gradient(135deg,#0f172a,#1e3a5f); color:#fff; flex-shrink:0; }
+.drawer-header h5 { font-size:0.95rem; font-weight:700; margin:0 0 3px; }
+.drawer-header small { color:rgba(255,255,255,0.6); font-size:11px; }
+.drawer-close { background:rgba(255,255,255,0.15); border:none; color:#fff; width:30px; height:30px; border-radius:8px; cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.drawer-close:hover { background:rgba(255,255,255,0.25); }
+.drawer-body { padding:20px 24px; flex:1; }
+.drawer-section { margin-bottom:20px; }
+.drawer-section-title { font-size:10px; font-weight:700; color:#9CA3AF; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+.drawer-section-title i { font-size:10px; }
+.drawer-section-content { font-size:13px; color:#374151; line-height:1.6; }
+.insight-chip { display:inline-block; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; padding:3px 10px; border-radius:99px; font-size:11.5px; font-weight:500; margin:2px 3px 2px 0; }
+.opener-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; font-size:12.5px; color:#374151; margin-bottom:6px; font-style:italic; }
+.drawer-meta { background:#f8fafc; border-radius:8px; padding:10px 12px; font-size:11.5px; color:#6B7280; }
+.drawer-meta span { display:block; margin-bottom:3px; }
+.drawer-footer { padding:14px 24px; border-top:1px solid #f1f5f9; display:flex; gap:8px; flex-shrink:0; }
+
+/* Raw context textarea in drawer */
+.ctx-raw { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; font-size:12px; color:#374151; line-height:1.6; white-space:pre-wrap; max-height:200px; overflow-y:auto; }
+
+/* Table name cell */
+.contact-name { font-weight:600; font-size:13px; color:#111827; }
+.contact-email { font-size:11px; color:#9CA3AF; }
+.contact-desig { font-size:10.5px; color:#9CA3AF; }
+
+/* Action buttons */
+.act-btn { background:#f8fafc; border:1px solid #e2e8f0; color:#64748b; padding:3px 7px; border-radius:6px; font-size:11px; cursor:pointer; transition:all 0.15s; }
+.act-btn:hover { background:#e2e8f0; color:#111827; }
+.act-btn.danger:hover { background:#fef2f2; color:#dc2626; border-color:#fecaca; }
+
+/* Toolbar */
+.contacts-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+.toolbar-search { flex:1; min-width:180px; max-width:260px; }
+
+/* Bulk enrich button */
+.btn-ai { background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border:none; font-weight:600; font-size:12.5px; border-radius:8px; padding:6px 14px; cursor:pointer; transition:opacity 0.15s; }
+.btn-ai:hover { opacity:0.88; color:#fff; }
+.btn-ai:disabled { opacity:0.5; cursor:not-allowed; }
+
+@media(max-width:768px){
+  .ai-drawer { width:100vw; }
+  .hide-sm { display:none !important; }
+}
+</style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
-        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
-        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
-        <a href="/contacts" class="active"><i class="fas fa-users"></i> Contacts</a>
-        <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
-        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
-        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
-        <a href="/logs"><i class="fas fa-list-alt"></i> Logs</a>
-        <hr style="border-color:#e2e8f0">
-        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
-        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts" class="active"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<div class="main">
+{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}
+<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show py-2">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+{% endfor %}{% endif %}{% endwith %}
+
+<!-- PAGE HEADER -->
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h3 style="margin:0;">Lead Intelligence <span style="font-size:0.85rem;font-weight:500;color:#9CA3AF;margin-left:6px;">{{ contacts|length }} contacts</span></h3>
+    <small class="text-muted">AI-powered enrichment workspace</small>
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    <button class="btn-ai" onclick="enrichAll(false)" id="researchBtn"><i class="fas fa-sparkles me-1"></i>Enrich New</button>
+    <button class="btn-ai" onclick="enrichAll(true)" id="enrichBtn" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);"><i class="fas fa-sync-alt me-1"></i>Re-enrich All</button>
+    <button class="btn-ai" onclick="enrichIntelligence()" id="intelligenceBtn" style="background:linear-gradient(135deg,#7c3aed,#6366f1);"><i class="fas fa-brain me-1"></i>Detect Industries</button>
+    <a href="/upload" class="btn btn-primary btn-sm"><i class="fas fa-plus me-1"></i>Add Contacts</a>
+  </div>
+</div>
+
+<!-- TOOLBAR -->
+<div class="contacts-toolbar">
+  <input type="text" id="contactSearch" class="form-control form-control-sm toolbar-search" placeholder="&#128269; Search name, company, email...">
+  <form method="POST" action="/verify_emails" style="display:inline" id="verifyNewForm">
+    <input type="hidden" name="reverify" value="0">
+    <button class="btn btn-warning btn-sm"><i class="fas fa-check-double me-1"></i>Verify New</button>
+  </form>
+  <form method="POST" action="/verify_emails" style="display:inline" id="reverifyForm">
+    <input type="hidden" name="reverify" value="1">
+    <button class="btn btn-outline-warning btn-sm"><i class="fas fa-sync me-1"></i>Re-verify All</button>
+  </form>
+  <div class="ms-auto d-flex align-items-center gap-2">
+    <small class="text-muted">Show</small>
+    <select class="form-select form-select-sm" style="width:72px" onchange="changePerPage(this.value)" id="perPageSelect">
+      <option value="20">20</option>
+      <option value="50" selected>50</option>
+      <option value="100">100</option>
+    </select>
+    <small class="text-muted" id="pageInfo"></small>
+  </div>
+</div>
+
+<!-- FILTER TABS -->
+<div class="filter-tabs">
+  <a href="/contacts?filter=all"  class="ftab {{ 'active' if filter_type=='all' }}">All ({{ contacts|length }})</a>
+  <a href="/contacts?filter=new"  class="ftab {{ 'active' if filter_type=='new' }}">New</a>
+  <a href="/contacts?filter=valid" class="ftab {{ 'active' if filter_type=='valid' }}">✅ Valid</a>
+  <a href="/contacts?filter=invalid" class="ftab {{ 'active' if filter_type=='invalid' }}">❌ Invalid</a>
+  <a href="/contacts?filter=sent" class="ftab {{ 'active' if filter_type=='sent' }}">📨 Sent</a>
+</div>
+
+<!-- ADVANCED FILTER BAR -->
+<div class="filter-bar" id="filterBar">
+  <i class="fas fa-filter" style="font-size:11px;color:#9ca3af;"></i>
+  <select class="filter-select" id="fIndustry" onchange="applyFilters()">
+    <option value="">All Industries</option>
+    <option>AI / Machine Learning</option>
+    <option>SaaS</option>
+    <option>E-commerce</option>
+    <option>Healthcare</option>
+    <option>Finance / Fintech</option>
+    <option>Education / EdTech</option>
+    <option>Marketing / Agency</option>
+    <option>Real Estate</option>
+    <option>Manufacturing</option>
+    <option>Recruiting / HR</option>
+    <option>Legal</option>
+    <option>Consulting</option>
+    <option>Cybersecurity</option>
+    <option>DevTools</option>
+    <option>Media / Entertainment</option>
+    <option>Other</option>
+  </select>
+  <select class="filter-select" id="fScore" onchange="applyFilters()">
+    <option value="">Any Score</option>
+    <option value="10">Score ≥ 10</option>
+    <option value="30">Score ≥ 30 (Warm)</option>
+    <option value="60">Score ≥ 60 (Hot)</option>
+    <option value="100">Score ≥ 100 (Meeting)</option>
+  </select>
+  <select class="filter-select" id="fEnriched" onchange="applyFilters()">
+    <option value="">All Enrichment</option>
+    <option value="enriched">✅ Enriched</option>
+    <option value="pending">⏳ Not Enriched</option>
+  </select>
+  <select class="filter-select" id="fValid" onchange="applyFilters()">
+    <option value="">All Emails</option>
+    <option value="1">✅ Valid Only</option>
+    <option value="0">❌ Invalid Only</option>
+  </select>
+  <button class="filter-clear-btn" id="filterClearBtn" onclick="clearFilters()">✕ Clear Filters</button>
+  <span class="filter-count" id="filterCount"></span>
+</div>
+
+<!-- VERIFY PROGRESS BAR -->
+<div class="verify-bar" id="verifyBar">
+  <div class="spin"></div>
+  <span id="verifyText" style="font-size:13px;font-weight:500;">Verifying emails...</span>
+  <div class="progress"><div class="progress-bar bg-warning" id="verifyProgress" style="width:0%"></div></div>
+  <small id="verifyCount" class="text-muted">0/0</small>
+</div>
+
+<!-- ENRICH PROGRESS BANNER -->
+<div class="enrich-banner" id="enrichBanner">
+  <i class="fas fa-robot" style="color:#6366f1;font-size:1.1rem;"></i>
+  <div style="flex:1;">
+    <div style="font-size:12.5px;font-weight:600;color:#1e3a5f;" id="enrichBannerText">AI enriching contacts...</div>
+    <div class="progress mt-1"><div class="progress-bar" id="enrichProgress" style="width:0%;background:linear-gradient(90deg,#6366f1,#8b5cf6);"></div></div>
+  </div>
+  <small id="enrichCount" class="text-muted" style="white-space:nowrap;">0/0</small>
+</div>
+
+<!-- CONTACTS TABLE -->
+<div class="card-box" style="overflow-x:auto;padding:0;">
+  <div class="d-flex justify-content-between align-items-center px-3 py-2" style="border-bottom:1px solid #f1f5f9;">
+    <nav><ul class="pagination pagination-sm mb-0" id="paginationTop"></ul></nav>
+    <small class="text-muted" id="pageInfoTop"></small>
+  </div>
+  <table class="table table-hover mb-0" id="contactsTable" style="font-size:12.5px;">
+    <thead>
+      <tr style="background:#f8fafc;">
+        <th style="width:36px;padding:10px 12px;"></th>
+        <th style="padding:10px 12px;">Contact</th>
+        <th style="padding:10px 12px;" class="hide-sm">Company</th>
+        <th style="padding:10px 12px;" class="hide-sm">Industry</th>
+        <th style="padding:10px 12px;" class="hide-sm">Website</th>
+        <th style="padding:10px 12px;min-width:140px;">AI Intelligence</th>
+        <th style="padding:10px 12px;text-align:center;">Score</th>
+        <th style="padding:10px 12px;text-align:center;">Valid</th>
+        <th style="padding:10px 12px;text-align:center;">Status</th>
+        <th style="padding:10px 12px;width:70px;"></th>
+      </tr>
+    </thead>
+    <tbody id="contactsBody">
+    {% for c in contacts %}
+    {% set score = c.lead_score if c.lead_score is not none else 0 %}
+    {% if score >= 100 %}{% set score_cls = 'score-meeting' %}{% set score_icon = '🚀' %}
+    {% elif score >= 60 %}{% set score_cls = 'score-hot' %}{% set score_icon = '🔥' %}
+    {% elif score >= 30 %}{% set score_cls = 'score-warm' %}{% set score_icon = '🟠' %}
+    {% elif score >= 10 %}{% set score_cls = 'score-engaged' %}{% set score_icon = '💙' %}
+    {% else %}{% set score_cls = 'score-cold' %}{% set score_icon = '❄️' %}{% endif %}
+
+    {% if c.status == 'sent' %}{% set st_cls = 'status-sent' %}{% set st_label = 'Contacted' %}
+    {% elif c.status == 'replied' %}{% set st_cls = 'status-replied' %}{% set st_label = 'Replied' %}
+    {% elif c.status == 'interested' %}{% set st_cls = 'status-interested' %}{% set st_label = 'Interested' %}
+    {% elif c.status == 'meeting' %}{% set st_cls = 'status-meeting' %}{% set st_label = 'Meeting' %}
+    {% elif c.context %}{% set st_cls = 'status-researched' %}{% set st_label = 'Researched' %}
+    {% else %}{% set st_cls = 'status-new' %}{% set st_label = 'New' %}{% endif %}
+
+    <tr id="row-{{ c.id }}" data-search="{{ (c.name or '')|lower }} {{ (c.email or '')|lower }} {{ (c.company or '')|lower }}" data-industry="{{ (c.industry or '')|lower }}" data-score="{{ c.lead_score or 0 }}" data-enriched="{{ c.enrichment_status or 'pending' }}" data-valid="{{ c.email_valid }}">
+      <td style="padding:10px 12px;color:#9CA3AF;font-size:11px;">{{ loop.index }}</td>
+
+      <!-- Contact -->
+      <td style="padding:10px 12px;">
+        <div class="contact-name">{{ c.name or '—' }}</div>
+        <div class="contact-email">{{ c.email }}</div>
+        {% if c.designation %}<div class="contact-desig">{{ c.designation }}</div>{% endif %}
+      </td>
+
+      <!-- Company -->
+      <td style="padding:10px 12px;" class="hide-sm">
+        <span style="font-weight:500;color:#374151;">{{ c.company or '—' }}</span>
+      </td>
+
+      <!-- Industry -->
+      <td style="padding:10px 12px;" class="hide-sm">
+        {% if c.industry %}
+        <span class="ind-badge" style="background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe;">{{ c.industry }}</span>
+        {% else %}
+        <span style="color:#d1d5db;font-size:11px;">—</span>
+        {% endif %}
+      </td>
+
+      <!-- Website -->
+      <td style="padding:10px 12px;" class="hide-sm">
+        {% if c.website %}
+        {% set domain = c.website|replace('https://','') |replace('http://','') |replace('www.','') %}
+        {% set domain = domain.split('/')[0] %}
+        <a href="{{ c.website }}" target="_blank" class="website-link" title="{{ c.website }}">
+          <i class="fas fa-globe" style="font-size:10px;color:#9CA3AF;"></i>
+          {{ domain[:22] }}{% if domain|length > 22 %}…{% endif %}
+        </a>
+        {% else %}
+        <span style="color:#d1d5db;font-size:11px;">—</span>
+        {% endif %}
+      </td>
+
+      <!-- AI Intelligence -->
+      <td style="padding:10px 12px;" id="ctx-{{ c.id }}">
+        {% if c.context %}
+        <button class="ai-state ai-ready" onclick="openDrawer({{ c.id }}, '{{ c.name|replace("'","") }}', '{{ c.company|replace("'","") }}')">
+          <i class="fas fa-check-circle" style="font-size:10px;"></i> AI Enriched &nbsp;<i class="fas fa-eye" style="font-size:9px;opacity:0.7;"></i>
+        </button>
+        {% else %}
+        <button class="ai-state ai-none" onclick="fetchContext({{ c.id }}, this, '{{ c.name|replace("'","") }}', '{{ c.company|replace("'","") }}')">
+          <i class="fas fa-exclamation-triangle" style="font-size:9px;"></i> No Context &nbsp;<i class="fas fa-bolt" style="font-size:9px;"></i>
+        </button>
+        {% endif %}
+      </td>
+
+      <!-- Lead Score -->
+      <td style="padding:10px 12px;text-align:center;">
+        <span class="score-badge {{ score_cls }}">{{ score_icon }} {{ score }}</span>
+      </td>
+
+      <!-- Valid -->
+      <td style="padding:10px 12px;text-align:center;" id="valid-{{ c.id }}">
+        {% if c.email_valid == 1 %}
+        <span class="valid-yes">✓ Valid</span>
+        {% elif c.email_valid == 0 %}
+        <span class="valid-no">✗ Invalid</span>
+        {% else %}
+        <button class="valid-btn" onclick="verifySingle({{ c.id }}, this)">Verify</button>
+        {% endif %}
+      </td>
+
+      <!-- Status -->
+      <td style="padding:10px 12px;text-align:center;">
+        <span class="status-badge {{ st_cls }}">{{ st_label }}</span>
+      </td>
+
+      <!-- Actions -->
+      <td style="padding:10px 12px;white-space:nowrap;">
+        <button class="act-btn" onclick="openEdit({{ c.id }},'{{ c.name|replace("'","") }}','{{ c.company|replace("'","") }}','{{ c.email }}','{{ c.designation|default("",true)|replace("'","") }}')" title="Edit"><i class="fas fa-edit"></i></button>
+        <button class="act-btn danger ms-1" data-id="{{ c.id }}" data-name="{{ c.name }}" onclick="deleteContact(this)" title="Delete"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>
+    {% endfor %}
+    {% if not contacts %}
+    <tr><td colspan="10" class="text-center text-muted py-5">
+      <i class="fas fa-users fa-2x mb-2" style="color:#e2e8f0;display:block;"></i>
+      No contacts yet. <a href="/upload">Upload contacts</a> to get started.
+    </td></tr>
+    {% endif %}
+    </tbody>
+  </table>
+  <div class="d-flex justify-content-between align-items-center px-3 py-2" style="border-top:1px solid #f1f5f9;">
+    <small class="text-muted" id="pageInfoBottom"></small>
+    <nav><ul class="pagination pagination-sm mb-0" id="pagination"></ul></nav>
+  </div>
+</div>
+</div><!-- end .main -->
+
+<!-- DRAWER OVERLAY -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+
+<!-- AI INTELLIGENCE DRAWER -->
+<div class="ai-drawer" id="aiDrawer">
+  <div class="drawer-header">
+    <div>
+      <h5 id="drawerTitle">AI Intelligence</h5>
+      <small id="drawerSubtitle">Company enrichment data</small>
     </div>
-    <div class="main">
-        {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}
-        <div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
-        {% endfor %}{% endif %}{% endwith %}
+    <button class="drawer-close" onclick="closeDrawer()"><i class="fas fa-times"></i></button>
+  </div>
 
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h3>👥 Contacts ({{ contacts|length }})</h3>
-            <div>
-                <input type="text" id="contactSearch" class="form-control form-control-sm d-inline-block" style="width:200px" placeholder="Search name, email..." oninput="searchContacts(this.value)">
-                <form method="POST" action="/verify_emails" style="display:inline" id="verifyNewForm">
-                    <input type="hidden" name="reverify" value="0">
-                    <button class="btn btn-warning btn-sm"><i class="fas fa-check-double"></i> Verify New</button>
-                </form>
-                <form method="POST" action="/verify_emails" style="display:inline" id="reverifyForm">
-                    <input type="hidden" name="reverify" value="1">
-                    <button class="btn btn-outline-warning btn-sm"><i class="fas fa-sync"></i> Re-verify All</button>
-                </form>
-                <a href="/upload" class="btn btn-primary btn-sm ms-2"><i class="fas fa-plus"></i> Add More</a>
-                <button class="btn btn-info btn-sm ms-2" onclick="enrichAll(false)" id="researchBtn"><i class="fas fa-globe"></i> Research New</button>
-                <button class="btn btn-outline-info btn-sm ms-1" onclick="enrichAll(true)" id="enrichBtn"><i class="fas fa-magic"></i> Enrich All</button>
-            </div>
-        </div>
+  <div class="drawer-body" id="drawerBody">
+    <div class="text-center py-5 text-muted">
+      <div class="spin mx-auto mb-3" style="width:24px;height:24px;border-width:3px;"></div>
+      <div style="font-size:13px;">Loading intelligence...</div>
+    </div>
+  </div>
 
-        <!-- Live verify progress bar -->
-        <div class="verify-bar mb-3" id="verifyBar">
-            <div class="spin"></div>
-            <span id="verifyText">Verifying...</span>
-            <div class="progress"><div class="progress-bar bg-primary" id="verifyProgress" style="width:0%"></div></div>
-            <small id="verifyCount">0/0</small>
-        </div>
+  <div class="drawer-footer">
+    <button class="btn btn-sm btn-outline-secondary" onclick="closeDrawer()">Close</button>
+    <button class="btn btn-sm btn-primary" id="drawerRefreshBtn" onclick="refreshContext()">
+      <i class="fas fa-sync-alt me-1"></i>Re-generate
+    </button>
+    <button class="btn btn-sm" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;" id="drawerCopyBtn" onclick="copyContext()">
+      <i class="fas fa-copy me-1"></i>Copy Context
+    </button>
+  </div>
+</div>
 
-        <div class="mb-3">
-            <a href="/contacts?filter=all" class="filter-btn {{ 'active' if filter_type=='all' }}">All</a>
-            <a href="/contacts?filter=new" class="filter-btn {{ 'active' if filter_type=='new' }}">New</a>
-            <a href="/contacts?filter=valid" class="filter-btn {{ 'active' if filter_type=='valid' }}">✅ Valid</a>
-            <a href="/contacts?filter=invalid" class="filter-btn {{ 'active' if filter_type=='invalid' }}">❌ Invalid</a>
-            <a href="/contacts?filter=sent" class="filter-btn {{ 'active' if filter_type=='sent' }}">📨 Sent</a>
+<!-- EDIT MODAL -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-edit me-2" style="color:#6366f1;"></i>Edit Contact</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="editForm" method="POST">
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Name</label><input type="text" name="name" id="edit_name" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Company</label><input type="text" name="company" id="edit_company" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Email</label><input type="text" name="email" id="edit_email" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Website</label><input type="text" name="website" id="edit_website" class="form-control" placeholder="https://..."></div>
+          <div class="col-md-6"><label class="form-label">Designation</label><input type="text" name="designation" id="edit_designation" class="form-control"></div>
+          <div class="col-12">
+            <label class="form-label">AI Context <small class="text-muted">(used for email personalization)</small></label>
+            <textarea name="context" id="edit_context" class="form-control" rows="4" placeholder="Company context for AI email generation..."></textarea>
+          </div>
         </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+      </form>
+    </div>
+  </div>
+</div>
 
-        <div class="card-box" style="overflow-x:auto;">
-            <div class="d-flex justify-content-between align-items-center mb-3 px-1">
-                <div class="d-flex align-items-center gap-2">
-                    <small class="text-muted">Show</small>
-                    <select class="form-select form-select-sm" style="width:80px" onchange="changePerPage(this.value)" id="perPageSelect">
-                        <option value="10">10</option>
-                        <option value="20">20</option>
-                        <option value="30">30</option>
-                        <option value="50" selected>50</option>
-                        <option value="100">100</option>
-                    </select>
-                    <small class="text-muted" id="pageInfo"></small>
-                </div>
-                <nav><ul class="pagination pagination-sm mb-0" id="paginationTop"></ul></nav>
-            </div>
-            <table class="table table-hover mb-0" id="contactsTable">
-                <thead><tr>
-                    <th style="width:40px">#</th>
-                    <th>Name</th>
-                    <th>Company</th>
-                    <th>Email</th>
-                    <th>Website</th>
-                    <th>Context</th>
-                    <th style="width:110px;text-align:center">Valid</th>
-                    <th style="width:80px;text-align:center">Status</th>
-                    <th style="width:80px"></th>
-                </tr></thead>
-                <tbody id="contactsBody">
-                {% for c in contacts %}
-                <tr id="row-{{ c.id }}">
-                    <td>{{ loop.index }}</td>
-                    <td><strong>{{ c.name or '-' }}</strong></td>
-                    <td>{{ c.company or '-' }}</td>
-                    <td class="email-cell" title="{{ c.email }}">{{ c.email }}</td>
-                    <td style="max-width:150px;font-size:0.8rem;">{% if c.website %}<a href="{{ c.website }}" target="_blank" title="{{ c.website }}">{{ c.website|replace('https://','')|replace('http://','')|truncate(25) }}</a>{% else %}<small class="text-muted">-</small>{% endif %}</td>
-                    <td style="max-width:250px;font-size:0.8rem;color:#64748b;" id="ctx-{{ c.id }}">
-                        {% if c.context %}{{ c.context }}{% else %}<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="fetchContext({{ c.id }},this)" title="Fetch context"><i class="fas fa-search"></i> Research</button>{% endif %}
-                    </td>
-                    <td style="text-align:center" id="valid-{{ c.id }}">
-                        {% if c.email_valid == 1 %}<span class="badge bg-success">✅ Valid</span>
-                        {% elif c.email_valid == 0 %}<span class="badge bg-danger">❌ Invalid</span>
-                        {% else %}<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="verifySingle({{ c.id }},this)" title="Verify this email"><i class="fas fa-search"></i></button>{% endif %}
-                    </td>
-                    <td style="text-align:center">
-                        {% if c.status == 'sent' %}<span class="badge bg-info">Sent</span>
-                        {% else %}<span class="badge bg-secondary">New</span>{% endif %}
-                    </td>
-                    <td style="white-space:nowrap">
-                        <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openEdit({{ c.id }},'{{ c.name|replace("'","") }}','{{ c.company|replace("'","") }}','{{ c.email }}','{{ c.designation|default("",true)|replace("'","") }}')"><i class="fas fa-edit"></i></button> <button class="btn btn-outline-danger btn-sm py-0 px-1" data-id="{{ c.id }}" data-name="{{ c.name }}" onclick="deleteContact(this)"><i class="fas fa-trash"></i></button>
-                    </td>
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-            <div class="d-flex justify-content-between align-items-center mt-3 px-1" id="paginationWrap">
-                <small class="text-muted" id="pageInfoBottom"></small>
-                <nav><ul class="pagination pagination-sm mb-0" id="pagination"></ul></nav>
-            </div>
-        </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── PAGINATION ──
+let PER_PAGE = 50, currentPage = 1;
+const allRows = Array.from(document.querySelectorAll('#contactsBody tr[id^="row-"]'));
+
+function changePerPage(v) { PER_PAGE = parseInt(v); renderPage(1); }
+
+function renderPage(page) {
+  currentPage = page;
+  const start = (page-1)*PER_PAGE, end = start+PER_PAGE;
+  allRows.forEach((r,i) => r.style.display = (i>=start && i<end) ? '' : 'none');
+  updatePaginationUI(allRows.length, page);
+}
+
+function updatePaginationUI(total, page) {
+  const pages = Math.ceil(total/PER_PAGE);
+  const info = total ? `${Math.min((page-1)*PER_PAGE+1,total)}–${Math.min(page*PER_PAGE,total)} of ${total}` : '0 results';
+  ['pageInfo','pageInfoTop','pageInfoBottom'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=info; });
+  ['paginationTop','pagination'].forEach(ulId => {
+    const ul = document.getElementById(ulId); if(!ul) return;
+    ul.innerHTML = '';
+    if(pages<=1) return;
+    const btn=(label,p,dis,act)=>{ ul.innerHTML+=`<li class="page-item ${dis?'disabled':''} ${act?'active':''}"><a class="page-link" href="#" onclick="event.preventDefault();${dis?'':('goPage('+p+')')}">` +label+ `</a></li>`; };
+    btn('‹',page-1,page===1,false);
+    for(let p=1;p<=pages;p++){
+      if(pages>7 && Math.abs(p-page)>2 && p!==1 && p!==pages){ if(p===2||p===pages-1) ul.innerHTML+='<li class="page-item disabled"><a class="page-link">…</a></li>'; continue; }
+      btn(p,p,false,p===page);
+    }
+    btn('›',page+1,page===pages,false);
+  });
+}
+function goPage(p) { currentPage=p; renderPage(p); }
+renderPage(1);
+
+// ── SEARCH ──
+function searchContacts(q) {
+  q = q.toLowerCase();
+  allRows.forEach(r => r.dataset.hidden = (!q || r.dataset.search.includes(q)) ? '0' : '1');
+  const vis = allRows.filter(r => r.dataset.hidden !== '1');
+  const start = 0, end = PER_PAGE;
+  allRows.forEach(r => r.style.display = 'none');
+  vis.slice(0, PER_PAGE).forEach(r => r.style.display = '');
+  updatePaginationUI(vis.length, 1);
+}
+document.getElementById('contactSearch').addEventListener('input', e => searchContacts(e.target.value));
+
+// ── VERIFY SINGLE ──
+function verifySingle(id, btn) {
+  btn.innerHTML = '<span class="spin"></span>';
+  fetch('/api/verify_single/'+id).then(r=>r.json()).then(d => {
+    document.getElementById('valid-'+id).innerHTML = d.valid
+      ? '<span class="valid-yes">✓ Valid</span>'
+      : '<span class="valid-no">✗ Invalid</span>';
+  }).catch(()=>{ btn.innerHTML='Verify'; });
+}
+
+// ── VERIFY POLLING ──
+let polling = false;
+function startPolling() {
+  polling = true;
+  document.getElementById('verifyBar').style.display = 'flex';
+  poll();
+}
+function poll() {
+  if(!polling) return;
+  fetch('/api/verify_status').then(r=>r.json()).then(data => {
+    const pct = data.total>0 ? Math.round(data.done/data.total*100) : 0;
+    document.getElementById('verifyProgress').style.width = pct+'%';
+    document.getElementById('verifyCount').textContent = data.done+'/'+data.total;
+    document.getElementById('verifyText').textContent = data.current_email ? '→ '+data.current_email : 'Verifying...';
+    if(data.results) data.results.forEach(r => {
+      const el = document.getElementById('valid-'+r.id);
+      if(el) el.innerHTML = r.valid===1 ? '<span class="valid-yes">✓ Valid</span>' : r.valid===0 ? '<span class="valid-no">✗ Invalid</span>' : '';
+    });
+    if(data.running) { setTimeout(poll, 800); }
+    else if(data.done>0) { document.getElementById('verifyText').textContent='✅ Done!'; polling=false; setTimeout(()=>location.reload(),1500); }
+    else { polling=false; document.getElementById('verifyBar').style.display='none'; }
+  }).catch(()=>{ if(polling) setTimeout(poll,2000); });
+}
+fetch('/api/verify_status').then(r=>r.json()).then(d=>{ if(d.running) startPolling(); });
+document.getElementById('verifyNewForm').addEventListener('submit', e=>{ e.preventDefault(); fetch('/verify_emails',{method:'POST',body:new FormData(e.target)}).then(()=>startPolling()); });
+document.getElementById('reverifyForm').addEventListener('submit', e=>{ e.preventDefault(); fetch('/verify_emails',{method:'POST',body:new FormData(e.target)}).then(()=>startPolling()); });
+
+// ── AI CONTEXT FETCH (single) ──
+function fetchContext(id, btn, name, company) {
+  btn.className = 'ai-state ai-loading';
+  btn.innerHTML = '<span class="spin" style="border-top-color:#1d4ed8;"></span> Generating...';
+  btn.disabled = true;
+  fetch('/api/fetch_context/'+id).then(r=>r.json()).then(d => {
+    if(d.success) {
+      document.getElementById('ctx-'+id).innerHTML =
+        `<button class="ai-state ai-ready" onclick="openDrawer(${id},'${name}','${company}')">
+          <i class="fas fa-check-circle" style="font-size:10px;"></i> AI Enriched &nbsp;<i class="fas fa-eye" style="font-size:9px;opacity:0.7;"></i>
+        </button>`;
+      // store context for drawer
+      contextCache[id] = d.context;
+    } else {
+      document.getElementById('ctx-'+id).innerHTML =
+        `<button class="ai-state ai-error" onclick="fetchContext(${id},this,'${name}','${company}')">
+          <i class="fas fa-redo" style="font-size:9px;"></i> Retry
+        </button>`;
+    }
+  }).catch(()=>{
+    document.getElementById('ctx-'+id).innerHTML =
+      `<button class="ai-state ai-error" onclick="fetchContext(${id},this,'${name}','${company}')">
+        <i class="fas fa-redo" style="font-size:9px;"></i> Retry
+      </button>`;
+  });
+}
+
+// ── ENRICH ALL ──
+function enrichAll(force) {
+  const msg = force ? 'Re-enrich ALL contacts with website + AI? Existing context will be overwritten.' : 'Enrich contacts that have no AI context yet?';
+  if(!confirm(msg)) return;
+  const btn = force ? document.getElementById('enrichBtn') : document.getElementById('researchBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin" style="border-top-color:#fff;"></span> Running...';
+  const banner = document.getElementById('enrichBanner');
+  banner.style.display = 'flex';
+  document.getElementById('enrichBannerText').textContent = 'AI enriching contacts...';
+  fetch('/api/enrich_all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({force})})
+  .then(r=>r.json()).then(d=>{
+    btn.disabled=false;
+    btn.innerHTML = force ? '<i class="fas fa-sync-alt me-1"></i>Re-enrich All' : '<i class="fas fa-sparkles me-1"></i>Enrich New';
+    document.getElementById('enrichBannerText').textContent = `✅ Done — ${d.enriched} enriched, ${d.failed} failed`;
+    document.getElementById('enrichProgress').style.width='100%';
+    if(d.enriched>0) setTimeout(()=>location.reload(),1500);
+  }).catch(()=>{
+    btn.disabled=false;
+    btn.innerHTML = force ? '<i class="fas fa-sync-alt me-1"></i>Re-enrich All' : '<i class="fas fa-sparkles me-1"></i>Enrich New';
+    banner.style.display='none';
+  });
+}
+
+// ── AI DRAWER ──
+const contextCache = {};
+let activeDrawerId = null;
+
+function openDrawer(id, name, company) {
+  activeDrawerId = id;
+  document.getElementById('drawerTitle').textContent = name || 'AI Intelligence';
+  document.getElementById('drawerSubtitle').textContent = company || 'Company enrichment';
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.getElementById('aiDrawer').classList.add('open');
+  document.getElementById('drawerRefreshBtn').dataset.id = id;
+  document.getElementById('drawerRefreshBtn').dataset.name = name;
+  document.getElementById('drawerRefreshBtn').dataset.company = company;
+
+  if(contextCache[id]) {
+    renderDrawer(contextCache[id], company);
+  } else {
+    document.getElementById('drawerBody').innerHTML = `<div class="text-center py-5 text-muted"><div class="spin mx-auto mb-3" style="width:24px;height:24px;border-width:3px;border-top-color:#6366f1;"></div><div style="font-size:13px;">Loading intelligence...</div></div>`;
+    fetch('/api/contact/'+id).then(r=>r.json()).then(d=>{
+      const ctx = d.context || '';
+      contextCache[id] = ctx;
+      renderDrawer(ctx, company, d.website);
+    });
+  }
+}
+
+function renderDrawer(context, company, website) {
+  // Treat error messages stored as context as empty
+  const errorPatterns = ['No API key', 'API key', 'AI generation failed', 'No Groq', 'No Gemini', 'failed after'];
+  if(context && errorPatterns.some(p => context.includes(p))) context = '';
+
+  if(!context) {
+    document.getElementById('drawerBody').innerHTML = `
+      <div class="text-center py-5">
+        <div style="font-size:2rem;margin-bottom:12px;">🤖</div>
+        <div style="font-weight:600;color:#374151;margin-bottom:6px;">No AI Context Yet</div>
+        <p class="text-muted" style="font-size:13px;">Click Re-generate to enrich this contact with AI intelligence.</p>
+      </div>`;
+    return;
+  }
+
+  // Parse context into sections (bullet points → chips)
+  const lines = context.split('\n').map(l=>l.trim()).filter(l=>l);
+  const bullets = lines.filter(l=>l.startsWith('-')||l.startsWith('•')||l.startsWith('*')).map(l=>l.replace(/^[-•*]\s*/,''));
+  const prose = lines.filter(l=>!l.startsWith('-')&&!l.startsWith('•')&&!l.startsWith('*')).join(' ');
+
+  // Build suggested openers from context
+  const openers = [];
+  if(company) openers.push(`Noticed ${company} is focused on ${prose.split(' ').slice(0,6).join(' ').toLowerCase()}...`);
+  if(bullets.length>0) openers.push(`Saw that ${bullets[0].toLowerCase().replace(/\.$/, '')} — thought this might be relevant...`);
+
+  document.getElementById('drawerBody').innerHTML = `
+    <div class="drawer-section">
+      <div class="drawer-section-title"><i class="fas fa-building"></i> Company Summary</div>
+      <div class="drawer-section-content">${prose || context.slice(0,200)}</div>
     </div>
 
-    <!-- Edit Modal -->
-    <div class="modal fade" id="editModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title">Edit Contact</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                <form id="editForm" method="POST">
-                <div class="modal-body">
-                    <div class="mb-3"><label class="form-label">Name</label><input type="text" name="name" id="edit_name" class="form-control"></div>
-                    <div class="mb-3"><label class="form-label">Company</label><input type="text" name="company" id="edit_company" class="form-control"></div>
-                    <div class="mb-3"><label class="form-label">Email</label><input type="text" name="email" id="edit_email" class="form-control"></div>
-                    <div class="mb-3"><label class="form-label">Website</label><input type="text" name="website" id="edit_website" class="form-control" placeholder="https://..."></div>
-                    <div class="mb-3"><label class="form-label">Designation</label><input type="text" name="designation" id="edit_designation" class="form-control"></div>
-                    <div class="mb-3"><label class="form-label">Context</label><textarea name="context" id="edit_context" class="form-control" rows="3" placeholder="Company context for AI email generation"></textarea></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save</button>
-                </div>
-                </form>
-            </div>
-        </div>
+    ${bullets.length>0 ? `
+    <div class="drawer-section">
+      <div class="drawer-section-title"><i class="fas fa-lightbulb"></i> Key Insights</div>
+      <div>${bullets.map(b=>`<span class="insight-chip">${b}</span>`).join('')}</div>
+    </div>` : ''}
+
+    <div class="drawer-section">
+      <div class="drawer-section-title"><i class="fas fa-crosshairs"></i> AI Personalization Angles</div>
+      <div>
+        ${bullets.slice(0,3).map(b=>`<span class="insight-chip" style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0;">↗ ${b.split(' ').slice(0,5).join(' ')}</span>`).join('')}
+        ${bullets.length===0 ? '<span class="insight-chip">↗ Operational efficiency</span><span class="insight-chip">↗ Scaling challenges</span>' : ''}
+      </div>
     </div>
 
-    <script>
-    function openEdit(id, name, company, email, designation) {
-        document.getElementById('edit_name').value = name;
-        document.getElementById('edit_company').value = company;
-        document.getElementById('edit_email').value = email;
-        document.getElementById('edit_designation').value = designation;
-        document.getElementById('edit_context').value = '';
-        document.getElementById('edit_website').value = '';
-        document.getElementById('editForm').action = '/contact/edit/' + id;
-        fetch('/api/contact/' + id)
-        .then(r => r.json())
-        .then(data => {
-            if(data.context) document.getElementById('edit_context').value = data.context;
-            if(data.website) document.getElementById('edit_website').value = data.website;
-        });
-        new bootstrap.Modal(document.getElementById('editModal')).show();
+    ${openers.length>0 ? `
+    <div class="drawer-section">
+      <div class="drawer-section-title"><i class="fas fa-comment-alt"></i> Suggested Openers</div>
+      ${openers.map(o=>`<div class="opener-card">"${o}"</div>`).join('')}
+    </div>` : ''}
+
+    <div class="drawer-section">
+      <div class="drawer-section-title"><i class="fas fa-file-alt"></i> Full Context</div>
+      <div class="ctx-raw">${context}</div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-section-title"><i class="fas fa-info-circle"></i> Research Metadata</div>
+      <div class="drawer-meta">
+        ${website ? `<span>🌐 Source: <a href="${website}" target="_blank" style="color:#3b82f6;">${website.replace('https://','').replace('http://','').split('/')[0]}</a></span>` : ''}
+        <span>🤖 Generated by AI enrichment pipeline</span>
+        <span>⚡ Used for email personalization</span>
+      </div>
+    </div>`;
+}
+
+function closeDrawer() {
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.getElementById('aiDrawer').classList.remove('open');
+}
+
+function refreshContext() {
+  const btn = document.getElementById('drawerRefreshBtn');
+  const id = btn.dataset.id;
+  const name = btn.dataset.name;
+  const company = btn.dataset.company;
+  if(!id) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin" style="border-top-color:#fff;"></span>';
+  document.getElementById('drawerBody').innerHTML = `<div class="text-center py-5 text-muted"><div class="spin mx-auto mb-3" style="width:24px;height:24px;border-width:3px;border-top-color:#6366f1;"></div><div style="font-size:13px;">Re-generating intelligence...</div></div>`;
+  fetch('/api/fetch_context/'+id).then(r=>r.json()).then(d=>{
+    btn.disabled=false;
+    btn.innerHTML='<i class="fas fa-sync-alt me-1"></i>Re-generate';
+    if(d.success) {
+      contextCache[id] = d.context;
+      renderDrawer(d.context, company);
+      // update table cell
+      document.getElementById('ctx-'+id).innerHTML =
+        `<button class="ai-state ai-ready" onclick="openDrawer(${id},'${name}','${company}')">
+          <i class="fas fa-check-circle" style="font-size:10px;"></i> AI Enriched &nbsp;<i class="fas fa-eye" style="font-size:9px;opacity:0.7;"></i>
+        </button>`;
+    } else {
+      document.getElementById('drawerBody').innerHTML = `<div class="text-center py-4 text-danger"><i class="fas fa-exclamation-circle fa-2x mb-2"></i><p>${d.error||'Generation failed'}</p></div>`;
     }
+  });
+}
 
-    function deleteContact(btn) {
-        var id = btn.dataset.id;
-        var name = btn.dataset.name;
-        if (!confirm('"' + name + '" ko delete karna hai? Ye action undo nahi hoga!')) return;
-        fetch('/api/contact/delete/' + id, {method: 'DELETE'})
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('row-' + id).remove();
-            } else {
-                alert('Delete failed: ' + (data.error || 'Unknown error'));
-            }
-        });
-    }
+function copyContext() {
+  if(!activeDrawerId || !contextCache[activeDrawerId]) return;
+  navigator.clipboard.writeText(contextCache[activeDrawerId]).then(()=>{
+    const btn = document.getElementById('drawerCopyBtn');
+    btn.innerHTML='<i class="fas fa-check me-1"></i>Copied!';
+    setTimeout(()=>{ btn.innerHTML='<i class="fas fa-copy me-1"></i>Copy Context'; },2000);
+  });
+}
 
-    // Pagination
-    let PER_PAGE = 50;
-    let currentPage = 1;
-    const allRows = Array.from(document.querySelectorAll('#contactsBody tr'));
+// ── DETECT INDUSTRIES ──
+function enrichIntelligence() {
+  if(!confirm('Detect industries for all unenriched contacts? This uses AI and may take a few minutes.')) return;
+  const btn = document.getElementById('intelligenceBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin" style="border-top-color:#fff;"></span> Detecting...';
+  fetch('/api/contacts/bulk_enrich_intelligence', {method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-brain me-1"></i>Detect Industries';
+      if(d.success) {
+        alert(`✅ Queued ${d.queued} contacts for industry detection. Refresh in a moment.`);
+        setTimeout(()=>location.reload(), 3000);
+      }
+    })
+    .catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="fas fa-brain me-1"></i>Detect Industries'; });
+}
 
-    function changePerPage(val) { PER_PAGE = parseInt(val); renderPage(1); }
+// ── ADVANCED FILTERS ──
+function applyFilters() {
+  const industry = document.getElementById('fIndustry').value.toLowerCase();
+  const minScore = parseInt(document.getElementById('fScore').value) || 0;
+  const enriched = document.getElementById('fEnriched').value;
+  const valid    = document.getElementById('fValid').value;
+  const search   = (document.getElementById('contactSearch').value || '').toLowerCase();
 
-    function renderPage(page) {
-        currentPage = page;
-        const start = (page - 1) * PER_PAGE;
-        const end = start + PER_PAGE;
-        allRows.forEach((row, i) => { row.style.display = (i >= start && i < end) ? '' : 'none'; });
-        const totalPages = Math.ceil(allRows.length / PER_PAGE);
-        const info = `Showing ${Math.min(start+1, allRows.length)}–${Math.min(end, allRows.length)} of ${allRows.length}`;
-        document.getElementById('pageInfo').textContent = info;
-        document.getElementById('pageInfoBottom').textContent = info;
-        function buildPagination(ulId) {
-            const ul = document.getElementById(ulId);
-            ul.innerHTML = '';
-            if (totalPages <= 1) return;
-            const addBtn = (label, p, disabled, active) => {
-                ul.innerHTML += `<li class="page-item ${disabled?'disabled':''} ${active?'active':''}"><a class="page-link" href="#" onclick="event.preventDefault();${disabled?'':('renderPage('+p+')')}">` + label + `</a></li>`;
-            };
-            addBtn('&laquo;', page-1, page===1, false);
-            for (let p = 1; p <= totalPages; p++) {
-                if (totalPages > 7 && Math.abs(p - page) > 2 && p !== 1 && p !== totalPages) {
-                    if (p === 2 || p === totalPages-1) ul.innerHTML += '<li class="page-item disabled"><a class="page-link">…</a></li>';
-                    continue;
-                }
-                addBtn(p, p, false, p===page);
-            }
-            addBtn('&raquo;', page+1, page===totalPages, false);
-        }
-        buildPagination('paginationTop');
-        buildPagination('pagination');
-    }
-    renderPage(1);
+  const hasFilter = industry || minScore || enriched || valid;
+  document.getElementById('filterClearBtn').style.display = hasFilter ? 'block' : 'none';
 
-    // Search contacts
-    function searchContacts(query) {
-        query = query.toLowerCase();
-        allRows.forEach(row => {
-            const text = row.textContent.toLowerCase();
-            row.dataset.hidden = (!query || text.includes(query)) ? '0' : '1';
-        });
-        renderFilteredPage(1);
-    }
+  // Mark active selects
+  ['fIndustry','fScore','fEnriched','fValid'].forEach(id => {
+    const el = document.getElementById(id);
+    el.classList.toggle('filter-active', !!el.value);
+  });
 
-    function renderFilteredPage(page) {
-        const visible = allRows.filter(r => r.dataset.hidden !== '1');
-        const totalPages = Math.ceil(visible.length / PER_PAGE);
-        currentPage = Math.min(page, totalPages || 1);
-        const start = (currentPage - 1) * PER_PAGE;
-        const end = start + PER_PAGE;
-        allRows.forEach(r => r.style.display = 'none');
-        visible.forEach((r, i) => { r.style.display = (i >= start && i < end) ? '' : 'none'; });
-        const info = visible.length ? `Showing ${start+1}–${Math.min(end, visible.length)} of ${visible.length}` : '0 results';
-        document.getElementById('pageInfo').textContent = info;
-        document.getElementById('pageInfoBottom').textContent = info;
-        function buildPagination(ulId) {
-            const ul = document.getElementById(ulId);
-            ul.innerHTML = '';
-            if (totalPages <= 1) return;
-            const addBtn = (label, p, disabled, active) => {
-                ul.innerHTML += `<li class="page-item ${disabled?'disabled':''} ${active?'active':''}"><a class="page-link" href="#" onclick="event.preventDefault();${disabled?'':('renderFilteredPage('+p+')')}">` + label + `</a></li>`;
-            };
-            addBtn('&laquo;', currentPage-1, currentPage===1, false);
-            for (let p = 1; p <= totalPages; p++) {
-                if (totalPages > 7 && Math.abs(p - currentPage) > 2 && p !== 1 && p !== totalPages) {
-                    if (p === 2 || p === totalPages-1) ul.innerHTML += '<li class="page-item disabled"><a class="page-link">…</a></li>';
-                    continue;
-                }
-                addBtn(p, p, false, p===currentPage);
-            }
-            addBtn('&raquo;', currentPage+1, currentPage===totalPages, false);
-        }
-        buildPagination('paginationTop');
-        buildPagination('pagination');
-    }
+  let visible = 0;
+  allRows.forEach(row => {
+    const rowIndustry = (row.dataset.industry || '').toLowerCase();
+    const rowScore    = parseInt(row.dataset.score) || 0;
+    const rowEnriched = row.dataset.enriched || '';
+    const rowValid    = row.dataset.valid;
+    const rowSearch   = row.dataset.search || '';
 
-    // Single email verify
-    function verifySingle(id, btn) {
-        btn.innerHTML = '<div class="spin"></div>';
-        fetch('/api/verify_single/' + id)
-        .then(r => r.json())
-        .then(data => {
-            if (data.valid) {
-                btn.parentElement.innerHTML = '<span class="badge bg-success">✅ Valid</span>';
-            } else {
-                btn.parentElement.innerHTML = '<span class="badge bg-danger">❌ Invalid</span>';
-            }
-        })
-        .catch(() => { btn.innerHTML = '<i class="fas fa-search"></i>'; });
-    }
+    const matchIndustry = !industry || rowIndustry.includes(industry);
+    const matchScore    = !minScore || rowScore >= minScore;
+    const matchEnriched = !enriched || rowEnriched === enriched;
+    const matchValid    = !valid || rowValid === valid;
+    const matchSearch   = !search || rowSearch.includes(search);
 
-    // Fetch company context
-    function fetchContext(id, btn) {
-        btn.innerHTML = '<div class="spin"></div>';
-        fetch('/api/fetch_context/' + id)
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('ctx-' + id).innerHTML = data.context;
-            } else {
-                btn.innerHTML = '<i class="fas fa-search"></i> Retry';
-            }
-        })
-        .catch(() => { btn.innerHTML = '<i class="fas fa-search"></i> Retry'; });
-    }
+    const show = matchIndustry && matchScore && matchEnriched && matchValid && matchSearch;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
 
+  const countEl = document.getElementById('filterCount');
+  if (countEl) countEl.textContent = hasFilter || search ? `${visible} result${visible !== 1 ? 's' : ''}` : '';
+}
 
-    // Enrich (website scrape + AI)
-    function enrichAll(force) {
-        var msg = force ? 'Saare contacts ko website + AI se enrich karega (purana context overwrite hoga). Continue?' : 'Jinke paas context nahi hai unko website + AI se enrich karega. Continue?';
-        if (!confirm(msg)) return;
-        var btn = force ? document.getElementById('enrichBtn') : document.getElementById('researchBtn');
-        btn.innerHTML = '<div class="spin"></div> Enriching...';
-        btn.disabled = true;
-        fetch('/api/enrich_all', {method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({force: force})})
-        .then(r => r.json())
-        .then(data => {
-            btn.innerHTML = force ? '<i class="fas fa-magic"></i> Enrich All' : '<i class="fas fa-globe"></i> Research New';
-            btn.disabled = false;
-            alert('Enriched: ' + data.enriched + ' contacts. Failed: ' + data.failed);
-            if (data.enriched > 0) location.reload();
-        })
-        .catch(() => { btn.innerHTML = force ? '<i class="fas fa-magic"></i> Enrich All' : '<i class="fas fa-globe"></i> Research New'; btn.disabled = false; });
-    }
+function clearFilters() {
+  ['fIndustry','fScore','fEnriched','fValid'].forEach(id => {
+    document.getElementById(id).value = '';
+    document.getElementById(id).classList.remove('filter-active');
+  });
+  document.getElementById('contactSearch').value = '';
+  document.getElementById('filterClearBtn').style.display = 'none';
+  document.getElementById('filterCount').textContent = '';
+  allRows.forEach(r => r.style.display = '');
+  renderPage(1);
+}
 
-    let polling = false;
+// Wire search to also trigger filters
+document.getElementById('contactSearch').addEventListener('input', e => {
+  searchContacts(e.target.value);
+  applyFilters();
+});
 
-    function startPolling() {
-        polling = true;
-        document.getElementById('verifyBar').style.display = 'flex';
-        poll();
-    }
+// Close drawer on Escape
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeDrawer(); });
 
-    function poll() {
-        if (!polling) return;
-        fetch('/api/verify_status')
-        .then(r => r.json())
-        .then(data => {
-            const pct = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
-            document.getElementById('verifyProgress').style.width = pct + '%';
-            document.getElementById('verifyCount').textContent = data.done + '/' + data.total;
-            document.getElementById('verifyText').textContent = data.current_email ? '→ ' + data.current_email : 'Verifying...';
+// ── EDIT CONTACT ──
+function openEdit(id, name, company, email, designation) {
+  document.getElementById('edit_name').value = name;
+  document.getElementById('edit_company').value = company;
+  document.getElementById('edit_email').value = email;
+  document.getElementById('edit_designation').value = designation;
+  document.getElementById('edit_context').value = '';
+  document.getElementById('edit_website').value = '';
+  document.getElementById('editForm').action = '/contact/edit/'+id;
+  fetch('/api/contact/'+id).then(r=>r.json()).then(d=>{
+    if(d.context) document.getElementById('edit_context').value = d.context;
+    if(d.website) document.getElementById('edit_website').value = d.website;
+  });
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
 
-            // Update each row's valid status
-            if (data.results) {
-                data.results.forEach(r => {
-                    const validCell = document.getElementById('valid-' + r.id);
-                    if (validCell) {
-                        if (r.valid === 1) {
-                            validCell.innerHTML = '<span class="badge bg-success">✅ Valid</span>';
-                        } else if (r.valid === 0) {
-                            validCell.innerHTML = '<span class="badge bg-danger">❌ Invalid</span>';
-                        }
-                    }
-                });
-            }
-
-            if (data.running) {
-                // Show spinner on emails still being verified
-                document.querySelectorAll('td:nth-child(5)').forEach(td => {
-                    if (td.querySelector('.badge.bg-secondary')) {
-                        td.innerHTML = '<div class="spin"></div>';
-                    }
-                });
-                setTimeout(poll, 800);
-            } else if (data.done > 0) {
-                document.getElementById('verifyText').textContent = '✅ Done!';
-                document.getElementById('verifyBar').style.display = 'flex';
-                polling = false;
-                // Reload page after 1 sec to show final state
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                polling = false;
-                document.getElementById('verifyBar').style.display = 'none';
-            }
-        })
-        .catch(() => { if (polling) setTimeout(poll, 2000); });
-    }
-
-    // Check if verification is already running on page load
-    fetch('/api/verify_status').then(r=>r.json()).then(data => {
-        if (data.running) startPolling();
-    });
-
-    // Intercept verify form submissions
-    document.getElementById('verifyNewForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        fetch('/verify_emails', {method:'POST', body: new FormData(this)}).then(() => startPolling());
-    });
-    document.getElementById('reverifyForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        fetch('/verify_emails', {method:'POST', body: new FormData(this)}).then(() => startPolling());
-    });
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+// ── DELETE CONTACT ──
+function deleteContact(btn) {
+  const id = btn.dataset.id, name = btn.dataset.name;
+  if(!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  fetch('/api/contact/delete/'+id,{method:'DELETE'}).then(r=>r.json()).then(d=>{
+    if(d.success) document.getElementById('row-'+id).remove();
+    else alert('Delete failed: '+(d.error||'Unknown'));
+  });
+}
+</script>
 </body>
 </html>

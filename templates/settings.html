@@ -1,320 +1,983 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><title>Settings</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="/static/style.css" rel="stylesheet">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings — Infrastructure Console</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+/* ── SETTINGS LAYOUT ── */
+body { overflow: hidden; }
+.settings-workspace { display: flex; height: 100vh; margin-left: 240px; overflow: hidden; }
+
+/* ── LEFT NAV ── */
+.settings-nav {
+  width: 220px; flex-shrink: 0; background: #fff; border-right: 1px solid #e2e8f0;
+  display: flex; flex-direction: column; height: 100vh; overflow-y: auto;
+}
+.settings-nav-header { padding: 16px 18px 12px; border-bottom: 1px solid #f1f5f9; }
+.settings-nav-header h5 { font-size: 13px; font-weight: 800; color: #111827; margin: 0; }
+.settings-nav-header small { font-size: 11px; color: #9CA3AF; }
+.nav-section-label { font-size: 9.5px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.7px; padding: 12px 18px 4px; }
+.snav-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 18px;
+  cursor: pointer; font-size: 13px; font-weight: 500; color: #374151;
+  transition: all 0.12s; border-left: 3px solid transparent; text-decoration: none;
+}
+.snav-item:hover { background: #f8fafc; color: #111827; }
+.snav-item.active { background: #eef2ff; color: #4338ca; border-left-color: #6366f1; font-weight: 600; }
+.snav-item i { width: 16px; font-size: 12px; text-align: center; }
+.snav-badge { margin-left: auto; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 99px; }
+
+/* ── MAIN CONTENT ── */
+.settings-main { flex: 1; overflow-y: auto; background: #f8fafc; }
+
+/* ── SYSTEM HEALTH BAR ── */
+.health-bar-top {
+  background: #fff; border-bottom: 1px solid #e2e8f0; padding: 10px 24px;
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap; flex-shrink: 0;
+}
+.hb-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+.hb-dot { width: 7px; height: 7px; border-radius: 50%; }
+.hb-green  { background: #10b981; }
+.hb-amber  { background: #f59e0b; }
+.hb-red    { background: #ef4444; }
+.hb-blue   { background: #6366f1; }
+.hb-label  { color: #374151; }
+.hb-val    { color: #6B7280; font-weight: 400; }
+
+/* ── SECTION PANELS ── */
+.settings-section { display: none; padding: 24px; }
+.settings-section.active { display: block; }
+.section-header { margin-bottom: 20px; }
+.section-header h4 { font-size: 16px; font-weight: 800; color: #111827; margin: 0 0 4px; }
+.section-header p  { font-size: 13px; color: #6B7280; margin: 0; }
+
+/* ── SMTP INBOX CARDS ── */
+.smtp-card {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 18px;
+  transition: box-shadow 0.15s; position: relative; overflow: hidden;
+}
+.smtp-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+.smtp-card .sc-email { font-size: 13.5px; font-weight: 700; color: #111827; margin-bottom: 4px; }
+.smtp-card .sc-server { font-size: 11px; color: #9CA3AF; margin-bottom: 12px; }
+.smtp-card .sc-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.sc-metric { background: #f8fafc; border-radius: 6px; padding: 6px 10px; }
+.sc-metric .sm-val { font-size: 1rem; font-weight: 800; letter-spacing: -0.3px; }
+.sc-metric .sm-lbl { font-size: 10px; color: #9CA3AF; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+.health-bar-mini { height: 4px; background: #f1f5f9; border-radius: 99px; overflow: hidden; margin-top: 4px; }
+.health-bar-fill { height: 100%; border-radius: 99px; }
+.smtp-status-badge { position: absolute; top: 14px; right: 14px; font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 99px; }
+.status-healthy  { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.status-warning  { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.status-paused   { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+.smtp-actions { display: flex; gap: 6px; }
+.sa-btn { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; border: 1px solid #e2e8f0; background: #f8fafc; color: #374151; cursor: pointer; transition: all 0.15s; }
+.sa-btn:hover { background: #eef2ff; border-color: #6366f1; color: #4338ca; }
+.sa-btn.danger:hover { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+
+/* ── ADD SMTP FORM ── */
+.add-smtp-box { background: #fff; border: 2px dashed #c7d2fe; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.15s; }
+.add-smtp-box:hover { background: #f5f3ff; border-color: #6366f1; }
+
+/* ── AI MODEL CARDS ── */
+.model-card {
+  background: #fff; border: 2px solid #e2e8f0; border-radius: 10px; padding: 14px 16px;
+  cursor: pointer; transition: all 0.15s;
+}
+.model-card:hover { border-color: #6366f1; }
+.model-card.selected { border-color: #6366f1; background: #eef2ff; }
+.model-card .mc-name { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 2px; }
+.model-card .mc-sub  { font-size: 11px; color: #6B7280; }
+.model-card .mc-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; margin-top: 6px; display: inline-block; }
+
+/* ── PROMPT EDITOR ── */
+.prompt-editor { font-family: 'Courier New', monospace; font-size: 12.5px; line-height: 1.6; background: #1e1b4b; color: #e0e7ff; border: 1px solid #312e81; border-radius: 8px; padding: 14px; resize: vertical; }
+.prompt-editor:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+.prompt-preset { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: all 0.15s; }
+.prompt-preset:hover { border-color: #6366f1; background: #eef2ff; }
+.prompt-preset h6 { font-size: 12.5px; font-weight: 700; color: #111827; margin: 0 0 2px; }
+.prompt-preset p  { font-size: 11px; color: #6B7280; margin: 0; }
+
+/* ── IMAP STATUS ── */
+.imap-status-card { background: linear-gradient(135deg,#f0fdf4,#dcfce7); border: 1px solid #bbf7d0; border-radius: 10px; padding: 14px 16px; }
+.imap-status-card.disconnected { background: linear-gradient(135deg,#fef2f2,#fee2e2); border-color: #fecaca; }
+.imap-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,0.04); }
+.imap-row:last-child { border-bottom: none; }
+
+/* ── TRACKING BADGES ── */
+.dns-badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; }
+.dns-ok   { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.dns-warn { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.dns-err  { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+/* ── TEST PANEL ── */
+.test-result { background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 12px 14px; font-family: monospace; font-size: 12px; line-height: 1.6; min-height: 80px; max-height: 200px; overflow-y: auto; }
+.test-result .log-ok   { color: #34d399; }
+.test-result .log-err  { color: #f87171; }
+.test-result .log-info { color: #93c5fd; }
+
+/* ── MISC ── */
+.spin { display:inline-block;width:13px;height:13px;border:2px solid #e2e8f0;border-top:2px solid #6366f1;border-radius:50%;animation:spin 0.6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.section-lbl { font-size:10.5px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px; }
+.form-card { background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px; }
+.toggle-row { display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f8fafc; }
+.toggle-row:last-child { border-bottom:none; }
+.toggle-row label { font-size:13px;font-weight:500;color:#374151;margin:0; }
+.toggle-row small  { font-size:11px;color:#9CA3AF; }
+.form-switch .form-check-input { width:36px;height:20px;cursor:pointer; }
+.form-switch .form-check-input:checked { background-color:#6366f1;border-color:#6366f1; }
+
+@media(max-width:768px){ .settings-nav { display:none; } }
+</style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
-        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
-        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
-        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
-        <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
-        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
-        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
-        <a href="/logs"><i class="fas fa-list-alt"></i> Logs</a>
-        <hr style="border-color:#e2e8f0">
-        <a href="/settings" class="active"><i class="fas fa-cog"></i> Settings</a>
-        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
-    </div>
-    <div class="main">
-        {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endif %}{% endwith %}
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings" class="active"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
 
-        <h3 class="mb-4">⚙️ Settings</h3>
+<div class="settings-workspace">
 
-        <!-- Change Password -->
-        <div class="card-box mb-4">
-            <h5 class="mb-3"><i class="fas fa-lock" style="color:#ef4444"></i> Change Password</h5>
-            <form method="POST" action="/change_password">
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label">Current Password</label>
-                        <input type="password" name="current_password" class="form-control" required>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">New Password</label>
-                        <input type="password" name="new_password" class="form-control" required minlength="6">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Confirm New Password</label>
-                        <input type="password" name="confirm_password" class="form-control" required minlength="6">
-                    </div>
-                </div>
-                <button type="submit" class="btn btn-outline-danger btn-sm mt-3"><i class="fas fa-key"></i> Change Password</button>
-            </form>
+<!-- ── LEFT NAV ── -->
+<div class="settings-nav">
+  <div class="settings-nav-header">
+    <h5>Settings</h5>
+    <small>Infrastructure Console</small>
+  </div>
+  <div class="nav-section-label">Operations</div>
+  <a class="snav-item active" onclick="showSection('general',this)"><i class="fas fa-th-large"></i> Overview</a>
+  <a class="snav-item" onclick="showSection('smtp',this)"><i class="fas fa-server"></i> SMTP Infrastructure <span class="snav-badge" style="background:#f0fdf4;color:#15803d;" id="smtpCount">—</span></a>
+  <a class="snav-item" onclick="showSection('imap',this)"><i class="fas fa-inbox"></i> Inbox & IMAP</a>
+  <div class="nav-section-label">AI Engine</div>
+  <a class="snav-item" onclick="showSection('ai',this)"><i class="fas fa-robot"></i> AI Configuration</a>
+  <a class="snav-item" onclick="showSection('prompt',this)"><i class="fas fa-magic"></i> Email Prompts</a>
+  <div class="nav-section-label">Infrastructure</div>
+  <a class="snav-item" onclick="showSection('tracking',this)"><i class="fas fa-chart-line"></i> Tracking & Domains</a>
+  <a class="snav-item" onclick="showSection('testing',this)"><i class="fas fa-flask"></i> Testing Utilities</a>
+  <div class="nav-section-label">Account</div>
+  <a class="snav-item" onclick="showSection('security',this)"><i class="fas fa-lock"></i> Security</a>
+  <a class="snav-item" onclick="showSection('data',this)"><i class="fas fa-download"></i> Data Export</a>
+</div>
+
+<!-- ── MAIN CONTENT ── -->
+<div class="settings-main">
+
+<!-- SYSTEM HEALTH BAR -->
+<div class="health-bar-top">
+  <div class="hb-item"><span class="hb-dot hb-green"></span><span class="hb-label">SMTP</span><span class="hb-val" id="hb-smtp">Loading...</span></div>
+  <div class="hb-item"><span class="hb-dot" id="hb-imap-dot" style="background:#9CA3AF;"></span><span class="hb-label">IMAP</span><span class="hb-val" id="hb-imap">Checking...</span></div>
+  <div class="hb-item"><span class="hb-dot hb-blue"></span><span class="hb-label">AI Engine</span><span class="hb-val" id="hb-ai">Active</span></div>
+  <div class="hb-item"><span class="hb-dot hb-green"></span><span class="hb-label">Active Inboxes</span><span class="hb-val" id="hb-inboxes">—</span></div>
+  <div class="hb-item"><span class="hb-dot hb-green"></span><span class="hb-label">Daily Capacity</span><span class="hb-val" id="hb-capacity">—</span></div>
+  <div class="ms-auto">
+    {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} py-1 px-3 mb-0" style="font-size:12px;">{{ msg }}</div>{% endfor %}{% endif %}{% endwith %}
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION: OVERVIEW
+══════════════════════════════════════ -->
+<div class="settings-section active" id="sec-general">
+  <div class="section-header">
+    <h4>Infrastructure Overview</h4>
+    <p>Live status of your AI outbound platform</p>
+  </div>
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="form-card text-center" style="padding:20px;">
+      <div style="font-size:1.8rem;font-weight:800;color:#6366f1;" id="ov-inboxes">—</div>
+      <div style="font-size:11px;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Active Inboxes</div>
+    </div></div>
+    <div class="col-md-3"><div class="form-card text-center" style="padding:20px;">
+      <div style="font-size:1.8rem;font-weight:800;color:#10b981;" id="ov-capacity">—</div>
+      <div style="font-size:11px;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Daily Capacity</div>
+    </div></div>
+    <div class="col-md-3"><div class="form-card text-center" style="padding:20px;">
+      <div style="font-size:1.8rem;font-weight:800;color:#8b5cf6;" id="ov-ai-today">—</div>
+      <div style="font-size:11px;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">AI Calls Today</div>
+    </div></div>
+    <div class="col-md-3"><div class="form-card text-center" style="padding:20px;">
+      <div style="font-size:1.8rem;font-weight:800;color:#f59e0b;" id="ov-health">—</div>
+      <div style="font-size:11px;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Avg Health Score</div>
+    </div></div>
+  </div>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="form-card">
+        <div class="section-lbl">Quick Navigation</div>
+        <div class="row g-2">
+          {% for icon, label, sec, color in [
+            ('fa-server','SMTP Infrastructure','smtp','#6366f1'),
+            ('fa-inbox','Inbox & IMAP','imap','#10b981'),
+            ('fa-robot','AI Configuration','ai','#8b5cf6'),
+            ('fa-magic','Email Prompts','prompt','#f59e0b'),
+            ('fa-chart-line','Tracking & Domains','tracking','#0ea5e9'),
+            ('fa-flask','Testing Utilities','testing','#ef4444')
+          ] %}
+          <div class="col-6">
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;cursor:pointer;transition:all 0.15s;" onclick="showSection('{{ sec }}')" onmouseover="this.style.borderColor='{{ color }}'" onmouseout="this.style.borderColor='#e2e8f0'">
+              <i class="fas {{ icon }}" style="color:{{ color }};margin-bottom:6px;display:block;"></i>
+              <div style="font-size:12.5px;font-weight:600;color:#111827;">{{ label }}</div>
+            </div>
+          </div>
+          {% endfor %}
         </div>
-
-        <form method="POST" id="settingsForm">
-
-            <!-- AI Priority -->
-            <div class="card-box mb-4">
-                <h5 class="mb-3"><i class="fas fa-layer-group" style="color:#f59e0b"></i> AI Fallback Chain</h5>
-                <p class="text-muted small">Order mein try karega. Pehla kaam kare toh baaki skip. Comma separated: ollama, groq, gemini</p>
-                <input type="text" name="ai_priority" class="form-control" value="{{ settings.ai_priority }}" placeholder="ollama,groq,gemini">
-                <div class="mt-2">
-                    <small>
-                        <span class="badge bg-success">1. Ollama</span> FREE local model →
-                        <span class="badge bg-primary">2. Groq</span> FREE API (14400/day) →
-                        <span class="badge bg-warning text-dark">3. Gemini</span> Paid fallback
-                    </small>
-                </div>
-            </div>
-
-            <!-- Ollama -->
-            <div class="card-box mb-4">
-                <h5 class="mb-3"><i class="fas fa-desktop" style="color:#22c55e"></i> Local Model (Ollama) — FREE</h5>
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Ollama URL</label>
-                        <input type="text" name="ollama_url" class="form-control" value="{{ settings.ollama_url }}" placeholder="http://localhost:11434">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Model Name</label>
-                        <input type="text" name="ollama_model" class="form-control" value="{{ settings.ollama_model }}" placeholder="phi3:mini">
-                        <small class="text-muted">Options: phi3:mini (3.8GB), qwen2:1.5b (1.5GB), tinyllama (1GB)</small>
-                    </div>
-                </div>
-                <div class="mt-2">
-                    <button type="button" class="btn btn-outline-success btn-sm" onclick="testOllama()"><i class="fas fa-plug"></i> Test Connection</button>
-                    <span id="ollamaStatus" class="ms-2"></span>
-                </div>
-                <div class="mt-2 p-2" style="background:#f0fdf4;border-radius:8px;">
-                    <small><b>Setup:</b> Install <a href="https://ollama.com/download" target="_blank">Ollama</a> → Run: <code>ollama pull phi3:mini</code></small>
-                </div>
-            </div>
-
-            <!-- Groq -->
-            <div class="card-box mb-4">
-                <h5 class="mb-3"><i class="fas fa-bolt" style="color:#3b82f6"></i> Groq API — FREE (14,400 req/day)</h5>
-                <div class="mb-3">
-                    <label class="form-label">Groq API Keys (comma separated, multiple accounts)</label>
-                    <textarea name="groq_api_keys" class="form-control" rows="3" placeholder="gsk_abc123..., gsk_def456..., gsk_ghi789...">{{ settings.groq_api_keys }}</textarea>
-                    <small class="text-muted">Get from: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> — Auto-rotates between keys when rate limited</small>
-                </div>
-                <div class="d-flex gap-2 align-items-center">
-                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="testGroq()"><i class="fas fa-plug"></i> Test Groq</button>
-                    <button type="button" class="btn btn-outline-info btn-sm" onclick="checkGroqUsage()"><i class="fas fa-chart-bar"></i> Check Usage</button>
-                    <span id="groqStatus" class="ms-2"></span>
-                </div>
-                <!-- Groq Usage Dashboard -->
-                <div id="groqUsagePanel" style="display:none;margin-top:15px;">
-                    <div class="p-3" style="background:#f0f9ff;border-radius:10px;border:1px solid #bae6fd;">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <strong style="color:#0369a1;"><i class="fas fa-tachometer-alt"></i> Groq Quota Status</strong>
-                            <small class="text-muted" id="groqLastChecked"></small>
-                        </div>
-                        <div id="groqUsageBody"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Gemini -->
-            <div class="card-box mb-4">
-                <h5 class="mb-3"><i class="fas fa-robot" style="color:#8b5cf6"></i> Gemini API — Paid Fallback</h5>
-                <div class="mb-3">
-                    <label class="form-label">Gemini API Key</label>
-                    <div class="input-group">
-                        <input type="password" name="gemini_api_key" id="apiKey" class="form-control" value="{{ settings.gemini_api_key }}" placeholder="AIzaSy...">
-                        <button type="button" class="btn btn-outline-secondary" onclick="toggle('apiKey')"><i class="fas fa-eye"></i></button>
-                    </div>
-                    <small class="text-muted">Get from: <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a></small>
-                </div>
-            </div>
-
-            <!-- SMTP -->
-            <div class="card-box mb-4">
-                <h5 class="mb-3"><i class="fas fa-server" style="color:#3b82f6"></i> SMTP Configuration</h5>
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">SMTP Server</label>
-                        <input type="text" name="smtp_server" class="form-control" value="{{ settings.smtp_server }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">SMTP Port</label>
-                        <input type="text" name="smtp_port" class="form-control" value="{{ settings.smtp_port }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">SMTP Username</label>
-                        <input type="text" name="smtp_username" class="form-control" value="{{ settings.smtp_username }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">SMTP Password</label>
-                        <div class="input-group">
-                            <input type="password" name="smtp_password" id="smtpPass" class="form-control" value="{{ settings.smtp_password }}">
-                            <button type="button" class="btn btn-outline-secondary" onclick="toggle('smtpPass')"><i class="fas fa-eye"></i></button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Email Identity -->
-            <div class="card-box mb-4">
-                <h5 class="mb-3"><i class="fas fa-id-card" style="color:#22c55e"></i> Email Identity</h5>
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">From Email</label>
-                        <input type="email" name="from_email" class="form-control" value="{{ settings.from_email }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">From Name</label>
-                        <input type="text" name="from_name" class="form-control" value="{{ settings.from_name }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Reply-To Email</label>
-                        <input type="email" name="reply_to" class="form-control" value="{{ settings.reply_to }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">BCC Emails (comma separated)</label>
-                        <input type="text" name="bcc_emails" class="form-control" value="{{ settings.bcc_emails }}">
-                    </div>
-                    <div class="col-md-12">
-                        <label class="form-label">Tracking Host (your production URL)</label>
-                        <input type="text" name="tracking_host" class="form-control" value="{{ settings.tracking_host }}" placeholder="https://ertyui.online">
-                        <small class="text-muted">Used for open tracking pixel + unsubscribe links. Must be your live domain.</small>
-                    </div>
-                </div>
-            </div>
-
-            <!-- IMAP Reply Tracking -->
-            <div class="card-box mb-4">
-                <h5 class="mb-3"><i class="fas fa-inbox" style="color:#06b6d4"></i> Auto Reply Detection (IMAP)</h5>
-                <p class="text-muted small">Set a dedicated inbox (e.g. replies@yourdomain.com) as Reply-To. System will auto-check this inbox and log replies.</p>
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">IMAP Server</label>
-                        <input type="text" name="imap_server" class="form-control" value="{{ settings.imap_server }}" placeholder="imap.hostinger.com">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">IMAP Port</label>
-                        <input type="text" name="imap_port" class="form-control" value="{{ settings.imap_port }}" placeholder="993">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">IMAP Username (email)</label>
-                        <input type="text" name="imap_username" class="form-control" value="{{ settings.imap_username }}" placeholder="replies@yourdomain.com">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">IMAP Password</label>
-                        <div class="input-group">
-                            <input type="password" name="imap_password" id="imapPass" class="form-control" value="{{ settings.imap_password }}">
-                            <button type="button" class="btn btn-outline-secondary" onclick="toggle('imapPass')"><i class="fas fa-eye"></i></button>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Check Interval (seconds)</label>
-                        <input type="number" name="imap_check_interval" class="form-control" value="{{ settings.imap_check_interval }}" placeholder="180">
-                        <small class="text-muted">Default: 180s (3 min). Lower = faster detection but more load.</small>
-                    </div>
-                </div>
-                <div class="mt-3 p-2" style="background:#ecfeff;border-radius:8px;">
-                    <small><b>Setup:</b> Create a dedicated email (e.g. replies@apnagang.com) → Set it as Reply-To above → Add IMAP credentials here → Replies auto-logged in Follow-ups!</small>
-                </div>
-            </div>
-
-            <!-- Email Prompt -->
-            <div class="card-box mb-4">
-                <h5 class="mb-3"><i class="fas fa-magic" style="color:#f59e0b"></i> AI Email Prompt</h5>
-                <p class="text-muted small">Use <code>{name}</code> and <code>{company}</code> as placeholders.</p>
-                <textarea name="email_prompt" class="form-control" rows="16" style="font-family:monospace;font-size:0.85rem;">{{ settings.email_prompt }}</textarea>
-            </div>
-
-            <button type="submit" class="btn btn-primary btn-lg px-5"><i class="fas fa-save"></i> Save All Settings</button>
-        </form>
-
-        <!-- Floating save button -->
-        <div style="position:fixed;bottom:20px;right:30px;z-index:999;">
-            <button type="submit" form="settingsForm" class="btn btn-primary btn-lg shadow-lg px-4"><i class="fas fa-save"></i> Save</button>
-        </div>
+      </div>
     </div>
+    <div class="col-md-6">
+      <div class="form-card">
+        <div class="section-lbl">System Status</div>
+        <div id="overviewStatus"><div class="text-center text-muted py-3"><div class="spin mx-auto mb-2"></div><div style="font-size:12px;">Loading status...</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
 
-    <script>
-    function toggle(id) { var e=document.getElementById(id); e.type=e.type==='password'?'text':'password'; }
+<!-- ══════════════════════════════════════
+     SECTION: SMTP INFRASTRUCTURE
+══════════════════════════════════════ -->
+<div class="settings-section" id="sec-smtp">
+  <div class="section-header d-flex align-items-start justify-content-between">
+    <div>
+      <h4>SMTP Infrastructure</h4>
+      <p>Each inbox is an independent sender identity with unique name, reply-to, BCC, and signature</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-secondary" onclick="resetTodayCounts()"><i class="fas fa-redo me-1"></i>Reset Today</button>
+      <button class="btn btn-primary btn-sm" onclick="showAddSmtp()"><i class="fas fa-plus me-1"></i>Add Inbox</button>
+    </div>
+  </div>
 
-    function testOllama() {
-        document.getElementById('ollamaStatus').innerHTML = '⏳ Testing...';
-        var url = document.querySelector('[name=ollama_url]').value || 'http://localhost:11434';
-        fetch(url + '/api/tags').then(r=>r.json()).then(data => {
-            var models = data.models ? data.models.map(m=>m.name).join(', ') : 'none';
-            document.getElementById('ollamaStatus').innerHTML = '<span class="text-success">✅ Connected! Models: ' + models + '</span>';
-        }).catch(() => {
-            document.getElementById('ollamaStatus').innerHTML = '<span class="text-danger">❌ Not running. Install from ollama.com</span>';
-        });
+  <!-- SMTP CARDS GRID -->
+  <div class="row g-3 mb-4" id="smtpCardsGrid">
+    <div class="col-12 text-center py-4 text-muted"><div class="spin mx-auto mb-2"></div><div style="font-size:12px;">Loading inboxes...</div></div>
+  </div>
+
+  <!-- ADD / EDIT INBOX FORM -->
+  <div id="addSmtpForm" style="display:none;" class="form-card mb-4">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div class="section-lbl" style="margin:0;" id="addSmtpTitle">Add New Inbox</div>
+      <button class="btn btn-sm btn-outline-secondary" onclick="hideAddSmtp()">Cancel</button>
+    </div>
+    <input type="hidden" id="acc_edit_id" value="">
+    <!-- ROW 1 -->
+    <div class="row g-2 mb-2">
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:11px;font-weight:600;color:#6B7280;">Email Address *</label>
+        <input type="email" id="acc_email" class="form-control form-control-sm" placeholder="outreach@yourdomain.com">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:11px;font-weight:600;color:#6B7280;">Password *</label>
+        <div class="input-group input-group-sm">
+          <input type="password" id="acc_password" class="form-control" placeholder="SMTP password">
+          <button type="button" class="btn btn-outline-secondary" onclick="toggle('acc_password')"><i class="fas fa-eye"></i></button>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:11px;font-weight:600;color:#6B7280;">From Name</label>
+        <input type="text" id="acc_from_name" class="form-control form-control-sm" placeholder="Alex — Acme Corp">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:11px;font-weight:600;color:#6B7280;">Daily Limit</label>
+        <input type="number" id="acc_daily_limit" class="form-control form-control-sm" value="50" min="1">
+      </div>
+    </div>
+    <!-- ROW 2 -->
+    <div class="row g-2 mb-2">
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:11px;font-weight:600;color:#6B7280;">SMTP Server</label>
+        <input type="text" id="acc_smtp_server" class="form-control form-control-sm" value="smtp.hostinger.com">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label" style="font-size:11px;font-weight:600;color:#6B7280;">Port</label>
+        <input type="number" id="acc_smtp_port" class="form-control form-control-sm" value="587">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:11px;font-weight:600;color:#6B7280;">Reply-To <span style="color:#9CA3AF;font-weight:400;">(optional)</span></label>
+        <input type="email" id="acc_reply_to" class="form-control form-control-sm" placeholder="replies@yourdomain.com">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:11px;font-weight:600;color:#6B7280;">BCC Emails <span style="color:#9CA3AF;font-weight:400;">(comma separated)</span></label>
+        <input type="text" id="acc_bcc_emails" class="form-control form-control-sm" placeholder="monitor@company.com, ceo@company.com">
+      </div>
+    </div>
+    <!-- ROW 3 -->
+    <div class="row g-2 mb-3">
+      <div class="col-12">
+        <label class="form-label" style="font-size:11px;font-weight:600;color:#6B7280;">Email Signature <span style="color:#9CA3AF;font-weight:400;">(HTML supported, auto-appended to every email)</span></label>
+        <textarea id="acc_signature" class="form-control form-control-sm" rows="4"
+          placeholder="Alex Chen&#10;Sales Director | Acme Corp&#10;alex@acme.com | +1 (555) 000-0000"
+          style="font-family:monospace;font-size:12px;"></textarea>
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary btn-sm" onclick="saveAccount()"><i class="fas fa-save me-1"></i>Save Inbox</button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="hideAddSmtp()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- BACKUP SMTP CONFIGURATION -->
+  <div class="form-card">
+    <div class="section-lbl">Backup SMTP Configuration</div>
+    <p style="font-size:12px;color:#6B7280;margin-bottom:14px;">Used only when no active rotation inbox is available. Does not override inbox-level identity settings.</p>
+    <form method="POST" id="smtpFallbackForm">
+    <div class="row g-3">
+      <div class="col-md-6"><label class="form-label">SMTP Server</label><input type="text" name="smtp_server" class="form-control" value="{{ settings.smtp_server }}"></div>
+      <div class="col-md-6"><label class="form-label">SMTP Port</label><input type="text" name="smtp_port" class="form-control" value="{{ settings.smtp_port }}"></div>
+      <div class="col-md-6"><label class="form-label">Username</label><input type="text" name="smtp_username" class="form-control" value="{{ settings.smtp_username }}"></div>
+      <div class="col-md-6"><label class="form-label">Password</label>
+        <div class="input-group"><input type="password" name="smtp_password" id="smtpPass" class="form-control" value="{{ settings.smtp_password }}"><button type="button" class="btn btn-outline-secondary" onclick="toggle('smtpPass')"><i class="fas fa-eye"></i></button></div>
+      </div>
+      <div class="col-md-6"><label class="form-label">From Email</label><input type="email" name="from_email" class="form-control" value="{{ settings.from_email }}"></div>
+      <div class="col-md-6"><label class="form-label">From Name <span class="text-muted fw-normal">(backup only)</span></label><input type="text" name="from_name" class="form-control" value="{{ settings.from_name }}"></div>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm mt-3" onclick="saveSection('smtpFallbackForm')"><i class="fas fa-save me-1"></i>Save Backup SMTP</button>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION: IMAP
+══════════════════════════════════════ -->
+<div class="settings-section" id="sec-imap">
+  <div class="section-header">
+    <h4>Inbox & IMAP</h4>
+    <p>Configure reply detection and inbox monitoring</p>
+  </div>
+
+  <!-- IMAP STATUS CARD -->
+  <div class="imap-status-card mb-4" id="imapStatusCard">
+    <div class="d-flex align-items-center gap-10 mb-3">
+      <div style="width:36px;height:36px;background:rgba(16,185,129,0.15);border-radius:8px;display:flex;align-items:center;justify-content:center;">
+        <i class="fas fa-inbox" style="color:#10b981;"></i>
+      </div>
+      <div style="margin-left:10px;">
+        <div style="font-size:13px;font-weight:700;color:#15803d;" id="imapStatusText">Checking IMAP status...</div>
+        <div style="font-size:11.5px;color:#166534;" id="imapStatusSub">—</div>
+      </div>
+      <button class="btn btn-sm ms-auto" style="background:#15803d;color:#fff;font-size:12px;" onclick="checkImapStatus()"><i class="fas fa-sync-alt me-1"></i>Check Status</button>
+    </div>
+    <div class="row g-2" id="imapMetrics" style="display:none;">
+      <div class="col-3"><div style="background:rgba(255,255,255,0.6);border-radius:6px;padding:8px;text-align:center;"><div style="font-size:1.1rem;font-weight:800;color:#15803d;" id="imap-server-val">—</div><div style="font-size:10px;color:#166534;font-weight:600;">Server</div></div></div>
+      <div class="col-3"><div style="background:rgba(255,255,255,0.6);border-radius:6px;padding:8px;text-align:center;"><div style="font-size:1.1rem;font-weight:800;color:#15803d;" id="imap-interval-val">—</div><div style="font-size:10px;color:#166534;font-weight:600;">Interval</div></div></div>
+    </div>
+  </div>
+
+  <div class="form-card">
+    <div class="section-lbl">IMAP Configuration</div>
+    <form method="POST" id="imapForm">
+    <div class="row g-3">
+      <div class="col-md-6"><label class="form-label">IMAP Server</label><input type="text" name="imap_server" class="form-control" value="{{ settings.imap_server }}" placeholder="imap.hostinger.com"></div>
+      <div class="col-md-6"><label class="form-label">IMAP Port</label><input type="text" name="imap_port" class="form-control" value="{{ settings.imap_port }}" placeholder="993"></div>
+      <div class="col-md-6"><label class="form-label">Username</label><input type="text" name="imap_username" class="form-control" value="{{ settings.imap_username }}" placeholder="replies@yourdomain.com"></div>
+      <div class="col-md-6"><label class="form-label">Password</label>
+        <div class="input-group"><input type="password" name="imap_password" id="imapPass" class="form-control" value="{{ settings.imap_password }}"><button type="button" class="btn btn-outline-secondary" onclick="toggle('imapPass')"><i class="fas fa-eye"></i></button></div>
+      </div>
+      <div class="col-md-6"><label class="form-label">Check Interval (seconds)</label><input type="number" name="imap_check_interval" class="form-control" value="{{ settings.imap_check_interval }}" placeholder="180"><small class="text-muted">Default: 180s (3 min)</small></div>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm mt-3" onclick="saveSection('imapForm')"><i class="fas fa-save me-1"></i>Save IMAP Settings</button>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION: AI CONFIGURATION
+══════════════════════════════════════ -->
+<div class="settings-section" id="sec-ai">
+  <div class="section-header">
+    <h4>AI Engine Configuration</h4>
+    <p>Configure AI models, API keys, and personalization settings</p>
+  </div>
+
+  <!-- MODEL SELECTION -->
+  <div class="form-card mb-4">
+    <div class="section-lbl">AI Fallback Chain</div>
+    <p style="font-size:12.5px;color:#6B7280;margin-bottom:14px;">System tries providers in order. First successful response is used.</p>
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <div class="model-card selected" id="mc-groq" onclick="selectModel('groq',this)">
+          <div class="mc-name"><i class="fas fa-bolt" style="color:#3b82f6;margin-right:6px;"></i>Groq</div>
+          <div class="mc-sub">llama-3.3-70b-versatile</div>
+          <span class="mc-badge" style="background:#eff6ff;color:#1d4ed8;">Primary · Free</span>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="model-card" id="mc-gemini" onclick="selectModel('gemini',this)">
+          <div class="mc-name"><i class="fas fa-star" style="color:#8b5cf6;margin-right:6px;"></i>Gemini</div>
+          <div class="mc-sub">gemini-2.5-flash</div>
+          <span class="mc-badge" style="background:#f5f3ff;color:#7c3aed;">Fallback · Paid</span>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="model-card" style="opacity:0.5;cursor:default;">
+          <div class="mc-name"><i class="fas fa-plus" style="color:#9CA3AF;margin-right:6px;"></i>Add Model</div>
+          <div class="mc-sub">Coming soon</div>
+          <span class="mc-badge" style="background:#f1f5f9;color:#64748b;">Future</span>
+        </div>
+      </div>
+    </div>
+    <form method="POST" id="aiChainForm">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Priority Order <small class="text-muted">(comma separated)</small></label>
+        <input type="text" name="ai_priority" class="form-control" value="{{ settings.ai_priority }}" placeholder="groq,gemini">
+      </div>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm mt-3" onclick="saveSection('aiChainForm')"><i class="fas fa-save me-1"></i>Save</button>
+    </form>
+  </div>
+
+  <!-- GROQ CONFIG -->
+  <div class="form-card mb-4">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div class="section-lbl" style="margin:0;"><i class="fas fa-bolt" style="color:#3b82f6;margin-right:6px;"></i>Groq API — Free (14,400 req/day)</div>
+      <div class="d-flex gap-2">
+        <button class="sa-btn" onclick="testGroq()"><i class="fas fa-plug me-1"></i>Test</button>
+        <button class="sa-btn" onclick="checkGroqUsage()"><i class="fas fa-chart-bar me-1"></i>Usage</button>
+        <span id="groqStatus" class="ms-1"></span>
+      </div>
+    </div>
+    <form method="POST" id="groqForm">
+    <label class="form-label">API Keys <small class="text-muted">(comma separated for rotation)</small></label>
+    <textarea name="groq_api_keys" class="form-control" rows="3" placeholder="gsk_abc123..., gsk_def456...">{{ settings.groq_api_keys }}</textarea>
+    <small class="text-muted">Get from: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> · Auto-rotates when rate limited</small>
+    <div id="groqUsagePanel" style="display:none;margin-top:12px;">
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;" id="groqUsageBody"></div>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm mt-3" onclick="saveSection('groqForm')"><i class="fas fa-save me-1"></i>Save Groq Keys</button>
+    </form>
+  </div>
+
+  <!-- GEMINI CONFIG -->
+  <div class="form-card">
+    <div class="section-lbl"><i class="fas fa-star" style="color:#8b5cf6;margin-right:6px;"></i>Gemini API — Paid Fallback</div>
+    <form method="POST" id="geminiForm">
+    <label class="form-label">Gemini API Key</label>
+    <div class="input-group mb-2">
+      <input type="password" name="gemini_api_key" id="geminiKey" class="form-control" value="{{ settings.gemini_api_key }}" placeholder="AIzaSy...">
+      <button type="button" class="btn btn-outline-secondary" onclick="toggle('geminiKey')"><i class="fas fa-eye"></i></button>
+    </div>
+    <small class="text-muted">Get from: <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a></small>
+    <br><button type="button" class="btn btn-primary btn-sm mt-3" onclick="saveSection('geminiForm')"><i class="fas fa-save me-1"></i>Save Gemini Key</button>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION: EMAIL PROMPTS
+══════════════════════════════════════ -->
+<div class="settings-section" id="sec-prompt">
+  <div class="section-header">
+    <h4>Email Prompt Engine</h4>
+    <p>Configure AI email generation prompts and templates</p>
+  </div>
+
+  <!-- PROMPT PRESETS -->
+  <div class="form-card mb-4">
+    <div class="section-lbl">Prompt Presets</div>
+    <div class="row g-2">
+      {% for name, desc in [('SaaS Outreach','Cold outreach to SaaS founders'),('Agency Outreach','Value-first agency pitch'),('Founder Outreach','Peer-to-peer founder tone'),('Recruitment','Talent acquisition outreach'),('Enterprise','ABM enterprise outreach')] %}
+      <div class="col-md-4">
+        <div class="prompt-preset" onclick="loadPreset('{{ name }}')">
+          <h6>{{ name }}</h6>
+          <p>{{ desc }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- PROMPT EDITOR -->
+  <div class="form-card">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div class="section-lbl" style="margin:0;">Active Prompt</div>
+      <small class="text-muted">Use {name}, {company}, {designation}, {context} as variables</small>
+    </div>
+    <form method="POST" id="promptForm">
+    <textarea name="email_prompt" id="promptEditor" class="prompt-editor form-control" rows="18">{{ settings.email_prompt }}</textarea>
+    <button type="button" class="btn btn-primary btn-sm mt-3" onclick="saveSection('promptForm')"><i class="fas fa-save me-1"></i>Save Prompt</button>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION: TRACKING & DOMAINS
+══════════════════════════════════════ -->
+<div class="settings-section" id="sec-tracking">
+  <div class="section-header">
+    <h4>Tracking & Domains</h4>
+    <p>Configure open tracking, click tracking, and domain authentication</p>
+  </div>
+
+  <div class="form-card mb-4">
+    <div class="section-lbl">Tracking Domain</div>
+    <form method="POST" id="trackingForm">
+    <div class="row g-3">
+      <div class="col-md-8">
+        <label class="form-label">Tracking Host (your production URL)</label>
+        <input type="text" name="tracking_host" class="form-control" value="{{ settings.tracking_host }}" placeholder="https://ertyui.online">
+        <small class="text-muted">Used for open tracking pixel + click tracking + unsubscribe links.</small>
+      </div>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm mt-3" onclick="saveSection('trackingForm')"><i class="fas fa-save me-1"></i>Save</button>
+    </form>
+  </div>
+
+  <!-- DNS STATUS -->
+  <div class="form-card mb-4">
+    <div class="section-lbl">Domain Authentication Status</div>
+    <div class="d-flex gap-3 flex-wrap mb-3">
+      <span class="dns-badge dns-ok"><i class="fas fa-check me-1"></i>SPF</span>
+      <span class="dns-badge dns-ok"><i class="fas fa-check me-1"></i>DKIM</span>
+      <span class="dns-badge dns-warn"><i class="fas fa-exclamation me-1"></i>DMARC</span>
+    </div>
+    <small class="text-muted" style="font-size:11.5px;">Configure SPF, DKIM, and DMARC records in your DNS provider to improve deliverability. DMARC policy recommended: <code>v=DMARC1; p=quarantine;</code></small>
+  </div>
+
+  <!-- TRACKING TOGGLES -->
+  <div class="form-card">
+    <div class="section-lbl">Tracking Features</div>
+    <div class="toggle-row">
+      <div><label>Open Tracking</label><br><small>Track when recipients open emails</small></div>
+      <div class="form-check form-switch"><input class="form-check-input" type="checkbox" checked></div>
+    </div>
+    <div class="toggle-row">
+      <div><label>Click Tracking</label><br><small>Track link clicks and update lead scores</small></div>
+      <div class="form-check form-switch"><input class="form-check-input" type="checkbox" checked></div>
+    </div>
+    <div class="toggle-row">
+      <div><label>Unsubscribe Links</label><br><small>CAN-SPAM compliant unsubscribe footer</small></div>
+      <div class="form-check form-switch"><input class="form-check-input" type="checkbox" checked></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION: TESTING UTILITIES
+══════════════════════════════════════ -->
+<div class="settings-section" id="sec-testing">
+  <div class="section-header">
+    <h4>Infrastructure Testing</h4>
+    <p>Validate SMTP, IMAP, AI, and tracking connections</p>
+  </div>
+  <div class="row g-3">
+    {% for icon, label, color, fn in [
+      ('fa-server','Test SMTP','#6366f1','testSmtp()'),
+      ('fa-inbox','Test IMAP','#10b981','testImap()'),
+      ('fa-robot','Test AI','#8b5cf6','testAI()'),
+      ('fa-chart-line','Test Tracking','#0ea5e9','testTracking()'),
+    ] %}
+    <div class="col-md-3">
+      <div class="form-card text-center" style="cursor:pointer;" onclick="{{ fn }}">
+        <i class="fas {{ icon }}" style="font-size:1.5rem;color:{{ color }};margin-bottom:8px;display:block;"></i>
+        <div style="font-size:13px;font-weight:600;color:#111827;">{{ label }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="form-card mt-3">
+    <div class="section-lbl">Test Log</div>
+    <div class="test-result" id="testLog"><span class="log-info">// Click a test button to run diagnostics</span></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION: SECURITY
+══════════════════════════════════════ -->
+<div class="settings-section" id="sec-security">
+  <div class="section-header">
+    <h4>Security</h4>
+    <p>Manage authentication and account security</p>
+  </div>
+  <div class="form-card" style="max-width:500px;">
+    <div class="section-lbl">Change Password</div>
+    <form method="POST" action="/change_password">
+      <div class="mb-3"><label class="form-label">Current Password</label><input type="password" name="current_password" class="form-control" required></div>
+      <div class="mb-3"><label class="form-label">New Password</label><input type="password" name="new_password" class="form-control" required minlength="6"></div>
+      <div class="mb-3"><label class="form-label">Confirm New Password</label><input type="password" name="confirm_password" class="form-control" required minlength="6"></div>
+      <button type="submit" class="btn btn-outline-danger btn-sm"><i class="fas fa-key me-1"></i>Change Password</button>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION: DATA EXPORT
+══════════════════════════════════════ -->
+<div class="settings-section" id="sec-data">
+  <div class="section-header">
+    <h4>Data Export</h4>
+    <p>Export your contacts, emails, and campaign data</p>
+  </div>
+  <div class="row g-3">
+    {% for icon, label, url, color in [
+      ('fa-users','All Contacts','/export/all','#6366f1'),
+      ('fa-paper-plane','Sent Emails','/export/sent','#10b981'),
+      ('fa-times-circle','Invalid Emails','/export/invalid','#ef4444'),
+      ('fa-exclamation-triangle','Bounced Emails','/export/bounced','#f59e0b'),
+    ] %}
+    <div class="col-md-3">
+      <a href="{{ url }}" class="form-card d-block text-center" style="text-decoration:none;cursor:pointer;">
+        <i class="fas {{ icon }}" style="font-size:1.5rem;color:{{ color }};margin-bottom:8px;display:block;"></i>
+        <div style="font-size:13px;font-weight:600;color:#111827;">{{ label }}</div>
+        <div style="font-size:11px;color:#9CA3AF;margin-top:2px;">Download XLSX</div>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+</div><!-- settings-main -->
+</div><!-- settings-workspace -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── SECTION NAVIGATION ──
+function showSection(id, navEl) {
+  document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.snav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('active');
+  if(navEl) navEl.classList.add('active');
+  else {
+    document.querySelectorAll('.snav-item').forEach(n => {
+      if(n.getAttribute('onclick') && n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
+    });
+  }
+}
+
+// ── SAVE SECTION — saves only fields in the current form, no wipe ──
+function saveSection(formId) {
+  const form = document.getElementById(formId);
+  if (!form) return;
+  const data = {};
+  new FormData(form).forEach((v, k) => { data[k] = v; });
+  fetch('/api/settings/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data)
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) showToast('Settings saved!', 'success');
+    else showToast('Save failed', 'error');
+  })
+  .catch(() => showToast('Save failed', 'error'));
+}
+
+function showToast(msg, type) {
+  const div = document.createElement('div');
+  div.style.cssText = `position:fixed;top:20px;right:20px;z-index:9999;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,0.12);background:${type==='success'?'#f0fdf4':'#fef2f2'};color:${type==='success'?'#15803d':'#dc2626'};border:1px solid ${type==='success'?'#bbf7d0':'#fecaca'};`;
+  div.textContent = (type==='success'?'✓ ':'✗ ') + msg;
+  document.body.appendChild(div);
+  setTimeout(() => div.remove(), 3000);
+}
+
+// ── TOGGLE PASSWORD VISIBILITY ──
+function toggle(id) { const e=document.getElementById(id); e.type=e.type==='password'?'text':'password'; }
+
+// ── LOAD SMTP CARDS ──
+function loadSmtpCards() {
+  fetch('/api/smtp_accounts').then(r=>r.json()).then(d=>{
+    const accounts = d.accounts || [];
+    const grid = document.getElementById('smtpCardsGrid');
+    document.getElementById('smtpCount').textContent = accounts.filter(a=>a.active).length;
+    document.getElementById('hb-inboxes').textContent = accounts.filter(a=>a.active).length + ' active';
+    const capacity = accounts.filter(a=>a.active).reduce((s,a)=>s+(a.daily_limit-a.sent_today),0);
+    document.getElementById('hb-capacity').textContent = capacity + '/day';
+    document.getElementById('hb-smtp').textContent = accounts.length ? (accounts.filter(a=>a.active).length + ' active') : 'Not configured';
+    document.getElementById('ov-inboxes').textContent = accounts.filter(a=>a.active).length;
+    document.getElementById('ov-capacity').textContent = capacity;
+    const avgH = accounts.length ? Math.round(accounts.reduce((s,a)=>s+a.health_score,0)/accounts.length) : 0;
+    document.getElementById('ov-health').textContent = avgH;
+
+    if(!accounts.length) {
+      grid.innerHTML = `<div class="col-12"><div class="add-smtp-box" onclick="showAddSmtp()"><i class="fas fa-plus-circle fa-2x mb-2" style="color:#6366f1;display:block;"></i><div style="font-size:13px;font-weight:600;color:#4338ca;">Add your first inbox</div><div style="font-size:12px;color:#6B7280;margin-top:4px;">Configure SMTP rotation for better deliverability</div></div></div>`;
+      return;
     }
+    grid.innerHTML = accounts.map(a => {
+      const hc = a.health_score>=70?'#10b981':a.health_score>=40?'#f59e0b':'#ef4444';
+      const statusCls = a.active ? (a.health_score>=70?'status-healthy':'status-warning') : 'status-paused';
+      const statusTxt = a.active ? (a.health_score>=70?'Healthy':'At Risk') : 'Paused';
+      const pct = Math.round(a.sent_today/a.daily_limit*100)||0;
+      const fromName = a.from_name || a.email;
+      const hasDetails = a.reply_to || a.bcc_emails || a.signature;
+      return `<div class="col-md-6 col-lg-4">
+        <div class="smtp-card">
+          <span class="smtp-status-badge ${statusCls}">${statusTxt}</span>
+          <div class="sc-email">${a.email}</div>
+          <div class="sc-server" style="margin-bottom:4px;">
+            <span style="color:#374151;font-weight:600;">${escHtml(fromName)}</span>
+            <span style="color:#d1d5db;"> &middot; </span>
+            ${a.smtp_server}:${a.smtp_port}
+          </div>
+          <div class="sc-metrics">
+            <div class="sc-metric"><div class="sm-val" style="color:${hc};">${a.health_score}</div><div class="sm-lbl">Health</div><div class="health-bar-mini"><div class="health-bar-fill" style="width:${a.health_score}%;background:${hc};"></div></div></div>
+            <div class="sc-metric"><div class="sm-val" style="color:#6366f1;">Stage ${a.warmup_stage}</div><div class="sm-lbl">Warmup</div></div>
+            <div class="sc-metric"><div class="sm-val">${a.sent_today}/${a.daily_limit}</div><div class="sm-lbl">Sent Today</div><div class="health-bar-mini"><div class="health-bar-fill" style="width:${pct}%;background:#6366f1;"></div></div></div>
+            <div class="sc-metric"><div class="sm-val" style="color:${a.active?'#10b981':'#9CA3AF'};">${a.active?'Active':'Paused'}</div><div class="sm-lbl">Status</div></div>
+          </div>
+          ${hasDetails ? `
+          <div id="details-${a.id}" style="display:none;background:#f8fafc;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11.5px;">
+            ${a.reply_to ? `<div style="margin-bottom:4px;"><span style="color:#9CA3AF;font-weight:600;">Reply-To:</span> ${escHtml(a.reply_to)}</div>` : ''}
+            ${a.bcc_emails ? `<div style="margin-bottom:4px;"><span style="color:#9CA3AF;font-weight:600;">BCC:</span> ${escHtml(a.bcc_emails)}</div>` : ''}
+            ${a.signature ? `<div><span style="color:#9CA3AF;font-weight:600;">Signature:</span><div style="margin-top:4px;padding:6px;background:#fff;border-radius:4px;border:1px solid #e2e8f0;max-height:60px;overflow:hidden;">${a.signature.slice(0,120)}${a.signature.length>120?'...':''}</div></div>` : ''}
+          </div>` : ''}
+          <div class="smtp-actions">
+            ${hasDetails ? `<button class="sa-btn" onclick="toggleDetails(${a.id})"><i class="fas fa-eye me-1"></i>Details</button>` : ''}
+            <button class="sa-btn" onclick="editAccount(${JSON.stringify(a).replace(/"/g,'&quot;')})"><i class="fas fa-pen me-1"></i>Edit</button>
+            <button class="sa-btn" onclick="toggleAccount(${a.id})">${a.active?'Pause':'Enable'}</button>
+            <button class="sa-btn danger" onclick="deleteAccount(${a.id},'${a.email}')">Delete</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
 
-    function testGroq() {
-        document.getElementById('groqStatus').innerHTML = '⏳ Testing...';
-        var keys = document.querySelector('[name=groq_api_keys]').value;
-        var key = keys.split(',')[0].trim();
-        if (!key) { document.getElementById('groqStatus').innerHTML = '<span class="text-danger">❌ No key</span>'; return; }
-        fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method:'POST',
-            headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},
-            body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:'Say OK'}],max_tokens:5})
-        }).then(r=>r.json()).then(data => {
-            if (data.choices) {
-                document.getElementById('groqStatus').innerHTML = '<span class="text-success">✅ Working!</span>';
-            } else {
-                document.getElementById('groqStatus').innerHTML = '<span class="text-danger">❌ ' + (data.error?.message || 'Error') + '</span>';
-            }
-        }).catch(e => {
-            document.getElementById('groqStatus').innerHTML = '<span class="text-danger">❌ Failed</span>';
-        });
-    }
+    // Overview status
+    document.getElementById('overviewStatus').innerHTML = accounts.map(a => {
+      const hc = a.health_score>=70?'#10b981':a.health_score>=40?'#f59e0b':'#ef4444';
+      return `<div class="imap-row"><span class="imap-label" style="font-size:12px;">${a.email}</span><span style="font-size:12px;font-weight:700;color:${hc};">${a.health_score}/100</span></div>`;
+    }).join('') || '<div style="color:#9CA3AF;font-size:12px;">No inboxes configured</div>';
+  }).catch(()=>{});
+}
 
-    function checkGroqUsage() {
-        document.getElementById('groqUsagePanel').style.display = 'block';
-        document.getElementById('groqUsageBody').innerHTML = '<div class="text-center py-2"><div class="spin"></div> Checking all keys...</div>';
-        fetch('/api/groq_usage').then(r=>r.json()).then(data => {
-            if (data.error) {
-                document.getElementById('groqUsageBody').innerHTML = '<span class="text-danger">' + data.error + '</span>';
-                return;
-            }
-            let html = '';
-            data.keys.forEach(k => {
-                const info = k.info;
-                if (info.error) {
-                    html += `<div class="mb-2 p-2" style="background:#fff;border-radius:8px;border:1px solid #fecaca;">
-                        <strong>Key ${k.key_index}</strong> (${k.key_hint}) — <span class="text-danger">${info.error}</span>
-                    </div>`;
-                    return;
-                }
-                const reqUsed = info.limit_requests !== '?' ? (parseInt(info.limit_requests) - parseInt(info.remaining_requests)) : '?';
-                const reqTotal = info.limit_requests || '?';
-                const reqRemain = info.remaining_requests || '?';
-                const tokRemain = info.remaining_tokens || '?';
-                const tokTotal = info.limit_tokens || '?';
-                const pctUsed = (reqTotal !== '?' && reqRemain !== '?') ? Math.round(((reqTotal - reqRemain) / reqTotal) * 100) : 0;
-                const barColor = pctUsed > 80 ? '#ef4444' : pctUsed > 50 ? '#f59e0b' : '#22c55e';
-                html += `<div class="mb-2 p-2" style="background:#fff;border-radius:8px;border:1px solid #e2e8f0;">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <strong>Key ${k.key_index}</strong> <small>(${k.key_hint})</small>
-                        <small class="text-muted">Checked: ${info.last_checked || '-'}</small>
-                    </div>
-                    <div class="d-flex gap-3 mb-1" style="font-size:0.85rem;">
-                        <span>📨 Requests: <b>${reqUsed}</b> used / <b>${reqTotal}</b> total</span>
-                        <span>✅ Remaining: <b style="color:#22c55e">${reqRemain}</b></span>
-                    </div>
-                    <div class="progress" style="height:6px;margin-bottom:6px;">
-                        <div class="progress-bar" style="width:${pctUsed}%;background:${barColor}"></div>
-                    </div>
-                    <div class="d-flex gap-3" style="font-size:0.8rem;color:#6b7280;">
-                        <span>🪙 Tokens remaining: <b>${tokRemain}</b> / ${tokTotal}</span>
-                        ${info.reset_requests ? '<span>🔄 Resets: ' + info.reset_requests + '</span>' : ''}
-                    </div>
-                    <div style="font-size:0.8rem;color:#6b7280;margin-top:4px;">
-                        <span>📊 From DB — Today: <b>${k.today_used_db}</b> calls | All time: <b>${k.total_used_db}</b> calls</span>
-                    </div>
-                </div>`;
-            });
-            document.getElementById('groqUsageBody').innerHTML = html;
-            document.getElementById('groqLastChecked').textContent = 'Updated: ' + new Date().toLocaleTimeString();
-        }).catch(e => {
-            document.getElementById('groqUsageBody').innerHTML = '<span class="text-danger">Failed to fetch</span>';
-        });
+function showAddSmtp() {
+  document.getElementById('acc_edit_id').value = '';
+  document.getElementById('addSmtpTitle').textContent = 'Add New Inbox';
+  document.getElementById('acc_email').disabled = false;
+  document.getElementById('acc_email').value = '';
+  document.getElementById('acc_password').value = '';
+  document.getElementById('acc_from_name').value = '';
+  document.getElementById('acc_daily_limit').value = '50';
+  document.getElementById('acc_smtp_server').value = 'smtp.hostinger.com';
+  document.getElementById('acc_smtp_port').value = '587';
+  document.getElementById('acc_reply_to').value = '';
+  document.getElementById('acc_bcc_emails').value = '';
+  document.getElementById('acc_signature').value = '';
+  document.getElementById('addSmtpForm').style.display = 'block';
+  document.getElementById('addSmtpForm').scrollIntoView({behavior:'smooth'});
+}
+
+function hideAddSmtp() {
+  document.getElementById('addSmtpForm').style.display = 'none';
+}
+
+function editAccount(a) {
+  document.getElementById('acc_edit_id').value = a.id;
+  document.getElementById('addSmtpTitle').textContent = 'Edit Inbox: ' + a.email;
+  document.getElementById('acc_email').value = a.email;
+  document.getElementById('acc_email').disabled = true;
+  document.getElementById('acc_password').value = '';
+  document.getElementById('acc_from_name').value = a.from_name || '';
+  document.getElementById('acc_daily_limit').value = a.daily_limit || 50;
+  document.getElementById('acc_smtp_server').value = a.smtp_server || 'smtp.hostinger.com';
+  document.getElementById('acc_smtp_port').value = a.smtp_port || 587;
+  document.getElementById('acc_reply_to').value = a.reply_to || '';
+  document.getElementById('acc_bcc_emails').value = a.bcc_emails || '';
+  document.getElementById('acc_signature').value = a.signature || '';
+  document.getElementById('addSmtpForm').style.display = 'block';
+  document.getElementById('addSmtpForm').scrollIntoView({behavior:'smooth'});
+}
+
+function saveAccount() {
+  const editId = document.getElementById('acc_edit_id').value;
+  const email = document.getElementById('acc_email').value.trim();
+  const password = document.getElementById('acc_password').value;
+  const from_name = document.getElementById('acc_from_name').value.trim();
+  const daily_limit = parseInt(document.getElementById('acc_daily_limit').value) || 50;
+  const smtp_server = document.getElementById('acc_smtp_server').value.trim();
+  const smtp_port = parseInt(document.getElementById('acc_smtp_port').value) || 587;
+  const reply_to = document.getElementById('acc_reply_to').value.trim();
+  const bcc_emails = document.getElementById('acc_bcc_emails').value.trim();
+  const signature = document.getElementById('acc_signature').value;
+
+  // Validation
+  if (!editId && (!email || !password)) { showToast('Email and password required', 'error'); return; }
+  if (!editId && !email.includes('@')) { showToast('Invalid email format', 'error'); return; }
+  if (isNaN(smtp_port) || smtp_port <= 0) { showToast('SMTP port must be a positive number', 'error'); return; }
+  if (daily_limit <= 0) { showToast('Daily limit must be > 0', 'error'); return; }
+
+  const data = { email, from_name, daily_limit, smtp_server, smtp_port, reply_to, bcc_emails, signature };
+  if (password) data.password = password;
+
+  const url = editId
+    ? `/api/smtp_accounts/${editId}/update`
+    : '/api/smtp_accounts/add';
+
+  fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) {
+        hideAddSmtp();
+        loadSmtpCards();
+        showToast(editId ? 'Inbox updated!' : 'Inbox added!', 'success');
+      } else {
+        showToast(d.error || 'Failed', 'error');
+      }
+    })
+    .catch(() => showToast('Network error', 'error'));
+}
+
+function toggleAccount(id) {
+  fetch(`/api/smtp_accounts/${id}/toggle`,{method:'POST'}).then(r=>r.json()).then(d=>{if(d.success)loadSmtpCards();});
+}
+function deleteAccount(id, email) {
+  if(!confirm(`Delete ${email}?`))return;
+  fetch(`/api/smtp_accounts/${id}/delete`,{method:'DELETE'}).then(r=>r.json()).then(d=>{if(d.success)loadSmtpCards();});
+}
+function resetTodayCounts() {
+  fetch('/api/smtp_accounts/reset_today',{method:'POST'}).then(r=>r.json()).then(d=>{if(d.success){loadSmtpCards();showToast('Daily counts reset','success');}});
+}
+function toggleDetails(id) {
+  const el = document.getElementById('details-'+id);
+  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── IMAP STATUS ──
+function checkImapStatus() {
+  fetch('/api/imap_status').then(r=>r.json()).then(d=>{
+    const card = document.getElementById('imapStatusCard');
+    if(d.configured) {
+      card.className='imap-status-card mb-4';
+      document.getElementById('imapStatusText').textContent = d.running ? 'IMAP Connected & Monitoring' : 'IMAP Configured';
+      document.getElementById('imapStatusSub').textContent = `${d.username} · ${d.server}`;
+      document.getElementById('hb-imap').textContent = 'Connected';
+      document.getElementById('hb-imap-dot').style.background = '#10b981';
+      document.getElementById('imap-server-val').textContent = d.server.split('.')[0];
+      document.getElementById('imap-interval-val').textContent = d.interval+'s';
+      document.getElementById('imapMetrics').style.display='flex';
+    } else {
+      card.className='imap-status-card disconnected mb-4';
+      document.getElementById('imapStatusText').textContent = 'IMAP Not Configured';
+      document.getElementById('imapStatusSub').textContent = 'Configure IMAP below to enable reply detection';
+      document.getElementById('hb-imap').textContent = 'Not configured';
+      document.getElementById('hb-imap-dot').style.background = '#9CA3AF';
     }
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  }).catch(()=>{});
+}
+
+// ── AI MODEL SELECTION ──
+function selectModel(key, el) {
+  document.querySelectorAll('.model-card').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// ── GROQ TEST & USAGE ──
+function testGroq() {
+  document.getElementById('groqStatus').innerHTML='<span class="spin"></span>';
+  const keys = document.querySelector('[name=groq_api_keys]').value;
+  const key = keys.split(',')[0].trim();
+  if(!key){document.getElementById('groqStatus').innerHTML='<span style="color:#dc2626;font-size:12px;">No key</span>';return;}
+  fetch('https://api.groq.com/openai/v1/chat/completions',{
+    method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},
+    body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:'Say OK'}],max_tokens:5})
+  }).then(r=>r.json()).then(d=>{
+    document.getElementById('groqStatus').innerHTML = d.choices
+      ? '<span style="color:#10b981;font-size:12px;font-weight:600;">✓ Connected</span>'
+      : '<span style="color:#dc2626;font-size:12px;">✗ '+(d.error?.message||'Error')+'</span>';
+  }).catch(()=>{document.getElementById('groqStatus').innerHTML='<span style="color:#dc2626;font-size:12px;">✗ Failed</span>';});
+}
+
+function checkGroqUsage() {
+  const panel = document.getElementById('groqUsagePanel');
+  panel.style.display='block';
+  document.getElementById('groqUsageBody').innerHTML='<div class="spin mx-auto"></div>';
+  fetch('/api/groq_usage').then(r=>r.json()).then(d=>{
+    if(d.error){document.getElementById('groqUsageBody').innerHTML='<span style="color:#dc2626;">'+d.error+'</span>';return;}
+    document.getElementById('groqUsageBody').innerHTML = d.keys.map(k=>{
+      const info=k.info; if(info.error) return `<div>Key ${k.key_index} (${k.key_hint}): <span style="color:#dc2626;">${info.error}</span></div>`;
+      const rem=info.remaining_requests||'?', lim=info.limit_requests||'?';
+      return `<div style="margin-bottom:6px;"><strong>Key ${k.key_index}</strong> (${k.key_hint}) — Remaining: <strong style="color:#10b981;">${rem}</strong>/${lim} · Today: ${k.today_used_db}</div>`;
+    }).join('');
+  }).catch(()=>{document.getElementById('groqUsageBody').innerHTML='<span style="color:#dc2626;">Failed</span>';});
+}
+
+// ── TESTING UTILITIES ──
+function logTest(msg, type) {
+  const log = document.getElementById('testLog');
+  const cls = type==='ok'?'log-ok':type==='err'?'log-err':'log-info';
+  log.innerHTML += `\n<span class="${cls}">${msg}</span>`;
+  log.scrollTop = log.scrollHeight;
+}
+
+function testSmtp() {
+  document.getElementById('testLog').innerHTML = '<span class="log-info">// Testing SMTP connection...</span>';
+  fetch('/api/smtp_test').then(r=>r.json()).then(d=>{
+    logTest(`Server: ${d.smtp_server}:${d.smtp_port}`, 'info');
+    logTest(`Username: ${d.smtp_username}`, 'info');
+    logTest(`From: ${d.from_email}`, 'info');
+    logTest(d.connection_test, d.connection_test?.includes('SUCCESS')?'ok':'err');
+  }).catch(e=>logTest('SMTP test failed: '+e,'err'));
+}
+
+function testSmtpAccount(id, email) {
+  showSection('testing');
+  document.getElementById('testLog').innerHTML = `<span class="log-info">// Testing ${email}...</span>`;
+  setTimeout(()=>logTest('Connection test not yet implemented for individual accounts','info'),500);
+}
+
+function testImap() {
+  document.getElementById('testLog').innerHTML = '<span class="log-info">// Testing IMAP connection...</span>';
+  fetch('/api/imap_status').then(r=>r.json()).then(d=>{
+    logTest(`Server: ${d.server}`, 'info');
+    logTest(`Username: ${d.username}`, 'info');
+    logTest(`Configured: ${d.configured}`, d.configured?'ok':'err');
+    logTest(`Running: ${d.running}`, d.running?'ok':'info');
+  }).catch(e=>logTest('IMAP test failed: '+e,'err'));
+}
+
+function testAI() {
+  document.getElementById('testLog').innerHTML = '<span class="log-info">// Testing AI connection...</span>';
+  fetch('/api/ai_usage').then(r=>r.json()).then(d=>{
+    logTest('AI usage API: OK', 'ok');
+    d.by_provider.forEach(p=>logTest(`${p.provider}: ${p.total} calls (${p.success} success)`, 'info'));
+    if(!d.by_provider.length) logTest('No AI calls recorded yet', 'info');
+  }).catch(e=>logTest('AI test failed: '+e,'err'));
+}
+
+function testTracking() {
+  document.getElementById('testLog').innerHTML = '<span class="log-info">// Testing tracking configuration...</span>';
+  fetch('/api/smtp_test').then(r=>r.json()).then(d=>{
+    logTest(`Tracking host: ${d.tracking_host}`, d.tracking_host!=='NOT SET'?'ok':'err');
+    logTest(`DB path: ${d.db_path}`, 'info');
+  }).catch(e=>logTest('Tracking test failed: '+e,'err'));
+}
+
+// ── PROMPT PRESETS ──
+const PRESETS = {
+  'SaaS Outreach': `Write a cold outreach email to {name}, founder/executive at {company}.\n\nRULES:\n1. Open with ONE specific fact about {company}.\n2. Connect why they need engineering talent.\n3. Pitch Shiksha Infotech: Est. 2009, 400+ engineers, $30-55/hr AI/ML engineers.\n4. End with 15 min call CTA.\n5. MAX 4-5 sentences. Casual founder-to-founder tone.\n6. Output as HTML with <p> tags.`,
+  'Agency Outreach': `Write a value-first cold email to {name} at {company}.\n\nFocus on: what value you bring first, then pitch.\nTone: consultative, not salesy.\nLength: 3-4 sentences max.\nOutput as HTML.`,
+  'Founder Outreach': `Write a peer-to-peer founder email to {name} at {company}.\n\nTone: casual, direct, founder-to-founder.\nNo corporate language.\nLength: 2-3 sentences.\nOutput as HTML.`,
+};
+function loadPreset(name) {
+  if(PRESETS[name]) {
+    document.getElementById('promptEditor').value = PRESETS[name];
+    showToast('Preset loaded: '+name, 'success');
+  }
+}
+
+// ── AI USAGE TODAY ──
+fetch('/api/ai_usage').then(r=>r.json()).then(d=>{
+  const today = d.by_date.filter(x=>x.day===new Date().toISOString().slice(0,10)).reduce((s,x)=>s+x.total,0);
+  document.getElementById('ov-ai-today').textContent = today;
+  document.getElementById('hb-ai').textContent = today + ' calls today';
+}).catch(()=>{});
+
+// ── INIT ──
+loadSmtpCards();
+checkImapStatus();
+</script>
 </body>
 </html>

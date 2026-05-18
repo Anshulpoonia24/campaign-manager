@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Automation Center — OutreachOS</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+body { background: linear-gradient(160deg, #f8fafc 0%, #f1f5ff 60%, #f8fafc 100%); }
+
+/* ── KPI CARDS ── */
+.kpi-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 18px;
+  padding: 20px 22px; box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+.kpi-card:hover { box-shadow: 0 6px 20px rgba(15,23,42,0.07); transform: translateY(-1px); }
+.kpi-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 15px; margin-bottom: 12px; }
+.ki-indigo  { background: #eef2ff; color: #6366f1; }
+.ki-emerald { background: #f0fdf4; color: #10b981; }
+.ki-blue    { background: #eff6ff; color: #3b82f6; }
+.ki-violet  { background: #f5f3ff; color: #8b5cf6; }
+.ki-amber   { background: #fffbeb; color: #f59e0b; }
+.ki-slate   { background: #f8fafc; color: #64748b; }
+.kpi-val { font-size: 1.8rem; font-weight: 800; color: #0f172a; letter-spacing: -0.8px; line-height: 1; margin-bottom: 4px; }
+.kpi-lbl { font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-sub { font-size: 11.5px; color: #6B7280; margin-top: 4px; }
+
+/* ── RULE CARDS ── */
+.rule-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 22px;
+  padding: 26px 28px; margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+  transition: box-shadow 0.2s, transform 0.15s, border-color 0.15s;
+  position: relative; overflow: hidden;
+}
+.rule-card:hover { box-shadow: 0 8px 28px rgba(15,23,42,0.07); transform: translateY(-1px); }
+.rule-card.rule-enabled { border-left: 4px solid #6366f1; }
+.rule-card.rule-disabled { border-left: 4px solid #e5e7eb; opacity: 0.75; }
+.rule-card.rule-enabled:hover { border-color: #a5b4fc; border-left-color: #6366f1; }
+
+/* Rule icon */
+.rule-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+
+/* Rule title */
+.rule-title { font-size: 15px; font-weight: 700; color: #0f172a; letter-spacing: -0.2px; margin-bottom: 5px; }
+.rule-desc  { font-size: 13px; color: #6B7280; line-height: 1.55; max-width: 480px; }
+
+/* Priority badge */
+.priority-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 99px;
+}
+.pb-ai    { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
+.pb-crit  { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.pb-deliv { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.pb-eng   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.pb-inbox { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+
+/* Config pills */
+.config-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.config-pill {
+  display: flex; align-items: center; gap: 8px;
+  background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 7px 12px;
+}
+.config-pill label { font-size: 11.5px; font-weight: 600; color: #374151; margin: 0; white-space: nowrap; }
+.config-pill input[type=number] {
+  width: 52px; border: 1px solid #e5e7eb; border-radius: 7px;
+  padding: 4px 8px; font-size: 13px; font-weight: 600; color: #0f172a;
+  background: #fff; text-align: center; outline: none;
+  font-family: 'Inter', sans-serif;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.config-pill input[type=number]:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+.config-pill .unit { font-size: 11.5px; color: #9CA3AF; font-weight: 500; }
+
+/* Premium toggle */
+.toggle-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
+.toggle-switch { position: relative; display: inline-block; width: 48px; height: 26px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: #e5e7eb; border-radius: 26px; transition: 0.25s;
+}
+.toggle-slider::before {
+  content: ''; position: absolute;
+  height: 20px; width: 20px; left: 3px; bottom: 3px;
+  background: #fff; border-radius: 50%; transition: 0.25s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+input:checked + .toggle-slider { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+input:checked + .toggle-slider::before { transform: translateX(22px); }
+.toggle-label { font-size: 10.5px; font-weight: 600; color: #9CA3AF; }
+.toggle-label.active { color: #6366f1; }
+
+/* Status dot */
+.status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+.sd-active { background: #10b981; box-shadow: 0 0 0 2px rgba(16,185,129,0.2); }
+.sd-paused { background: #f59e0b; }
+.sd-off    { background: #d1d5db; }
+
+/* AI Tester */
+.ai-tester {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 22px;
+  padding: 28px; box-shadow: 0 2px 8px rgba(15,23,42,0.04); margin-top: 8px;
+}
+.ai-tester-header {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 22px;
+}
+.ai-tester-icon {
+  width: 42px; height: 42px; border-radius: 12px;
+  background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; color: #6366f1; flex-shrink: 0;
+}
+.draft-output {
+  background: #fafbff; border: 1px solid #e0e7ff; border-radius: 12px;
+  padding: 16px 18px; font-size: 13.5px; line-height: 1.7; color: #374151;
+  margin-top: 16px; display: none;
+}
+.draft-output .draft-label {
+  font-size: 10px; font-weight: 700; color: #6366f1; text-transform: uppercase;
+  letter-spacing: 0.6px; margin-bottom: 10px; display: flex; align-items: center; gap: 5px;
+}
+
+/* Info banner */
+.info-banner {
+  background: #fafbff; border: 1px solid #e0e7ff; border-radius: 12px;
+  padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+  font-size: 12.5px; color: #4338ca; margin-bottom: 24px;
+}
+.info-banner i { color: #6366f1; flex-shrink: 0; }
+
+/* Spin */
+.spin { display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,0.3);border-top:2px solid #fff;border-radius:50%;animation:spin 0.6s linear infinite; }
+.spin-dark { border-color:#e5e7eb; border-top-color:#6366f1; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Run btn */
+.btn-run {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff; border: none; border-radius: 12px; padding: 10px 22px;
+  font-size: 13.5px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;
+  display: flex; align-items: center; gap: 8px;
+  box-shadow: 0 2px 10px rgba(99,102,241,0.28);
+  transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.btn-run:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,0.38); }
+.btn-run:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations" class="active"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#f87171;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<div class="main">
+
+  <!-- PAGE HEADER -->
+  <div class="d-flex align-items-start justify-content-between mb-5" style="margin-bottom:28px!important;">
+    <div>
+      <h1 style="font-size:1.75rem;font-weight:800;color:#0f172a;letter-spacing:-0.6px;margin-bottom:5px;">Automation Center</h1>
+      <p style="font-size:14px;color:#6B7280;margin:0;">Configure AI-powered follow-ups, inbox workflows, reply intelligence, and outbound automation rules.</p>
+    </div>
+    <button class="btn-run" onclick="runNow(this)" id="runBtn">
+      <i class="fas fa-play" style="font-size:11px;"></i> Run Automations
+    </button>
+  </div>
+
+  <!-- KPI CARDS -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-indigo"><i class="fas fa-bolt"></i></div>
+        <div class="kpi-val" style="color:#6366f1;">{{ stats.active_rules }}</div>
+        <div class="kpi-lbl">Active Rules</div>
+        <div class="kpi-sub">Workflows running</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-emerald"><i class="fas fa-fire"></i></div>
+        <div class="kpi-val" style="color:#10b981;">{{ stats.interested_threads }}</div>
+        <div class="kpi-lbl">Interested</div>
+        <div class="kpi-sub">Hot replies</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-blue"><i class="fas fa-calendar-check"></i></div>
+        <div class="kpi-val" style="color:#3b82f6;">{{ stats.meeting_threads }}</div>
+        <div class="kpi-lbl">Meetings</div>
+        <div class="kpi-sub">Detected</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-violet"><i class="fas fa-check-circle"></i></div>
+        <div class="kpi-val" style="color:#8b5cf6;">{{ stats.booked_threads }}</div>
+        <div class="kpi-lbl">Booked</div>
+        <div class="kpi-sub">Confirmed</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-amber"><i class="fas fa-comments"></i></div>
+        <div class="kpi-val" style="color:#f59e0b;">{{ stats.total_threads }}</div>
+        <div class="kpi-lbl">Threads</div>
+        <div class="kpi-sub">Total active</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-slate"><i class="fas fa-plane-departure"></i></div>
+        <div class="kpi-val" style="color:#64748b;">{{ stats.ooo_detected }}</div>
+        <div class="kpi-lbl">OOO</div>
+        <div class="kpi-sub">Detected</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INFO BANNER -->
+  <div class="info-banner">
+    <i class="fas fa-info-circle"></i>
+    Automation rules run every 30 minutes in the background. Click <strong>Run Automations</strong> to trigger immediately. Rules are AI-optimized — configure delays and limits below.
+  </div>
+
+  <!-- RULE CARDS -->
+  {% for key, rule in rules.items() %}
+  {% set meta = rule.meta %}
+  {% set priority_map = {
+    'no_reply_followup': ('pb-ai', 'AI Optimized'),
+    'opened_multiple_times': ('pb-eng', 'Engagement'),
+    'interested_pause': ('pb-crit', 'Critical'),
+    'ooo_retry': ('pb-inbox', 'Inbox Health'),
+    'bounce_pause': ('pb-deliv', 'Deliverability')
+  } %}
+  {% set pb_cls, pb_label = priority_map.get(key, ('pb-ai', 'AI')) %}
+
+  <div class="rule-card {{ 'rule-enabled' if rule.enabled else 'rule-disabled' }}" id="card-{{ key }}">
+    <div class="d-flex align-items-start gap-4">
+
+      <!-- Icon -->
+      <div class="rule-icon" style="background:{{ meta.color }}18;color:{{ meta.color }};">
+        <i class="fas {{ meta.icon }}"></i>
+      </div>
+
+      <!-- Content -->
+      <div style="flex:1;min-width:0;">
+        <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+          <span class="rule-title">{{ meta.title }}</span>
+          <span class="priority-badge {{ pb_cls }}">
+            <i class="fas fa-circle" style="font-size:6px;"></i> {{ pb_label }}
+          </span>
+        </div>
+        <p class="rule-desc">{{ meta.description }}</p>
+
+        <!-- Config pills -->
+        <div class="config-group">
+          {% if meta.show_delay %}
+          <div class="config-pill">
+            <label>{{ meta.delay_label }}</label>
+            <input type="number" id="delay-{{ key }}" value="{{ rule.delay_days }}" min="0" max="30" onchange="saveRule('{{ key }}')">
+            <span class="unit">days</span>
+          </div>
+          {% endif %}
+          {% if meta.show_max %}
+          <div class="config-pill">
+            <label>{{ meta.max_label }}</label>
+            <input type="number" id="max-{{ key }}" value="{{ rule.max_followups }}" min="1" max="10" onchange="saveRule('{{ key }}')">
+            <span class="unit">max</span>
+          </div>
+          {% endif %}
+          <div style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;">
+            <span class="status-dot {{ 'sd-active' if rule.enabled else 'sd-off' }}" id="dot-{{ key }}"></span>
+            <span style="font-size:11.5px;font-weight:600;color:#374151;" id="status-{{ key }}">{{ 'Active' if rule.enabled else 'Disabled' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toggle -->
+      <div class="toggle-wrap">
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-{{ key }}" {{ 'checked' if rule.enabled }} onchange="saveRule('{{ key }}')">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-label {{ 'active' if rule.enabled }}" id="toggle-lbl-{{ key }}">
+          {{ 'On' if rule.enabled else 'Off' }}
+        </span>
+      </div>
+
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- AI FOLLOW-UP TESTER -->
+  <div class="ai-tester">
+    <div class="ai-tester-header">
+      <div class="ai-tester-icon"><i class="fas fa-robot"></i></div>
+      <div>
+        <div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:3px;">AI Follow-up Simulator</div>
+        <div style="font-size:13px;color:#6B7280;">Test AI-generated follow-up drafts before deploying automation rules.</div>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">Contact Name</label>
+        <input type="text" id="test_name" class="form-control" placeholder="e.g. Alex Chen">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Company</label>
+        <input type="text" id="test_company" class="form-control" placeholder="e.g. TechFlow AI">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Previous Subject</label>
+        <input type="text" id="test_subject" class="form-control" placeholder="e.g. Helping TechFlow scale engineering">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button class="btn btn-primary w-100" onclick="testDraft(this)" style="border-radius:10px;padding:9px;">
+          <i class="fas fa-magic me-1"></i> Generate
+        </button>
+      </div>
+    </div>
+
+    <div class="draft-output" id="draftResult">
+      <div class="draft-label"><i class="fas fa-robot"></i> AI Generated Draft</div>
+      <div id="draftContent"></div>
+    </div>
+  </div>
+
+</div><!-- main -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── SAVE RULE ──
+function saveRule(key) {
+  const enabled = document.getElementById('toggle-' + key).checked;
+  const delayEl = document.getElementById('delay-' + key);
+  const maxEl   = document.getElementById('max-' + key);
+  const delay_days    = delayEl ? parseInt(delayEl.value) || 0 : 0;
+  const max_followups = maxEl   ? parseInt(maxEl.value)   || 0 : 0;
+
+  // Update UI immediately
+  const card = document.getElementById('card-' + key);
+  card.className = 'rule-card ' + (enabled ? 'rule-enabled' : 'rule-disabled');
+  const dot = document.getElementById('dot-' + key);
+  if(dot) { dot.className = 'status-dot ' + (enabled ? 'sd-active' : 'sd-off'); }
+  const lbl = document.getElementById('status-' + key);
+  if(lbl) lbl.textContent = 'Saving...';
+  const tLbl = document.getElementById('toggle-lbl-' + key);
+  if(tLbl) { tLbl.textContent = enabled ? 'On' : 'Off'; tLbl.className = 'toggle-label' + (enabled ? ' active' : ''); }
+
+  fetch('/api/automations/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({rule_key: key, enabled, delay_days, max_followups})
+  })
+  .then(r => r.json())
+  .then(d => {
+    if(lbl) lbl.textContent = d.success ? (enabled ? 'Active' : 'Disabled') : 'Error!';
+  })
+  .catch(() => { if(lbl) lbl.textContent = 'Error!'; });
+}
+
+// ── RUN NOW ──
+function runNow(btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Running...';
+  fetch('/api/automations/run', {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check" style="font-size:11px;"></i> Done!';
+      if(d.stats) {
+        const s = d.stats;
+        const msg = `Automation complete\n\nFollow-ups queued: ${s.followups_queued}\nThreads paused: ${s.threads_paused}\nOOO retries: ${s.ooo_retries_queued}`;
+        setTimeout(() => alert(msg), 100);
+      }
+      setTimeout(() => { btn.innerHTML = '<i class="fas fa-play" style="font-size:11px;"></i> Run Automations'; }, 3500);
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-play" style="font-size:11px;"></i> Run Automations';
+    });
+}
+
+// ── TEST DRAFT ──
+function testDraft(btn) {
+  const name    = document.getElementById('test_name').value.trim();
+  const company = document.getElementById('test_company').value.trim();
+  const subject = document.getElementById('test_subject').value.trim();
+  if(!name || !company) {
+    document.getElementById('test_name').focus();
+    return;
+  }
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<span class="spin spin-dark"></span>';
+  btn.disabled = true;
+
+  fetch('/api/automations/followup_draft', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({contact_name: name, company, previous_subject: subject})
+  })
+  .then(r => r.json())
+  .then(d => {
+    btn.innerHTML = orig;
+    btn.disabled = false;
+    const out = document.getElementById('draftResult');
+    const content = document.getElementById('draftContent');
+    out.style.display = 'block';
+    content.innerHTML = d.success
+      ? d.draft
+      : `<span style="color:#dc2626;font-size:13px;">${d.error || 'Generation failed. Check AI API keys in Settings.'}</span>`;
+  })
+  .catch(() => {
+    btn.innerHTML = orig;
+    btn.disabled = false;
+  });
+}
+</script>
+</body>
+</html>

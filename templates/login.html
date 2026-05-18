@@ -1,119 +1,434 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login — Campaign Manager</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            background: #0B1F3A;
-            font-family: 'Inter', sans-serif;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .login-card {
-            background: #fff;
-            border-radius: 16px;
-            padding: 48px 40px;
-            width: 100%;
-            max-width: 420px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        .login-card .brand {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-        .login-card .brand i {
-            font-size: 2.5rem;
-            color: #1DBF73;
-            margin-bottom: 12px;
-            display: block;
-        }
-        .login-card .brand h2 {
-            font-weight: 700;
-            color: #0B1F3A;
-            font-size: 1.4rem;
-            margin: 0;
-        }
-        .login-card .brand small {
-            color: #6B7280;
-            font-size: 0.85rem;
-        }
-        .form-control {
-            background: #F8FAFC;
-            border: 1px solid #E5E7EB;
-            border-radius: 10px;
-            padding: 12px 16px;
-            font-size: 14px;
-        }
-        .form-control:focus {
-            border-color: #1DBF73;
-            box-shadow: 0 0 0 3px rgba(29,191,115,0.12);
-            background: #fff;
-        }
-        .btn-login {
-            background: #1DBF73;
-            border: none;
-            color: #fff;
-            font-weight: 600;
-            border-radius: 10px;
-            padding: 12px;
-            font-size: 15px;
-            width: 100%;
-            transition: background 0.2s;
-        }
-        .btn-login:hover { background: #17a862; color: #fff; }
-        .alert { border-radius: 10px; font-size: 13px; border: none; }
-        .alert-danger { background: #fef2f2; color: #991b1b; }
-        .alert-success { background: #ecfdf5; color: #065f46; }
-        .input-group-text {
-            background: #F8FAFC;
-            border: 1px solid #E5E7EB;
-            border-right: none;
-            border-radius: 10px 0 0 10px;
-            color: #6B7280;
-        }
-        .input-group .form-control { border-left: none; border-radius: 0 10px 10px 0; }
-    </style>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OutreachOS — AI Outbound Infrastructure</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  background: #f8fafc;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ── BACKGROUND ── */
+.bg-layer {
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 70% 60% at 15% 50%, rgba(99,102,241,0.07) 0%, transparent 65%),
+    radial-gradient(ellipse 50% 70% at 85% 20%, rgba(16,185,129,0.05) 0%, transparent 60%),
+    linear-gradient(160deg, #f8fafc 0%, #f1f5ff 50%, #f8fafc 100%);
+}
+
+/* ── LAYOUT ── */
+.split-layout {
+  position: relative; z-index: 1;
+  display: flex; width: 100%; min-height: 100vh;
+}
+
+/* ══════════════════════════════════
+   LEFT PANEL
+══════════════════════════════════ */
+.left-panel {
+  flex: 1; display: flex; flex-direction: column;
+  justify-content: center; padding: 64px 72px;
+  position: relative;
+}
+
+/* Brand */
+.brand-mark {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 64px;
+  animation: fadeUp 0.5s ease both;
+}
+.brand-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 9px; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 12px rgba(99,102,241,0.25);
+}
+.brand-icon i { color: #fff; font-size: 14px; }
+.brand-name { font-size: 16px; font-weight: 800; color: #111827; letter-spacing: -0.3px; }
+.brand-tag {
+  font-size: 10px; font-weight: 600; color: #6366f1;
+  background: #eef2ff; border: 1px solid #c7d2fe;
+  padding: 2px 8px; border-radius: 99px; letter-spacing: 0.4px; text-transform: uppercase;
+}
+
+/* Headline */
+.hero-headline {
+  font-size: 2.6rem; font-weight: 800; color: #111827;
+  line-height: 1.15; letter-spacing: -1.2px; margin-bottom: 18px;
+  animation: fadeUp 0.5s 0.08s ease both;
+}
+.hero-headline .accent {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-sub {
+  font-size: 15px; color: #6B7280; line-height: 1.7;
+  max-width: 400px; margin-bottom: 52px;
+  animation: fadeUp 0.5s 0.14s ease both;
+}
+
+/* Feature list */
+.feature-list {
+  display: flex; flex-direction: column; gap: 14px; margin-bottom: 52px;
+  animation: fadeUp 0.5s 0.2s ease both;
+}
+.feature-item {
+  display: flex; align-items: center; gap: 12px;
+}
+.feature-dot {
+  width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 13px;
+}
+.fd-indigo  { background: #eef2ff; color: #6366f1; }
+.fd-emerald { background: #f0fdf4; color: #10b981; }
+.fd-violet  { background: #f5f3ff; color: #8b5cf6; }
+.fd-amber   { background: #fffbeb; color: #f59e0b; }
+.feature-item h6 { font-size: 13.5px; font-weight: 600; color: #111827; margin: 0 0 1px; }
+.feature-item p  { font-size: 12px; color: #9CA3AF; margin: 0; }
+
+/* Dashboard preview */
+.preview-wrap {
+  animation: fadeUp 0.5s 0.26s ease both;
+}
+.preview-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 14px;
+  padding: 18px 20px; box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+  max-width: 420px;
+}
+.preview-card .pc-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+}
+.preview-card .pc-title { font-size: 11px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; }
+.preview-card .pc-badge { font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.preview-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #f9fafb; }
+.preview-row:last-child { border-bottom: none; }
+.preview-row .pr-left { display: flex; align-items: center; gap: 8px; }
+.pr-avatar { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.av-a { background: #eef2ff; color: #6366f1; }
+.av-b { background: #f0fdf4; color: #10b981; }
+.av-c { background: #fef3c7; color: #d97706; }
+.pr-name { font-size: 12.5px; font-weight: 600; color: #111827; }
+.pr-co   { font-size: 11px; color: #9CA3AF; }
+.pr-score { font-size: 12px; font-weight: 700; }
+.score-hot  { color: #dc2626; }
+.score-warm { color: #d97706; }
+.score-cold { color: #6B7280; }
+.mini-bar { height: 3px; background: #f3f4f6; border-radius: 99px; overflow: hidden; margin-top: 10px; }
+.mini-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #6366f1, #8b5cf6); }
+
+/* ══════════════════════════════════
+   RIGHT PANEL
+══════════════════════════════════ */
+.right-panel {
+  width: 460px; flex-shrink: 0; display: flex; flex-direction: column;
+  justify-content: center; align-items: center; padding: 48px 44px;
+  background: #fff; border-left: 1px solid #e5e7eb;
+  box-shadow: -8px 0 40px rgba(0,0,0,0.04);
+}
+
+.auth-card {
+  width: 100%; max-width: 360px;
+  animation: fadeUp 0.5s 0.1s ease both;
+}
+
+.auth-header { margin-bottom: 28px; }
+.auth-header h3 { font-size: 1.4rem; font-weight: 800; color: #111827; letter-spacing: -0.4px; margin-bottom: 5px; }
+.auth-header p  { font-size: 13.5px; color: #6B7280; }
+
+/* Flash messages */
+.flash-msg {
+  border-radius: 8px; padding: 10px 13px; margin-bottom: 18px;
+  font-size: 12.5px; font-weight: 500; display: flex; align-items: center; gap: 8px;
+  animation: slideIn 0.25s ease;
+}
+.flash-error   { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+.flash-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+
+/* Form */
+.field-group { margin-bottom: 16px; }
+.field-label { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 7px; display: block; }
+.field-wrap { position: relative; }
+.field-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: #9CA3AF; font-size: 13px; pointer-events: none; }
+.field-input {
+  width: 100%; background: #f9fafb; border: 1px solid #e5e7eb;
+  border-radius: 9px; padding: 11px 13px 11px 38px;
+  font-size: 14px; color: #111827; font-family: 'Inter', sans-serif;
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.field-input::placeholder { color: #9CA3AF; }
+.field-input:focus {
+  border-color: #6366f1; background: #fff;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+}
+.toggle-pw {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  color: #9CA3AF; cursor: pointer; font-size: 13px; transition: color 0.15s;
+}
+.toggle-pw:hover { color: #6366f1; }
+
+/* Button */
+.btn-login {
+  width: 100%; padding: 12px; border: none; border-radius: 9px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 12px rgba(99,102,241,0.3);
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 6px;
+}
+.btn-login:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: 0 4px 18px rgba(99,102,241,0.38); }
+.btn-login:active { transform: translateY(0); }
+.btn-spin { display:none; width:14px; height:14px; border:2px solid rgba(255,255,255,0.35); border-top:2px solid #fff; border-radius:50%; animation:spin 0.6s linear infinite; }
+
+/* Divider */
+.auth-divider { display: flex; align-items: center; gap: 10px; margin: 22px 0; }
+.auth-divider span { font-size: 11.5px; color: #9CA3AF; white-space: nowrap; }
+.auth-divider::before, .auth-divider::after { content:''; flex:1; height:1px; background:#f3f4f6; }
+
+/* SSO */
+.sso-row { display: flex; gap: 8px; }
+.sso-btn {
+  flex: 1; padding: 9px 8px; border-radius: 8px;
+  background: #f9fafb; border: 1px solid #e5e7eb;
+  color: #374151; font-size: 12px; font-weight: 500;
+  cursor: pointer; font-family: 'Inter', sans-serif;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: all 0.15s;
+}
+.sso-btn:hover { background: #f3f4f6; border-color: #d1d5db; color: #111827; }
+.sso-btn i { font-size: 12px; }
+
+/* Trust */
+.trust-row { display: flex; gap: 14px; margin-top: 24px; flex-wrap: wrap; justify-content: center; }
+.trust-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #9CA3AF; }
+.trust-item i { font-size: 9px; color: #10b981; }
+
+/* Footer */
+.auth-footer { margin-top: 28px; text-align: center; }
+.auth-footer a { font-size: 11.5px; color: #9CA3AF; text-decoration: none; margin: 0 7px; transition: color 0.15s; }
+.auth-footer a:hover { color: #6366f1; }
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── RESPONSIVE ── */
+@media(max-width:1024px){
+  .left-panel { display: none; }
+  .right-panel { width: 100%; border-left: none; box-shadow: none; background: transparent; }
+  body { background: #f8fafc; }
+}
+@media(max-width:480px){
+  .right-panel { padding: 32px 20px; }
+}
+</style>
 </head>
 <body>
-    <div class="login-card">
-        <div class="brand">
-            <i class="fas fa-paper-plane"></i>
-            <h2>Campaign Manager</h2>
-            <small>Login to continue</small>
-        </div>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        {% for cat, msg in messages %}
-        <div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} mb-3">{{ msg }}</div>
-        {% endfor %}
-        {% endif %}
-        {% endwith %}
+<div class="bg-layer"></div>
 
-        <form method="POST">
-            <div class="mb-3">
-                <label class="form-label" style="font-weight:500;font-size:13px;color:#374151;">Username</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-user"></i></span>
-                    <input type="text" name="username" class="form-control" placeholder="Enter username" required autofocus>
-                </div>
-            </div>
-            <div class="mb-4">
-                <label class="form-label" style="font-weight:500;font-size:13px;color:#374151;">Password</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                    <input type="password" name="password" class="form-control" placeholder="Enter password" required>
-                </div>
-            </div>
-            <button type="submit" class="btn-login"><i class="fas fa-sign-in-alt me-2"></i>Login</button>
-        </form>
+<div class="split-layout">
+
+<!-- ══════════════════════════════════
+     LEFT PANEL
+══════════════════════════════════ -->
+<div class="left-panel">
+
+  <div class="brand-mark">
+    <div class="brand-icon"><i class="fas fa-paper-plane"></i></div>
+    <span class="brand-name">OutreachOS</span>
+    <span class="brand-tag">AI Platform</span>
+  </div>
+
+  <h1 class="hero-headline">
+    AI-Powered<br>
+    <span class="accent">Outbound</span><br>
+    Infrastructure
+  </h1>
+
+  <p class="hero-sub">
+    Personalized outreach, inbox intelligence, automation, and deliverability orchestration — unified in one platform.
+  </p>
+
+  <div class="feature-list">
+    <div class="feature-item">
+      <div class="feature-dot fd-indigo"><i class="fas fa-robot"></i></div>
+      <div>
+        <h6>AI Personalization Engine</h6>
+        <p>Context-aware emails generated per contact using company intelligence</p>
+      </div>
     </div>
+    <div class="feature-item">
+      <div class="feature-dot fd-emerald"><i class="fas fa-shield-alt"></i></div>
+      <div>
+        <h6>Deliverability Infrastructure</h6>
+        <p>SMTP rotation, warmup stages, and inbox health monitoring</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-dot fd-violet"><i class="fas fa-inbox"></i></div>
+      <div>
+        <h6>Inbox Intelligence</h6>
+        <p>AI-categorized replies, lead scoring, and reply detection</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-dot fd-amber"><i class="fas fa-bolt"></i></div>
+      <div>
+        <h6>Automation Rules</h6>
+        <p>Follow-up sequences, OOO handling, and bounce management</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clean dashboard preview -->
+  <div class="preview-wrap">
+    <div class="preview-card">
+      <div class="pc-header">
+        <span class="pc-title"><i class="fas fa-fire" style="color:#ef4444;margin-right:5px;"></i>Hot Leads</span>
+        <span class="pc-badge">3 active</span>
+      </div>
+      <div class="preview-row">
+        <div class="pr-left">
+          <div class="pr-avatar av-a">AC</div>
+          <div><div class="pr-name">Alex Chen</div><div class="pr-co">TechFlow AI</div></div>
+        </div>
+        <span class="pr-score score-hot">92 🔥</span>
+      </div>
+      <div class="preview-row">
+        <div class="pr-left">
+          <div class="pr-avatar av-b">SK</div>
+          <div><div class="pr-name">Sarah Kim</div><div class="pr-co">DataStack Inc</div></div>
+        </div>
+        <span class="pr-score score-warm">67</span>
+      </div>
+      <div class="preview-row">
+        <div class="pr-left">
+          <div class="pr-avatar av-c">MR</div>
+          <div><div class="pr-name">Mike Ross</div><div class="pr-co">GrowthLabs</div></div>
+        </div>
+        <span class="pr-score score-cold">34</span>
+      </div>
+      <div class="mini-bar mt-2"><div class="mini-fill" style="width:68%;"></div></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════
+     RIGHT PANEL
+══════════════════════════════════ -->
+<div class="right-panel">
+  <div class="auth-card">
+
+    <div class="auth-header">
+      <h3>Welcome back</h3>
+      <p>Sign in to your OutreachOS workspace</p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for cat, msg in messages %}
+    <div class="flash-msg {{ 'flash-success' if cat=='success' else 'flash-error' }}">
+      <i class="fas {{ 'fa-check-circle' if cat=='success' else 'fa-exclamation-circle' }}"></i>
+      {{ msg }}
+    </div>
+    {% endfor %}{% endif %}
+    {% endwith %}
+
+    <form method="POST" id="loginForm" onsubmit="handleSubmit()">
+      <div class="field-group">
+        <label class="field-label">Username</label>
+        <div class="field-wrap">
+          <i class="fas fa-user field-icon"></i>
+          <input type="text" name="username" class="field-input" placeholder="Enter your username" required autofocus autocomplete="username">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Password</label>
+        <div class="field-wrap">
+          <i class="fas fa-lock field-icon"></i>
+          <input type="password" name="password" id="pwField" class="field-input" placeholder="Enter your password" required autocomplete="current-password">
+          <i class="fas fa-eye toggle-pw" onclick="togglePw()" id="pwToggle"></i>
+        </div>
+      </div>
+      <button type="submit" class="btn-login" id="loginBtn">
+        <span class="btn-spin" id="loginSpin"></span>
+        <i class="fas fa-arrow-right-to-bracket" id="loginIcon"></i>
+        <span id="loginText">Sign In</span>
+      </button>
+    </form>
+
+    <div class="auth-divider"><span>or continue with</span></div>
+    <div class="sso-row">
+      <button class="sso-btn" onclick="ssoNotice()"><i class="fab fa-google"></i> Google</button>
+      <button class="sso-btn" onclick="ssoNotice()"><i class="fab fa-microsoft"></i> Microsoft</button>
+      <button class="sso-btn" onclick="ssoNotice()"><i class="fas fa-key"></i> SSO</button>
+    </div>
+
+    <div class="trust-row">
+      <span class="trust-item"><i class="fas fa-check-circle"></i> Secure</span>
+      <span class="trust-item"><i class="fas fa-check-circle"></i> AI-Powered</span>
+      <span class="trust-item"><i class="fas fa-check-circle"></i> Enterprise-grade</span>
+    </div>
+
+    <div class="auth-footer">
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+      <a href="#">Status</a>
+      <a href="#">Docs</a>
+    </div>
+
+  </div>
+</div>
+
+</div><!-- split-layout -->
+
+<script>
+function togglePw() {
+  const f = document.getElementById('pwField');
+  const i = document.getElementById('pwToggle');
+  f.type = f.type === 'password' ? 'text' : 'password';
+  i.className = f.type === 'password' ? 'fas fa-eye toggle-pw' : 'fas fa-eye-slash toggle-pw';
+}
+
+function handleSubmit() {
+  const btn = document.getElementById('loginBtn');
+  document.getElementById('loginSpin').style.display = 'inline-block';
+  document.getElementById('loginIcon').style.display = 'none';
+  document.getElementById('loginText').textContent = 'Signing in...';
+  btn.style.opacity = '0.8';
+}
+
+function ssoNotice() {
+  const existing = document.getElementById('ssoToast');
+  if(existing) existing.remove();
+  const div = document.createElement('div');
+  div.id = 'ssoToast';
+  div.className = 'flash-msg flash-error';
+  div.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;max-width:280px;animation:slideIn 0.25s ease;';
+  div.innerHTML = '<i class="fas fa-info-circle"></i> SSO coming soon. Use username/password.';
+  document.body.appendChild(div);
+  setTimeout(() => div.remove(), 3000);
+}
+</script>
 </body>
 </html>
