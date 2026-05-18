@@ -1,110 +1,1113 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><title>Sending Emails...</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="/static/style.css" rel="stylesheet">
-    <style>
-        .progress { height:30px; border-radius:15px; background:#e2e8f0; }
-        .progress-bar { border-radius:15px; font-weight:700; font-size:0.95rem; transition:width 0.5s; }
-        .stats-row { display:flex; gap:15px; justify-content:center; margin:15px 0; }
-        .stat-box { padding:8px 20px; border-radius:8px; font-weight:600; font-size:0.9rem; }
-        .stat-sent { background:#dcfce7; color:#16a34a; }
-        .stat-failed { background:#fee2e2; color:#dc2626; }
-        .stat-pending { background:#fef3c7; color:#d97706; }
-        .log-entry { padding:10px 15px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; font-size:0.9rem; }
-        .log-entry:last-child { border-bottom:none; }
-        .log-box { background:#fff; border-radius:12px; border:1px solid #e2e8f0; max-height:600px; overflow-y:auto; }
-        .top-box { background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:20px 25px; }
-        .current-txt { color:#64748b; font-size:0.85rem; margin-top:8px; }
-    </style>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Campaign Execution — OutreachOS</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+/* ── CSS VARIABLES ── */
+:root {
+  --ex-bg:       #f8f9ff;
+  --ex-card:     #ffffff;
+  --ex-border:   #e5e7eb;
+  --ex-indigo:   #6366f1;
+  --ex-violet:   #8b5cf6;
+  --ex-green:    #10b981;
+  --ex-amber:    #f59e0b;
+  --ex-red:      #ef4444;
+  --ex-blue:     #3b82f6;
+  --ex-gray:     #6b7280;
+  --ex-text:     #0f172a;
+  --ex-muted:    #9ca3af;
+  --ex-radius:   12px;
+  --ex-shadow:   0 1px 4px rgba(15,23,42,0.06);
+  --ex-shadow-lg:0 4px 16px rgba(15,23,42,0.10);
+}
+
+/* ── BODY ── */
+body {
+  background: var(--ex-bg);
+  font-family: 'Inter', sans-serif;
+  color: var(--ex-text);
+}
+
+/* ── MAIN LAYOUT ── */
+.ex-main {
+  padding: 24px 28px;
+  min-height: 100vh;
+}
+
+/* ── CARD BASE ── */
+.ex-card {
+  background: var(--ex-card);
+  border: 1px solid var(--ex-border);
+  border-radius: var(--ex-radius);
+  box-shadow: var(--ex-shadow);
+}
+
+/* ── SECTION LABEL ── */
+.ex-section-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ex-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 12px;
+}
+
+/* ── TWO-COLUMN GRID ── */
+.ex-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 20px;
+  align-items: start;
+}
+@media(max-width: 1100px) {
+  .ex-grid { grid-template-columns: 1fr; }
+}
+
+/* ── COMPLETION SCREEN ── */
+.ex-complete-wrap {
+  background: var(--ex-card); border: 1px solid var(--ex-border);
+  border-radius: var(--ex-radius); padding: 40px 32px;
+  text-align: center; box-shadow: var(--ex-shadow-lg);
+}
+.ex-complete-icon {
+  width: 72px; height: 72px; border-radius: 20px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; margin: 0 auto 20px;
+}
+.ex-complete-title {
+  font-size: 22px; font-weight: 800; color: var(--ex-text);
+  letter-spacing: -0.5px; margin-bottom: 6px;
+}
+.ex-complete-sub {
+  font-size: 14px; color: var(--ex-muted); margin-bottom: 28px;
+}
+.ex-complete-grid {
+  display: grid; grid-template-columns: repeat(4,1fr);
+  gap: 12px; margin-bottom: 28px;
+}
+@media(max-width:700px) { .ex-complete-grid { grid-template-columns: repeat(2,1fr); } }
+.ex-complete-metric {
+  background: #f8fafc; border: 1px solid var(--ex-border);
+  border-radius: 10px; padding: 14px 10px; text-align: center;
+}
+.ex-complete-metric .val {
+  font-size: 24px; font-weight: 800; letter-spacing: -0.5px;
+}
+.ex-complete-metric .lbl {
+  font-size: 10.5px; font-weight: 600; color: var(--ex-muted);
+  text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px;
+}
+.ex-complete-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.ex-right-card {
+  background: var(--ex-card); border: 1px solid var(--ex-border);
+  border-radius: var(--ex-radius); padding: 16px;
+  box-shadow: var(--ex-shadow); margin-bottom: 16px;
+}
+.ex-right-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; border-bottom: 1px solid #f8fafc;
+  font-size: 12.5px;
+}
+.ex-right-row:last-child { border-bottom: none; }
+.ex-right-label { color: var(--ex-gray); font-weight: 500; }
+.ex-right-val   { font-weight: 700; color: var(--ex-text); }
+.ex-right-val.green  { color: var(--ex-green); }
+.ex-right-val.amber  { color: var(--ex-amber); }
+.ex-right-val.red    { color: var(--ex-red); }
+.ex-right-val.indigo { color: var(--ex-indigo); }
+/* mini health bar */
+.ex-mini-bar {
+  height: 5px; background: #f1f5f9; border-radius: 99px;
+  overflow: hidden; margin-top: 4px;
+}
+.ex-mini-fill {
+  height: 100%; border-radius: 99px;
+  transition: width 0.5s ease;
+}
+/* inbox row */
+.ex-inbox-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 8px;
+  background: #f8fafc; margin-bottom: 6px;
+  border: 1px solid var(--ex-border);
+}
+.ex-inbox-row:last-child { margin-bottom: 0; }
+.ex-inbox-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.ex-inbox-email { font-size: 11.5px; font-weight: 600; color: var(--ex-text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-inbox-usage { font-size: 10.5px; color: var(--ex-muted); white-space: nowrap; }
+.ex-table-wrap {
+  background: var(--ex-card); border: 1px solid var(--ex-border);
+  border-radius: var(--ex-radius); overflow: hidden;
+  box-shadow: var(--ex-shadow); margin-bottom: 20px;
+}
+.ex-table-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid var(--ex-border);
+  background: #fafafa;
+}
+.ex-table-scroll { overflow-x: auto; max-height: 320px; overflow-y: auto; }
+.ex-table-scroll::-webkit-scrollbar { height: 4px; width: 4px; }
+.ex-table-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 2px; }
+table.ex-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.ex-table th {
+  padding: 8px 12px; text-align: left;
+  font-size: 10px; font-weight: 700; color: var(--ex-muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  background: #f8fafc; border-bottom: 1px solid var(--ex-border);
+  white-space: nowrap; position: sticky; top: 0; z-index: 1;
+}
+table.ex-table td {
+  padding: 9px 12px; border-bottom: 1px solid #f8fafc;
+  vertical-align: middle;
+}
+table.ex-table tr:last-child td { border-bottom: none; }
+table.ex-table tr:hover td { background: #fafbff; }
+.ex-contact-name  { font-weight: 600; color: var(--ex-text); }
+.ex-contact-email { font-size: 11px; color: var(--ex-muted); }
+.ex-contact-co    { font-size: 11.5px; color: var(--ex-gray); }
+.ex-smtp-chip {
+  font-size: 10.5px; background: #f1f5f9; color: #475569;
+  padding: 2px 7px; border-radius: 99px; white-space: nowrap;
+}
+/* row status pills */
+.ex-row-sent       { background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }
+.ex-row-failed     { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
+.ex-row-bounced    { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
+.ex-row-sending    { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+.ex-row-generating { background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe; }
+.ex-row-pending    { background:#f8fafc; color:#64748b; border:1px solid #e2e8f0; }
+.ex-row-skipped    { background:#f8fafc; color:#9ca3af; border:1px solid #e2e8f0; }
+.ex-row-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: 99px; white-space: nowrap;
+}
+.ex-open-dot  { color: var(--ex-blue);   font-size: 10px; }
+.ex-reply-dot { color: var(--ex-violet); font-size: 10px; }
+.ex-fail-reason { font-size: 10.5px; color: var(--ex-red); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-table-empty { text-align:center; padding:32px; color:var(--ex-muted); font-size:13px; }
+.ex-feed-wrap {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: var(--ex-radius);
+  margin-bottom: 20px;
+  overflow: hidden;
+  box-shadow: var(--ex-shadow-lg);
+}
+.ex-feed-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+}
+.ex-feed-title {
+  font-size: 11px; font-weight: 700;
+  color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px;
+  display: flex; align-items: center; gap: 7px;
+}
+.ex-feed-live {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 600; color: #34d399;
+}
+.ex-feed-body {
+  height: 280px; overflow-y: auto;
+  padding: 10px 0;
+  font-family: 'Courier New', 'Consolas', monospace;
+  font-size: 12px; line-height: 1.7;
+  scroll-behavior: smooth;
+}
+.ex-feed-body::-webkit-scrollbar { width: 4px; }
+.ex-feed-body::-webkit-scrollbar-track { background: #0f172a; }
+.ex-feed-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+.ex-log-row {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 2px 16px;
+  transition: background 0.1s;
+}
+.ex-log-row:hover { background: rgba(255,255,255,0.03); }
+.ex-log-ts {
+  color: #475569; font-size: 11px; flex-shrink: 0;
+  min-width: 68px;
+}
+.ex-log-icon { flex-shrink: 0; font-size: 10px; width: 14px; text-align: center; }
+.ex-log-msg  { color: #e2e8f0; flex: 1; word-break: break-word; }
+.ex-log-smtp { color: #475569; font-size: 10.5px; flex-shrink: 0; }
+/* level colors */
+.ex-log-success .ex-log-icon { color: #34d399; }
+.ex-log-success .ex-log-msg  { color: #86efac; }
+.ex-log-error   .ex-log-icon { color: #f87171; }
+.ex-log-error   .ex-log-msg  { color: #fca5a5; }
+.ex-log-warning .ex-log-icon { color: #fbbf24; }
+.ex-log-warning .ex-log-msg  { color: #fde68a; }
+.ex-log-info    .ex-log-icon { color: #60a5fa; }
+.ex-log-info    .ex-log-msg  { color: #bfdbfe; }
+.ex-feed-empty {
+  text-align: center; padding: 40px 20px;
+  color: #475569; font-size: 12px;
+}
+.ex-progress-wrap {
+  background: var(--ex-card); border: 1px solid var(--ex-border);
+  border-radius: var(--ex-radius); padding: 20px 22px;
+  margin-bottom: 16px; box-shadow: var(--ex-shadow);
+}
+.ex-progress-track {
+  height: 10px; background: #f1f5f9; border-radius: 99px;
+  overflow: hidden; margin-bottom: 12px;
+}
+.ex-progress-fill {
+  height: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, var(--ex-indigo), var(--ex-violet));
+  transition: width 0.6s ease;
+  position: relative; overflow: hidden;
+}
+.ex-progress-fill::after {
+  content: '';
+  position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: ex-shimmer 1.8s infinite;
+}
+@keyframes ex-shimmer { to { left: 100%; } }
+.ex-progress-fill.done {
+  background: linear-gradient(90deg, var(--ex-green), #34d399);
+}
+.ex-progress-fill.done::after { display: none; }
+.ex-progress-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px;
+}
+.ex-progress-count {
+  font-size: 13px; font-weight: 700; color: var(--ex-text);
+}
+.ex-progress-pct {
+  font-size: 22px; font-weight: 800; color: var(--ex-indigo);
+  letter-spacing: -0.5px;
+}
+.ex-progress-eta {
+  font-size: 12px; color: var(--ex-muted); font-weight: 500;
+}
+
+/* ── STAT CARDS ── */
+.ex-stats-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  gap: 12px; margin-bottom: 20px;
+}
+@media(max-width:900px) { .ex-stats-grid { grid-template-columns: repeat(3,1fr); } }
+.ex-stat-card {
+  background: var(--ex-card); border: 1px solid var(--ex-border);
+  border-radius: var(--ex-radius); padding: 16px 14px;
+  text-align: center; box-shadow: var(--ex-shadow);
+  transition: box-shadow 0.15s;
+}
+.ex-stat-card:hover { box-shadow: var(--ex-shadow-lg); }
+.ex-stat-icon {
+  width: 36px; height: 36px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; margin: 0 auto 10px;
+}
+.ex-stat-val {
+  font-size: 26px; font-weight: 800; letter-spacing: -0.8px;
+  line-height: 1; margin-bottom: 4px;
+}
+.ex-stat-lbl {
+  font-size: 10.5px; font-weight: 600; color: var(--ex-muted);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.ex-header {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 14px;
+  background: var(--ex-card);
+  border: 1px solid var(--ex-border);
+  border-radius: var(--ex-radius);
+  padding: 16px 22px;
+  margin-bottom: 20px;
+  box-shadow: var(--ex-shadow);
+}
+.ex-header-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.ex-header-icon {
+  width: 42px; height: 42px; border-radius: 10px; flex-shrink: 0;
+  background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: var(--ex-indigo);
+}
+.ex-header-title {
+  font-size: 16px; font-weight: 800; color: var(--ex-text);
+  letter-spacing: -0.3px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 320px;
+}
+.ex-header-meta {
+  display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap; margin-top: 3px;
+}
+.ex-meta-chip {
+  font-size: 11px; color: var(--ex-muted); font-weight: 500;
+  display: flex; align-items: center; gap: 4px;
+}
+.ex-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ex-elapsed {
+  font-size: 11.5px; font-weight: 600; color: var(--ex-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ex-spin {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid rgba(99,102,241,0.2);
+  border-top: 2px solid var(--ex-indigo);
+  border-radius: 50%;
+  animation: ex-spin 0.7s linear infinite;
+}
+@keyframes ex-spin { to { transform: rotate(360deg); } }
+
+/* ── PULSE DOT ── */
+.ex-pulse {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--ex-green);
+  animation: ex-pulse 1.5s ease-in-out infinite;
+}
+@keyframes ex-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.8); }
+}
+.ex-pulse.amber { background: var(--ex-amber); }
+.ex-pulse.red   { background: var(--ex-red); }
+.ex-pulse.gray  { background: var(--ex-muted); animation: none; }
+
+/* ── STATUS BADGE ── */
+.ex-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 700;
+  padding: 3px 10px; border-radius: 99px;
+  white-space: nowrap;
+}
+.ex-badge-running    { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+.ex-badge-queued     { background:#fefce8; color:#854d0e; border:1px solid #fde68a; }
+.ex-badge-paused     { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+.ex-badge-completed  { background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }
+.ex-badge-failed     { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
+.ex-badge-cancelled  { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+.ex-badge-draft      { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+
+/* ── CONTROL BUTTONS ── */
+.ex-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 600;
+  border: 1px solid var(--ex-border);
+  background: var(--ex-card); color: var(--ex-gray);
+  cursor: pointer; transition: all 0.15s;
+  text-decoration: none;
+}
+.ex-btn:hover { background: #f8fafc; color: var(--ex-text); }
+.ex-btn-primary {
+  background: linear-gradient(135deg, var(--ex-indigo), var(--ex-violet));
+  color: #fff; border-color: transparent;
+  box-shadow: 0 2px 8px rgba(99,102,241,0.25);
+}
+.ex-btn-primary:hover { opacity: 0.88; color: #fff; }
+.ex-btn-danger  { color: var(--ex-red); border-color: #fecaca; }
+.ex-btn-danger:hover  { background: #fef2f2; }
+.ex-btn-amber   { color: var(--ex-amber); border-color: #fde68a; }
+.ex-btn-amber:hover   { background: #fffbeb; }
+.ex-btn-green   { color: var(--ex-green); border-color: #bbf7d0; }
+.ex-btn-green:hover   { background: #f0fdf4; }
+</style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
-        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
-        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
-        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
-        <a href="/campaigns" class="active"><i class="fas fa-bullhorn"></i> Campaigns</a>
-        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
-        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
-        <hr style="border-color:#e2e8f0">
-        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
-        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
-    </div>
-    <div class="main">
-        <h3 class="mb-4">📨 Sending Emails</h3>
 
-        <div class="top-box mb-4">
-            <div class="progress mb-2">
-                <div class="progress-bar bg-primary" id="bar" style="width:0%">0%</div>
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns" class="active"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<!-- MAIN -->
+<div class="main ex-main">
+
+  <!-- HEADER (5b) -->
+  <div id="exHeader">
+    <div class="ex-header">
+      <div class="ex-header-left">
+        <div class="ex-header-icon"><i class="fas fa-paper-plane"></i></div>
+        <div style="min-width:0;">
+          <div class="ex-header-title" id="hCampName">{{ campaign.name if campaign else 'Campaign' }}</div>
+          <div class="ex-header-meta">
+            <span class="ex-badge ex-badge-{{ campaign.job_status or 'draft' }}" id="hStatusBadge">
+              <span class="ex-pulse {{ 'amber' if (campaign.job_status or 'draft') == 'queued' else ('gray' if (campaign.job_status or 'draft') not in ('running',) else '') }}"></span>
+              {{ (campaign.job_status or 'draft') | title }}
+            </span>
+            <span class="ex-meta-chip"><i class="fas fa-paper-plane" style="font-size:9px;"></i> <span id="hMode">{{ campaign.send_mode or 'template' }}</span></span>
+            <span class="ex-meta-chip"><i class="fas fa-users" style="font-size:9px;"></i> <span id="hTotal">{{ campaign.total_contacts or 0 }}</span> contacts</span>
+            <span class="ex-meta-chip"><i class="fas fa-clock" style="font-size:9px;"></i> <span id="hElapsed">—</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="ex-header-actions">
+        <a href="/inbox" class="ex-btn"><i class="fas fa-inbox"></i> Inbox</a>
+        <button class="ex-btn ex-btn-amber" id="btnPause" onclick="controlCampaign('pause')">
+          <i class="fas fa-pause"></i> Pause
+        </button>
+        <button class="ex-btn ex-btn-green" id="btnResume" onclick="controlCampaign('resume')" style="display:none;">
+          <i class="fas fa-play"></i> Resume
+        </button>
+        <button class="ex-btn ex-btn-danger" id="btnStop" onclick="controlCampaign('cancel')">
+          <i class="fas fa-stop"></i> Stop
+        </button>
+        <a href="/campaign/{{ campaign_id }}" class="ex-btn">
+          <i class="fas fa-arrow-left"></i> Campaign
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="ex-grid" id="exGrid">
+
+    <!-- LEFT COLUMN -->
+    <div id="exLeft">
+      <!-- PROGRESS BAR (5c) -->
+      <div id="exProgress">
+        <div class="ex-progress-wrap">
+          <div class="ex-progress-track">
+            <div class="ex-progress-fill" id="progFill" style="width:0%"></div>
+          </div>
+          <div class="ex-progress-meta">
+            <div>
+              <div class="ex-progress-count">
+                <span id="progDone">0</span> / <span id="progTotal">0</span> processed
+              </div>
+              <div class="ex-progress-eta" id="progEta">Initializing...</div>
             </div>
-            <div class="stats-row">
-                <span class="stat-box stat-sent" id="sSent">✅ 0 Sent</span>
-                <span class="stat-box stat-failed" id="sFailed">❌ 0 Failed</span>
-                <span class="stat-box stat-pending" id="sPending">⏳ 0 Pending</span>
+            <div class="ex-progress-pct" id="progPct">0%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STAT CARDS (5c) -->
+      <div id="exStats">
+        <div class="ex-stats-grid">
+          <div class="ex-stat-card">
+            <div class="ex-stat-icon" style="background:#f0fdf4;color:var(--ex-green);"><i class="fas fa-check-circle"></i></div>
+            <div class="ex-stat-val" id="sSent" style="color:var(--ex-green);">0</div>
+            <div class="ex-stat-lbl">Sent</div>
+          </div>
+          <div class="ex-stat-card">
+            <div class="ex-stat-icon" style="background:#fef2f2;color:var(--ex-red);"><i class="fas fa-times-circle"></i></div>
+            <div class="ex-stat-val" id="sFailed" style="color:var(--ex-red);">0</div>
+            <div class="ex-stat-lbl">Failed</div>
+          </div>
+          <div class="ex-stat-card">
+            <div class="ex-stat-icon" style="background:#fffbeb;color:var(--ex-amber);"><i class="fas fa-hourglass-half"></i></div>
+            <div class="ex-stat-val" id="sPending" style="color:var(--ex-amber);">0</div>
+            <div class="ex-stat-lbl">Pending</div>
+          </div>
+          <div class="ex-stat-card">
+            <div class="ex-stat-icon" style="background:#eff6ff;color:var(--ex-blue);"><i class="fas fa-eye"></i></div>
+            <div class="ex-stat-val" id="sOpened" style="color:var(--ex-blue);">0</div>
+            <div class="ex-stat-lbl">Opened</div>
+          </div>
+          <div class="ex-stat-card">
+            <div class="ex-stat-icon" style="background:#f5f3ff;color:var(--ex-violet);"><i class="fas fa-reply"></i></div>
+            <div class="ex-stat-val" id="sReplied" style="color:var(--ex-violet);">0</div>
+            <div class="ex-stat-lbl">Replied</div>
+          </div>
+        </div>
+      </div>
+      <!-- ACTIVITY FEED (5d) -->
+      <div id="exFeed">
+        <div class="ex-feed-wrap">
+          <div class="ex-feed-header">
+            <div class="ex-feed-title">
+              <i class="fas fa-terminal" style="color:#6366f1;"></i>
+              Activity Log
             </div>
-            <div class="current-txt" id="current"></div>
-            <div id="doneArea" style="display:none;text-align:center;margin-top:15px;">
-                <a href="/campaign/{{ campaign_id }}" class="btn btn-primary"><i class="fas fa-arrow-left"></i> Back to Campaign</a>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div class="ex-feed-live" id="feedLiveIndicator">
+                <span class="ex-pulse"></span> Live
+              </div>
+              <button onclick="toggleAutoScroll()" id="btnAutoScroll"
+                style="background:none;border:1px solid #334155;color:#94a3b8;padding:3px 8px;border-radius:5px;font-size:10px;cursor:pointer;font-family:inherit;">
+                <i class="fas fa-arrow-down" style="font-size:9px;"></i> Auto-scroll ON
+              </button>
             </div>
+          </div>
+          <div class="ex-feed-body" id="feedBody">
+            <div class="ex-feed-empty" id="feedEmpty">
+              <i class="fas fa-satellite-dish" style="font-size:1.5rem;margin-bottom:8px;display:block;color:#334155;"></i>
+              Waiting for campaign to start...
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- CONTACT TABLE (5e) -->
+      <div id="exTable">
+        <div class="ex-table-wrap">
+          <div class="ex-table-header">
+            <div class="ex-section-label" style="margin:0;"><i class="fas fa-list me-1"></i>Contact Execution</div>
+            <span style="font-size:11px;color:var(--ex-muted);" id="tblCount">0 contacts</span>
+          </div>
+          <div class="ex-table-scroll">
+            <table class="ex-table">
+              <thead>
+                <tr>
+                  <th>Contact</th>
+                  <th>Company</th>
+                  <th>SMTP</th>
+                  <th>Status</th>
+                  <th>Opens</th>
+                  <th>Replies</th>
+                  <th>Sent At</th>
+                  <th>Failure</th>
+                </tr>
+              </thead>
+              <tbody id="tblBody">
+                <tr><td colspan="8" class="ex-table-empty">
+                  <i class="fas fa-users" style="font-size:1.4rem;color:#c7d2fe;display:block;margin-bottom:8px;"></i>
+                  No contacts processed yet
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div id="exRight">
+      <!-- WARMUP PANEL (5f) -->
+      <div id="exWarmup">
+
+        <!-- WARMUP STATUS CARD -->
+        <div class="ex-right-card">
+          <div class="ex-section-label"><i class="fas fa-fire me-1" style="color:var(--ex-amber);"></i>Warmup Protection</div>
+          <div class="ex-right-row">
+            <span class="ex-right-label">Status</span>
+            <span class="ex-right-val green" id="wpStatus">Active ✓</span>
+          </div>
+          <div class="ex-right-row">
+            <span class="ex-right-label">Delay Range</span>
+            <span class="ex-right-val indigo" id="wpDelay">5–15s</span>
+          </div>
+          <div class="ex-right-row">
+            <span class="ex-right-label">Risk Level</span>
+            <span class="ex-right-val green" id="wpRisk">Low ✓</span>
+          </div>
+          <div class="ex-right-row">
+            <span class="ex-right-label">Active Inboxes</span>
+            <span class="ex-right-val" id="wpInboxes">—</span>
+          </div>
+          <div class="ex-right-row">
+            <span class="ex-right-label">Daily Capacity</span>
+            <span class="ex-right-val" id="wpCapacity">—</span>
+          </div>
         </div>
 
-        <h5 class="mb-3">📋 Log</h5>
-        <div class="log-box" id="logBox"></div>
+        <!-- INBOX UTILIZATION -->
+        <div class="ex-right-card">
+          <div class="ex-section-label"><i class="fas fa-server me-1"></i>Inbox Utilization</div>
+          <div id="wpInboxList">
+            <div style="text-align:center;padding:16px;color:var(--ex-muted);font-size:12px;">
+              <div class="ex-spin mx-auto mb-2" style="margin:0 auto 8px;"></div>
+              Loading inboxes...
+            </div>
+          </div>
+        </div>
+
+        <!-- DELIVERABILITY SCORE -->
+        <div class="ex-right-card">
+          <div class="ex-section-label"><i class="fas fa-shield-alt me-1" style="color:var(--ex-green);"></i>Deliverability</div>
+          <div class="ex-right-row">
+            <span class="ex-right-label">Avg Health</span>
+            <span class="ex-right-val" id="wpAvgHealth">—</span>
+          </div>
+          <div class="ex-mini-bar">
+            <div class="ex-mini-fill" id="wpHealthBar" style="width:0%;background:var(--ex-green);"></div>
+          </div>
+          <div class="ex-right-row" style="margin-top:8px;">
+            <span class="ex-right-label">Bounce Rate</span>
+            <span class="ex-right-val" id="wpBounceRate">—</span>
+          </div>
+          <div class="ex-right-row">
+            <span class="ex-right-label">Open Rate</span>
+            <span class="ex-right-val indigo" id="wpOpenRate">—</span>
+          </div>
+        </div>
+
+      </div>
     </div>
 
-    <script>
-    let lastCount = 0;
+  </div><!-- ex-grid -->
 
-    function poll() {
-        fetch('/api/send_status')
-        .then(r => r.json())
-        .then(data => {
-            const pct = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
-            document.getElementById('bar').style.width = pct + '%';
-            document.getElementById('bar').textContent = data.done + '/' + data.total + ' (' + pct + '%)';
-            document.getElementById('sSent').textContent = '✅ ' + data.sent + ' Sent';
-            document.getElementById('sFailed').textContent = '❌ ' + data.failed + ' Failed';
-            document.getElementById('sPending').textContent = '⏳ ' + (data.total - data.done) + ' Pending';
+  <!-- COMPLETION SCREEN (5g) -->
+  <div id="exCompletion" style="display:none;">
+    <div class="ex-complete-wrap">
+      <div class="ex-complete-icon" id="completeIcon"
+           style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);color:var(--ex-green);">
+        <i class="fas fa-check-circle"></i>
+      </div>
+      <div class="ex-complete-title" id="completeTitle">Campaign Completed</div>
+      <div class="ex-complete-sub" id="completeSub">All emails have been processed successfully.</div>
 
-            if (data.running && data.current) {
-                document.getElementById('current').textContent = 'Sending → ' + data.current;
-            }
+      <div class="ex-complete-grid">
+        <div class="ex-complete-metric">
+          <div class="val" style="color:var(--ex-green);" id="cSent">0</div>
+          <div class="lbl">Sent</div>
+        </div>
+        <div class="ex-complete-metric">
+          <div class="val" style="color:var(--ex-red);" id="cFailed">0</div>
+          <div class="lbl">Failed</div>
+        </div>
+        <div class="ex-complete-metric">
+          <div class="val" style="color:var(--ex-blue);" id="cOpened">0</div>
+          <div class="lbl">Opened</div>
+        </div>
+        <div class="ex-complete-metric">
+          <div class="val" style="color:var(--ex-violet);" id="cReplied">0</div>
+          <div class="lbl">Replied</div>
+        </div>
+      </div>
 
-            // Add new log entries
-            if (data.recent && data.recent.length > lastCount) {
-                let html = '';
-                data.recent.forEach(r => {
-                    if (r.status === 'sent') {
-                        html += '<div class="log-entry"><div>✅ <strong>' + r.name + '</strong> (' + r.company + ') — ' + r.email + '</div><div><span class="badge bg-success">Sent</span></div></div>';
-                    } else {
-                        html += '<div class="log-entry"><div>❌ <strong>' + r.name + '</strong> (' + r.company + ') — ' + r.email + '<br><small class="text-danger">' + (r.reason || '').substring(0,80) + '</small></div><div><span class="badge bg-danger">Failed</span></div></div>';
-                    }
-                });
-                document.getElementById('logBox').innerHTML = html;
-                lastCount = data.recent.length;
-                // Auto scroll to bottom
-                const box = document.getElementById('logBox');
-                box.scrollTop = box.scrollHeight;
-            }
+      <div class="ex-complete-actions">
+        <a href="/analytics" class="ex-btn ex-btn-primary">
+          <i class="fas fa-chart-bar"></i> View Analytics
+        </a>
+        <a href="/inbox" class="ex-btn">
+          <i class="fas fa-inbox"></i> Open Inbox
+        </a>
+        <a href="/export/sent" class="ex-btn">
+          <i class="fas fa-download"></i> Export Report
+        </a>
+        <a href="/campaign/{{ campaign_id }}" class="ex-btn">
+          <i class="fas fa-arrow-left"></i> Back to Campaign
+        </a>
+      </div>
+    </div>
+  </div>
 
-            if (!data.running && data.done > 0) {
-                document.getElementById('current').textContent = '';
-                document.getElementById('bar').classList.remove('bg-primary');
-                document.getElementById('bar').classList.add(data.failed > 0 ? 'bg-warning' : 'bg-success');
-                document.getElementById('doneArea').style.display = 'block';
-            } else if (data.running) {
-                setTimeout(poll, 1500);
-            } else {
-                setTimeout(poll, 2000);
-            }
-        })
-        .catch(() => setTimeout(poll, 3000));
+</div><!-- main -->
+
+<!-- DATA FROM SERVER -->
+<script>
+const CAMPAIGN_ID = {{ campaign_id }};
+const CAMPAIGN_NAME = {{ (campaign.name if campaign else 'Campaign') | tojson }};
+const CAMPAIGN_STATUS = {{ (campaign.job_status if campaign and campaign.job_status else 'draft') | tojson }};
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── 5b: HEADER JS ──
+
+let startedAt = null;
+let elapsedTimer = null;
+
+function startElapsedTimer(startedAtStr) {
+  if (!startedAtStr) return;
+  try { startedAt = new Date(startedAtStr); } catch { return; }
+  if (elapsedTimer) clearInterval(elapsedTimer);
+  elapsedTimer = setInterval(() => {
+    const sec = Math.floor((Date.now() - startedAt) / 1000);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    const el = document.getElementById('hElapsed');
+    if (el) el.textContent = h > 0
+      ? `${h}h ${m}m ${s}s`
+      : m > 0 ? `${m}m ${s}s` : `${s}s`;
+  }, 1000);
+}
+
+function updateHeaderStatus(data) {
+  const statusEl = document.getElementById('hStatusBadge');
+  const btnPause  = document.getElementById('btnPause');
+  const btnResume = document.getElementById('btnResume');
+  const btnStop   = document.getElementById('btnStop');
+
+  if (!statusEl) return;
+
+  const s = data.job_status || 'draft';
+  const badgeMap = {
+    running:   'ex-badge-running',
+    queued:    'ex-badge-queued',
+    paused:    'ex-badge-paused',
+    completed: 'ex-badge-completed',
+    failed:    'ex-badge-failed',
+    cancelled: 'ex-badge-cancelled',
+    draft:     'ex-badge-draft',
+  };
+  statusEl.className = 'ex-badge ' + (badgeMap[s] || 'ex-badge-draft');
+  statusEl.innerHTML = `<span class="ex-pulse ${s==='running'?'':'gray'}"></span> ${s.charAt(0).toUpperCase()+s.slice(1)}`;
+
+  if (data.name) document.getElementById('hCampName').textContent = data.name;
+  if (data.total) document.getElementById('hTotal').textContent = data.total;
+  if (data.send_mode) document.getElementById('hMode').textContent = data.send_mode;
+
+  // Show/hide pause vs resume
+  if (btnPause && btnResume) {
+    if (s === 'paused') {
+      btnPause.style.display  = 'none';
+      btnResume.style.display = '';
+    } else {
+      btnPause.style.display  = s === 'running' ? '' : 'none';
+      btnResume.style.display = 'none';
     }
-    poll();
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    if (btnStop) btnStop.style.display = ['completed','failed','cancelled'].includes(s) ? 'none' : '';
+  }
+
+  if (data.started_at && !startedAt) startElapsedTimer(data.started_at);
+  if (['completed','failed','cancelled'].includes(s) && elapsedTimer) {
+    clearInterval(elapsedTimer);
+  }
+}
+
+function controlCampaign(action) {
+  const labels = { pause: 'Pause', resume: 'Resume', cancel: 'Stop' };
+  if (action === 'cancel' && !confirm('Stop this campaign? Remaining contacts will not be sent.')) return;
+  fetch(`/api/campaign/${CAMPAIGN_ID}/${action}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => { if (d.success) poll(); })
+    .catch(() => {});
+}
+</script>
+<script>
+// ── 5c: PROGRESS + STATS JS ──
+function updateProgress(data) {
+  const pct   = data.pct  || 0;
+  const done  = data.done || 0;
+  const total = data.total || 0;
+  const fill  = document.getElementById('progFill');
+  const isDone = ['completed','failed','cancelled'].includes(data.job_status);
+
+  if (fill) {
+    fill.style.width = pct + '%';
+    if (isDone) fill.classList.add('done');
+    else fill.classList.remove('done');
+  }
+  setText('progDone',  done);
+  setText('progTotal', total);
+  setText('progPct',   pct + '%');
+
+  const etaEl = document.getElementById('progEta');
+  if (etaEl) {
+    if (isDone) {
+      etaEl.textContent = 'Completed';
+    } else if (data.job_status === 'paused') {
+      etaEl.textContent = 'Paused — click Resume to continue';
+    } else if (data.eta && data.eta !== '—') {
+      etaEl.textContent = `ETA: ${data.eta}`;
+    } else {
+      etaEl.textContent = data.job_status === 'running' ? 'Calculating ETA...' : 'Waiting to start...';
+    }
+  }
+
+  setText('sSent',    data.sent    || 0);
+  setText('sFailed',  data.failed  || 0);
+  setText('sPending', data.pending || 0);
+  setText('sOpened',  data.opened  || 0);
+  setText('sReplied', data.replied || 0);
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+</script>
+<!-- 5d–5g injected below -->
+<script>
+// ── 5d: ACTIVITY FEED JS ──
+let autoScroll = true;
+let lastLogId  = 0;
+
+const LOG_ICONS = {
+  success: 'fa-check-circle',
+  error:   'fa-times-circle',
+  warning: 'fa-exclamation-triangle',
+  info:    'fa-info-circle',
+};
+
+function fmtTime(isoStr) {
+  if (!isoStr) return '--:--:--';
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleTimeString('en-IN', { hour12: false });
+  } catch { return '--:--:--'; }
+}
+
+function updateFeed(logs) {
+  if (!logs || !logs.length) return;
+  const body  = document.getElementById('feedBody');
+  const empty = document.getElementById('feedEmpty');
+  if (!body) return;
+
+  // Remove empty state
+  if (empty) empty.style.display = 'none';
+
+  // Render newest-first from API, display oldest-first
+  const reversed = [...logs].reverse();
+
+  body.innerHTML = reversed.map(log => {
+    const level = log.level || 'info';
+    const icon  = LOG_ICONS[level] || 'fa-circle';
+    const ts    = fmtTime(log.created_at);
+    const smtp  = log.smtp_email ? `<span class="ex-log-smtp">${escHtml(log.smtp_email)}</span>` : '';
+    return `<div class="ex-log-row ex-log-${level}">
+      <span class="ex-log-ts">${ts}</span>
+      <span class="ex-log-icon"><i class="fas ${icon}"></i></span>
+      <span class="ex-log-msg">${escHtml(log.message)}</span>
+      ${smtp}
+    </div>`;
+  }).join('');
+
+  if (autoScroll) body.scrollTop = body.scrollHeight;
+}
+
+function toggleAutoScroll() {
+  autoScroll = !autoScroll;
+  const btn = document.getElementById('btnAutoScroll');
+  if (btn) btn.innerHTML = `<i class="fas fa-arrow-down" style="font-size:9px;"></i> Auto-scroll ${autoScroll ? 'ON' : 'OFF'}`;
+  if (autoScroll) {
+    const body = document.getElementById('feedBody');
+    if (body) body.scrollTop = body.scrollHeight;
+  }
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+<!-- 5e–5g injected below -->
+<script>
+// ── 5e: CONTACT TABLE JS ──
+const STATUS_PILL = {
+  sent:       ['ex-row-sent',       'fa-check-circle',    'Sent'],
+  failed:     ['ex-row-failed',     'fa-times-circle',    'Failed'],
+  bounced:    ['ex-row-bounced',    'fa-exclamation',     'Bounced'],
+  sending:    ['ex-row-sending',    'fa-paper-plane',     'Sending'],
+  generating: ['ex-row-generating', 'fa-robot',           'Generating'],
+  pending:    ['ex-row-pending',    'fa-hourglass-half',  'Pending'],
+  skipped:    ['ex-row-skipped',    'fa-forward',         'Skipped'],
+};
+
+function updateTable(contacts) {
+  const tbody = document.getElementById('tblBody');
+  const count = document.getElementById('tblCount');
+  if (!tbody) return;
+
+  if (!contacts || !contacts.length) return;
+
+  if (count) count.textContent = contacts.length + ' contact' + (contacts.length !== 1 ? 's' : '');
+
+  tbody.innerHTML = contacts.map(c => {
+    const st = c.status || 'pending';
+    const [pillCls, icon, label] = STATUS_PILL[st] || STATUS_PILL.pending;
+    const smtp = c.smtp_used || c.email || '';
+    const smtpShort = smtp.split('@')[0] + (smtp.includes('@') ? '@…' : '');
+    const sentAt = c.sent_at ? fmtTime(c.sent_at) : '—';
+    const reason = c.bounce_reason ? `<span class="ex-fail-reason" title="${escHtml(c.bounce_reason)}">${escHtml(c.bounce_reason.slice(0,40))}</span>` : '—';
+    const openIcon  = c.opened  ? '<i class="fas fa-eye ex-open-dot"></i>'   : '<span style="color:#e5e7eb;">—</span>';
+    const replyIcon = c.replied ? '<i class="fas fa-reply ex-reply-dot"></i>' : '<span style="color:#e5e7eb;">—</span>';
+
+    return `<tr>
+      <td>
+        <div class="ex-contact-name">${escHtml(c.name || c.email)}</div>
+        <div class="ex-contact-email">${escHtml(c.email || '')}</div>
+      </td>
+      <td class="ex-contact-co">${escHtml(c.company || '—')}</td>
+      <td><span class="ex-smtp-chip" title="${escHtml(smtp)}">${escHtml(smtpShort)}</span></td>
+      <td><span class="ex-row-pill ${pillCls}"><i class="fas ${icon}" style="font-size:9px;"></i> ${label}</span></td>
+      <td style="text-align:center;">${openIcon}</td>
+      <td style="text-align:center;">${replyIcon}</td>
+      <td style="color:var(--ex-muted);font-size:11.5px;">${sentAt}</td>
+      <td>${reason}</td>
+    </tr>`;
+  }).join('');
+}
+</script>
+<!-- 5f–5g injected below -->
+<script>
+// ── 5f: WARMUP PANEL JS ──
+function updateWarmup(data) {
+  const accounts = data.smtp_accounts || [];
+  const active   = accounts.filter(a => a.active);
+  const capacity = active.reduce((s, a) => s + Math.max(0, (a.daily_limit || 50) - (a.sent_today || 0)), 0);
+  const avgHealth = active.length
+    ? Math.round(active.reduce((s, a) => s + (a.health_score || 0), 0) / active.length)
+    : 0;
+
+  setText('wpInboxes',  active.length + ' active');
+  setText('wpCapacity', capacity + ' remaining today');
+  setText('wpAvgHealth', avgHealth + '/100');
+
+  // Health bar color
+  const hbar = document.getElementById('wpHealthBar');
+  if (hbar) {
+    hbar.style.width = avgHealth + '%';
+    hbar.style.background = avgHealth >= 70 ? 'var(--ex-green)' : avgHealth >= 40 ? 'var(--ex-amber)' : 'var(--ex-red)';
+  }
+  const hEl = document.getElementById('wpAvgHealth');
+  if (hEl) hEl.className = 'ex-right-val ' + (avgHealth >= 70 ? 'green' : avgHealth >= 40 ? 'amber' : 'red');
+
+  // Bounce rate
+  const total = data.total || 0;
+  const failed = data.failed || 0;
+  const sent   = data.sent   || 0;
+  const bounceRate = sent + failed > 0 ? Math.round(failed / (sent + failed) * 100) : 0;
+  const openRate   = sent > 0 ? Math.round((data.opened || 0) / sent * 100) : 0;
+  const brEl = document.getElementById('wpBounceRate');
+  if (brEl) {
+    brEl.textContent = bounceRate + '%';
+    brEl.className = 'ex-right-val ' + (bounceRate <= 2 ? 'green' : bounceRate <= 5 ? 'amber' : 'red');
+  }
+  setText('wpOpenRate', openRate + '%');
+
+  // Risk level
+  const riskEl = document.getElementById('wpRisk');
+  if (riskEl) {
+    if (bounceRate <= 2 && avgHealth >= 70) {
+      riskEl.textContent = 'Low ✓'; riskEl.className = 'ex-right-val green';
+    } else if (bounceRate <= 5 || avgHealth >= 40) {
+      riskEl.textContent = 'Medium'; riskEl.className = 'ex-right-val amber';
+    } else {
+      riskEl.textContent = 'High ⚠'; riskEl.className = 'ex-right-val red';
+    }
+  }
+
+  // Inbox list
+  const listEl = document.getElementById('wpInboxList');
+  if (listEl && accounts.length) {
+    listEl.innerHTML = accounts.map(a => {
+      const pct  = Math.round((a.sent_today || 0) / (a.daily_limit || 50) * 100);
+      const hc   = (a.health_score || 0) >= 70 ? '#10b981' : (a.health_score || 0) >= 40 ? '#f59e0b' : '#ef4444';
+      const email = a.email || '';
+      const short = email.length > 22 ? email.slice(0, 20) + '…' : email;
+      return `<div class="ex-inbox-row">
+        <div class="ex-inbox-dot" style="background:${a.active ? hc : '#9ca3af'};"></div>
+        <div style="flex:1;min-width:0;">
+          <div class="ex-inbox-email" title="${escHtml(email)}">${escHtml(short)}</div>
+          <div class="ex-mini-bar" style="margin-top:3px;">
+            <div class="ex-mini-fill" style="width:${pct}%;background:${hc};"></div>
+          </div>
+        </div>
+        <div class="ex-inbox-usage">${a.sent_today || 0}/${a.daily_limit || 50}</div>
+      </div>`;
+    }).join('');
+  } else if (listEl && !accounts.length) {
+    listEl.innerHTML = '<div style="text-align:center;padding:12px;color:var(--ex-muted);font-size:12px;">No active inboxes</div>';
+  }
+}
+</script>
+<!-- 5g injected below -->
+<script>
+// ── 5g: MASTER POLLING ENGINE ──
+let pollTimer   = null;
+let pollInterval = 3000; // 3s while running, 10s when idle
+let lastStatus  = null;
+
+function poll() {
+  fetch(`/api/campaign/${CAMPAIGN_ID}/status`)
+    .then(r => r.json())
+    .then(data => {
+      lastStatus = data;
+      const status = data.job_status || 'draft';
+      const isDone = ['completed', 'failed', 'cancelled'].includes(status);
+
+      // Update all panels
+      updateHeaderStatus(data);
+      updateProgress(data);
+      updateFeed(data.logs || []);
+      updateTable(data.contacts || []);
+      updateWarmup(data);
+
+      // Show/hide completion screen
+      if (isDone) {
+        showCompletion(data);
+        pollInterval = 30000; // slow down after done
+      } else {
+        document.getElementById('exCompletion').style.display = 'none';
+        document.getElementById('exGrid').style.display = '';
+        pollInterval = status === 'running' ? 3000 : 8000;
+      }
+
+      // Live indicator
+      const liveEl = document.getElementById('feedLiveIndicator');
+      if (liveEl) {
+        liveEl.style.display = isDone ? 'none' : '';
+      }
+
+      schedulePoll();
+    })
+    .catch(() => {
+      pollInterval = 8000;
+      schedulePoll();
+    });
+}
+
+function schedulePoll() {
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = setTimeout(poll, pollInterval);
+}
+
+function showCompletion(data) {
+  const grid       = document.getElementById('exGrid');
+  const completion = document.getElementById('exCompletion');
+  const status     = data.job_status;
+
+  // Keep grid visible but also show completion below
+  if (completion) completion.style.display = 'block';
+
+  // Update completion metrics
+  setText('cSent',    data.sent    || 0);
+  setText('cFailed',  data.failed  || 0);
+  setText('cOpened',  data.opened  || 0);
+  setText('cReplied', data.replied || 0);
+
+  // Customize icon + title by status
+  const iconEl  = document.getElementById('completeIcon');
+  const titleEl = document.getElementById('completeTitle');
+  const subEl   = document.getElementById('completeSub');
+
+  if (status === 'completed') {
+    if (iconEl)  { iconEl.style.background = 'linear-gradient(135deg,#f0fdf4,#dcfce7)'; iconEl.style.color = 'var(--ex-green)'; iconEl.innerHTML = '<i class="fas fa-check-circle"></i>'; }
+    if (titleEl) titleEl.textContent = 'Campaign Completed Successfully';
+    if (subEl)   subEl.textContent   = `${data.sent || 0} emails delivered. Check your inbox for replies.`;
+  } else if (status === 'failed') {
+    if (iconEl)  { iconEl.style.background = 'linear-gradient(135deg,#fef2f2,#fee2e2)'; iconEl.style.color = 'var(--ex-red)'; iconEl.innerHTML = '<i class="fas fa-exclamation-circle"></i>'; }
+    if (titleEl) titleEl.textContent = 'Campaign Failed';
+    if (subEl)   subEl.textContent   = 'An error occurred during execution. Check the activity log for details.';
+  } else if (status === 'cancelled') {
+    if (iconEl)  { iconEl.style.background = 'linear-gradient(135deg,#f1f5f9,#e2e8f0)'; iconEl.style.color = 'var(--ex-gray)'; iconEl.innerHTML = '<i class="fas fa-stop-circle"></i>'; }
+    if (titleEl) titleEl.textContent = 'Campaign Stopped';
+    if (subEl)   subEl.textContent   = `Stopped after sending ${data.sent || 0} emails.`;
+  }
+}
+
+// ── INIT ──
+document.addEventListener('DOMContentLoaded', () => {
+  // Start polling immediately
+  poll();
+
+  // If campaign was already running when page loaded, start elapsed timer
+  if (CAMPAIGN_STATUS === 'running' || CAMPAIGN_STATUS === 'queued') {
+    const liveEl = document.getElementById('feedLiveIndicator');
+    if (liveEl) liveEl.style.display = '';
+  }
+});
+</script>
 </body>
 </html>

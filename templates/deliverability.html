@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deliverability — OutreachOS</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+body { background: linear-gradient(160deg, #f8fafc 0%, #f1f5ff 60%, #f8fafc 100%); }
+
+/* KPI */
+.kpi-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 18px;
+  padding: 20px 22px; box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+  transition: box-shadow 0.2s, transform 0.15s; height: 100%;
+}
+.kpi-card:hover { box-shadow: 0 6px 22px rgba(15,23,42,0.08); transform: translateY(-1px); }
+.kpi-icon { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 16px; margin-bottom: 12px; }
+.ki-indigo  { background: #eef2ff; color: #6366f1; }
+.ki-emerald { background: #f0fdf4; color: #10b981; }
+.ki-rose    { background: #fff1f2; color: #f43f5e; }
+.ki-amber   { background: #fffbeb; color: #f59e0b; }
+.ki-violet  { background: #f5f3ff; color: #8b5cf6; }
+.kpi-val { font-size: 1.9rem; font-weight: 800; color: #0f172a; letter-spacing: -0.8px; line-height: 1; margin-bottom: 4px; }
+.kpi-lbl { font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+.kpi-sub { font-size: 12px; color: #6B7280; }
+
+/* Section card */
+.section-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 18px;
+  padding: 22px 24px; box-shadow: 0 2px 8px rgba(15,23,42,0.04); margin-bottom: 16px;
+}
+.section-card-title { font-size: 13.5px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+.section-card-sub   { font-size: 12px; color: #9CA3AF; margin-bottom: 18px; }
+
+/* SMTP inbox rows */
+.inbox-row {
+  display: flex; align-items: center; gap: 14px; padding: 14px 0;
+  border-bottom: 1px solid #f9fafb; transition: background 0.1s;
+}
+.inbox-row:last-child { border-bottom: none; }
+.inbox-row:hover { background: #fafbff; border-radius: 10px; padding-left: 8px; padding-right: 8px; margin: 0 -8px; }
+.inbox-avatar {
+  width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #fff;
+}
+.inbox-email { font-size: 13px; font-weight: 600; color: #0f172a; }
+.inbox-server { font-size: 11.5px; color: #9CA3AF; }
+
+/* Health score ring */
+.health-ring { position: relative; width: 44px; height: 44px; flex-shrink: 0; }
+.health-ring svg { transform: rotate(-90deg); }
+.health-ring .ring-bg   { fill: none; stroke: #f3f4f6; stroke-width: 4; }
+.health-ring .ring-fill { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.6s ease; }
+.health-ring .ring-val  { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #0f172a; }
+
+/* Progress bar */
+.send-bar { height: 5px; background: #f3f4f6; border-radius: 99px; overflow: hidden; margin-top: 4px; }
+.send-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #6366f1, #8b5cf6); }
+
+/* Warmup badge */
+.warmup-badge { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 99px; }
+.wb-1 { background: #fef3c7; color: #92400e; }
+.wb-2 { background: #fef9c3; color: #854d0e; }
+.wb-3 { background: #dcfce7; color: #166534; }
+.wb-4 { background: #d1fae5; color: #065f46; }
+.wb-5 { background: #a7f3d0; color: #064e3b; }
+
+/* Status pill */
+.status-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 99px; }
+.sp-active  { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.sp-paused  { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.sp-atrisk  { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; }
+.sd-green { background: #10b981; }
+.sd-gray  { background: #9CA3AF; }
+.sd-red   { background: #ef4444; }
+
+/* Action buttons */
+.act-btn {
+  padding: 5px 12px; border-radius: 8px; font-size: 11.5px; font-weight: 600;
+  border: 1px solid #e5e7eb; background: #f9fafb; color: #374151;
+  cursor: pointer; transition: all 0.15s; font-family: 'Inter', sans-serif;
+}
+.act-btn:hover { background: #eef2ff; border-color: #c7d2fe; color: #4338ca; }
+.act-btn.danger:hover { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+
+/* Bounce table */
+.bounce-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f9fafb; }
+.bounce-row:last-child { border-bottom: none; }
+.bounce-icon { width: 30px; height: 30px; border-radius: 8px; background: #fef2f2; color: #ef4444; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+.bounce-email { font-size: 12.5px; font-weight: 600; color: #0f172a; }
+.bounce-reason { font-size: 11.5px; color: #9CA3AF; }
+.bounce-date { font-size: 11px; color: #9CA3AF; white-space: nowrap; }
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 48px 24px;
+}
+.empty-icon-wrap { width: 60px; height: 60px; border-radius: 16px; background: linear-gradient(135deg, #eef2ff, #f5f3ff); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 22px; color: #6366f1; }
+
+/* Spin */
+.spin { display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,0.3);border-top:2px solid #fff;border-radius:50%;animation:spin 0.6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Add inbox btn */
+.btn-add {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border: none;
+  border-radius: 12px; padding: 10px 20px; font-size: 13.5px; font-weight: 600;
+  cursor: pointer; font-family: 'Inter', sans-serif; display: flex; align-items: center; gap: 8px;
+  box-shadow: 0 2px 10px rgba(99,102,241,0.28); transition: opacity 0.15s, transform 0.15s;
+}
+.btn-add:hover { opacity: 0.9; transform: translateY(-1px); }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability" class="active"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#f87171;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<div class="main">
+
+  <!-- HEADER -->
+  <div class="d-flex align-items-start justify-content-between mb-4" style="margin-bottom:28px!important;">
+    <div>
+      <h1 style="font-size:1.75rem;font-weight:800;color:#0f172a;letter-spacing:-0.6px;margin-bottom:5px;">Deliverability Infrastructure</h1>
+      <p style="font-size:14px;color:#6B7280;margin:0;">Monitor inbox health, SMTP rotation, bounce protection, and outbound infrastructure stability.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <button class="act-btn" onclick="resetToday()"><i class="fas fa-redo me-1"></i>Reset Counters</button>
+      <button class="btn-add" onclick="document.getElementById('addInboxSection').scrollIntoView({behavior:'smooth'})">
+        <i class="fas fa-plus" style="font-size:11px;"></i> Add Inbox
+      </button>
+    </div>
+  </div>
+
+  <!-- KPI CARDS -->
+  {% set active_count = smtp_accounts | selectattr('active') | list | length %}
+  {% set avg_health = (smtp_accounts | map(attribute='health_score') | sum / smtp_accounts | length) | round | int if smtp_accounts else 0 %}
+  {% set at_risk = smtp_accounts | selectattr('active') | selectattr('health_score', 'lt', 50) | list | length %}
+  {% set daily_cap = smtp_accounts | selectattr('active') | sum(attribute='daily_limit') %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-indigo"><i class="fas fa-server"></i></div>
+        <div class="kpi-lbl">Active Inboxes</div>
+        <div class="kpi-val" style="color:#6366f1;">{{ active_count }}</div>
+        <div class="kpi-sub">of {{ smtp_accounts | length }} total</div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-emerald"><i class="fas fa-heartbeat"></i></div>
+        <div class="kpi-lbl">Avg Health</div>
+        <div class="kpi-val" style="color:{% if avg_health >= 70 %}#10b981{% elif avg_health >= 40 %}#f59e0b{% else %}#ef4444{% endif %};">{{ avg_health }}</div>
+        <div class="kpi-sub">{% if avg_health >= 70 %}Excellent{% elif avg_health >= 40 %}Moderate{% else %}Needs attention{% endif %}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-rose"><i class="fas fa-exclamation-triangle"></i></div>
+        <div class="kpi-lbl">Bounce Rate</div>
+        <div class="kpi-val" style="color:{% if bounce_rate > 5 %}#ef4444{% elif bounce_rate > 2 %}#f59e0b{% else %}#10b981{% endif %};">{{ bounce_rate }}%</div>
+        <div class="kpi-sub">{{ total_bounced }} bounced emails</div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-amber"><i class="fas fa-bolt"></i></div>
+        <div class="kpi-lbl">Daily Capacity</div>
+        <div class="kpi-val" style="color:#f59e0b;">{{ daily_cap }}</div>
+        <div class="kpi-sub">emails/day available</div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="kpi-card">
+        <div class="kpi-icon ki-violet"><i class="fas fa-exclamation-circle"></i></div>
+        <div class="kpi-lbl">At Risk</div>
+        <div class="kpi-val" style="color:{% if at_risk > 0 %}#ef4444{% else %}#10b981{% endif %};">{{ at_risk }}</div>
+        <div class="kpi-sub">{% if at_risk > 0 %}Inboxes need attention{% else %}All inboxes healthy{% endif %}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SMTP ACCOUNTS -->
+  <div class="section-card mb-4">
+    <div class="d-flex align-items-center justify-content-between mb-1">
+      <div>
+        <div class="section-card-title"><i class="fas fa-server me-2" style="color:#6366f1;"></i>SMTP Inbox Rotation</div>
+        <div class="section-card-sub">Active sending infrastructure with warmup monitoring</div>
+      </div>
+    </div>
+
+    {% if smtp_accounts %}
+    {% for acc in smtp_accounts %}
+    {% set hc = '#10b981' if acc.health_score >= 70 else '#f59e0b' if acc.health_score >= 40 else '#ef4444' %}
+    {% set pct = ((acc.sent_today / acc.daily_limit * 100) | round | int) if acc.daily_limit > 0 else 0 %}
+    {% set initials = acc.email[0].upper() %}
+    {% set bg_colors = ['#6366f1','#10b981','#8b5cf6','#f59e0b','#f43f5e','#0ea5e9'] %}
+    {% set bg = bg_colors[loop.index0 % 6] %}
+
+    <div class="inbox-row">
+      <!-- Avatar -->
+      <div class="inbox-avatar" style="background:{{ bg }};">{{ initials }}</div>
+
+      <!-- Info -->
+      <div style="flex:1;min-width:0;">
+        <div class="inbox-email">{{ acc.email }}</div>
+        <div class="inbox-server">{{ acc.smtp_server }}:{{ acc.smtp_port }}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+          <span style="font-size:11px;color:#9CA3AF;">{{ acc.sent_today }}/{{ acc.daily_limit }} today</span>
+          <div class="send-bar" style="width:80px;"><div class="send-fill" style="width:{{ pct }}%;"></div></div>
+        </div>
+      </div>
+
+      <!-- Health ring -->
+      <div class="health-ring">
+        {% set circ = 2 * 3.14159 * 16 %}
+        {% set offset = circ - (acc.health_score / 100 * circ) %}
+        <svg width="44" height="44" viewBox="0 0 44 44">
+          <circle class="ring-bg" cx="22" cy="22" r="16"/>
+          <circle class="ring-fill" cx="22" cy="22" r="16"
+            stroke="{{ hc }}"
+            stroke-dasharray="{{ circ | round(2) }}"
+            stroke-dashoffset="{{ offset | round(2) }}"/>
+        </svg>
+        <div class="ring-val" style="color:{{ hc }};">{{ acc.health_score }}</div>
+      </div>
+
+      <!-- Warmup -->
+      <div class="text-center" style="min-width:70px;">
+        <span class="warmup-badge wb-{{ [acc.warmup_stage, 5] | min }}">Stage {{ acc.warmup_stage }}</span>
+        <div style="font-size:10px;color:#9CA3AF;margin-top:3px;">Warmup</div>
+      </div>
+
+      <!-- Status -->
+      <div>
+        {% if acc.active %}
+          {% if acc.health_score >= 50 %}
+          <span class="status-pill sp-active"><span class="status-dot sd-green"></span>Active</span>
+          {% else %}
+          <span class="status-pill sp-atrisk"><span class="status-dot sd-red"></span>At Risk</span>
+          {% endif %}
+        {% else %}
+        <span class="status-pill sp-paused"><span class="status-dot sd-gray"></span>Paused</span>
+        {% endif %}
+      </div>
+
+      <!-- Actions -->
+      <div class="d-flex gap-1">
+        <button class="act-btn" onclick="toggleAccount({{ acc.id }}, this)">
+          {{ 'Pause' if acc.active else 'Activate' }}
+        </button>
+        <button class="act-btn danger" onclick="deleteAccount({{ acc.id }}, '{{ acc.email }}')">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon-wrap"><i class="fas fa-server"></i></div>
+      <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:6px;">No SMTP accounts configured</div>
+      <div style="font-size:13px;color:#6B7280;max-width:300px;margin:0 auto 20px;">Add sending inboxes to enable SMTP rotation and warmup management.</div>
+      <a href="/settings" class="btn btn-primary" style="border-radius:10px;">Configure in Settings →</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ADD INBOX SECTION -->
+  <div class="section-card mb-4" id="addInboxSection">
+    <div class="section-card-title"><i class="fas fa-plus-circle me-2" style="color:#6366f1;"></i>Add New Inbox</div>
+    <div class="section-card-sub">Add a sending inbox to the rotation pool</div>
+    <div class="row g-2">
+      <div class="col-md-4"><input type="text" id="acc_email" class="form-control" placeholder="Email address"></div>
+      <div class="col-md-3"><input type="password" id="acc_password" class="form-control" placeholder="Password"></div>
+      <div class="col-md-3"><input type="text" id="acc_from_name" class="form-control" placeholder="From Name"></div>
+      <div class="col-md-2"><input type="number" id="acc_daily_limit" class="form-control" placeholder="Daily limit" value="50"></div>
+      <div class="col-md-4"><input type="text" id="acc_smtp_server" class="form-control" placeholder="SMTP Server" value="smtp.hostinger.com"></div>
+      <div class="col-md-2"><input type="number" id="acc_smtp_port" class="form-control" placeholder="Port" value="587"></div>
+      <div class="col-md-6 d-flex gap-2 align-items-center">
+        <button class="btn btn-primary" onclick="addAccount()" style="border-radius:10px;"><i class="fas fa-save me-1"></i>Save Inbox</button>
+        <span id="addStatus" style="font-size:12.5px;color:#6B7280;"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOUNCE / FAILED EMAILS -->
+  <div class="section-card">
+    <div class="section-card-title"><i class="fas fa-exclamation-triangle me-2" style="color:#ef4444;"></i>Bounce & Failure Log</div>
+    <div class="section-card-sub">Recent delivery failures and bounce events</div>
+
+    {% if bounced %}
+    {% for b in bounced[:20] %}
+    <div class="bounce-row">
+      <div class="bounce-icon"><i class="fas fa-times"></i></div>
+      <div style="flex:1;min-width:0;">
+        <div class="bounce-email">{{ b.name }} <span style="color:#9CA3AF;font-weight:400;">·</span> {{ b.email }}</div>
+        <div class="bounce-reason">{{ (b.bounce_reason or 'Unknown reason')[:80] }}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;">
+        <span style="font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;">{{ b.status }}</span>
+        <div class="bounce-date mt-1">{{ b.sent_at[:10] if b.sent_at else '—' }}</div>
+      </div>
+    </div>
+    {% endfor %}
+    {% if bounced | length > 20 %}
+    <div style="text-align:center;padding:12px 0;font-size:12.5px;color:#6B7280;">
+      +{{ bounced | length - 20 }} more bounce events
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon-wrap" style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);color:#10b981;"><i class="fas fa-check-circle"></i></div>
+      <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:6px;">No bounces detected</div>
+      <div style="font-size:13px;color:#6B7280;">Excellent deliverability. All emails are reaching inboxes successfully.</div>
+    </div>
+    {% endif %}
+  </div>
+
+</div><!-- main -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function toggleAccount(id, btn) {
+  const orig = btn.textContent;
+  btn.textContent = '...';
+  btn.disabled = true;
+  fetch(`/api/smtp_accounts/${id}/toggle`, {method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{ if(d.success) location.reload(); else { btn.textContent=orig; btn.disabled=false; } });
+}
+
+function deleteAccount(id, email) {
+  if(!confirm(`Remove ${email} from rotation?`)) return;
+  fetch(`/api/smtp_accounts/${id}/delete`, {method:'DELETE'})
+    .then(r=>r.json()).then(d=>{ if(d.success) location.reload(); });
+}
+
+function resetToday() {
+  fetch('/api/smtp_accounts/reset_today', {method:'POST'})
+    .then(r=>r.json()).then(d=>{ if(d.success) location.reload(); });
+}
+
+function addAccount() {
+  const data = {
+    email: document.getElementById('acc_email').value.trim(),
+    password: document.getElementById('acc_password').value.trim(),
+    from_name: document.getElementById('acc_from_name').value.trim(),
+    daily_limit: parseInt(document.getElementById('acc_daily_limit').value) || 50,
+    smtp_server: document.getElementById('acc_smtp_server').value.trim(),
+    smtp_port: parseInt(document.getElementById('acc_smtp_port').value) || 587
+  };
+  if(!data.email || !data.password) {
+    document.getElementById('addStatus').textContent = 'Email and password required.';
+    document.getElementById('addStatus').style.color = '#ef4444';
+    return;
+  }
+  document.getElementById('addStatus').textContent = 'Saving...';
+  document.getElementById('addStatus').style.color = '#6B7280';
+  fetch('/api/smtp_accounts/add', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d=>{
+      if(d.success) { location.reload(); }
+      else { document.getElementById('addStatus').textContent = d.error || 'Failed'; document.getElementById('addStatus').style.color = '#ef4444'; }
+    });
+}
+</script>
+</body>
+</html>

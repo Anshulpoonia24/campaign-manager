@@ -1,57 +1,504 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><title>Upload Contacts</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="/static/style.css" rel="stylesheet">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Import Leads — AI Pipeline</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+/* ── DROPZONE ── */
+.dropzone {
+  border: 2px dashed #c7d2fe;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%);
+  padding: 52px 40px;
+  text-align: center;
+  transition: all 0.2s;
+  cursor: pointer;
+  position: relative;
+}
+.dropzone:hover, .dropzone.drag-over {
+  border-color: #6366f1;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  box-shadow: 0 0 0 4px rgba(99,102,241,0.08);
+}
+.dropzone .dz-icon { font-size: 2.8rem; color: #6366f1; margin-bottom: 14px; opacity: 0.85; }
+.dropzone h4 { font-size: 1.1rem; font-weight: 700; color: #1e1b4b; margin-bottom: 6px; }
+.dropzone p  { color: #6B7280; font-size: 13px; margin-bottom: 18px; }
+.dropzone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+/* ── PIPELINE STAGES ── */
+.pipeline-stages { display: flex; gap: 0; margin-bottom: 20px; }
+.stage {
+  flex: 1; text-align: center; padding: 10px 6px;
+  font-size: 11px; font-weight: 600; color: #9CA3AF;
+  border-bottom: 3px solid #e2e8f0;
+  transition: all 0.3s;
+}
+.stage.active  { color: #6366f1; border-color: #6366f1; }
+.stage.done    { color: #10b981; border-color: #10b981; }
+.stage i { display: block; font-size: 1rem; margin-bottom: 4px; }
+
+/* ── PROGRESS BANNER ── */
+.progress-banner {
+  background: linear-gradient(135deg, #1e1b4b, #312e81);
+  border-radius: 12px; padding: 18px 22px; color: #fff;
+  display: none; margin-bottom: 16px;
+}
+.progress-banner h6 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.progress-banner .progress { height: 6px; border-radius: 99px; background: rgba(255,255,255,0.2); }
+.progress-banner .progress-bar { background: linear-gradient(90deg, #818cf8, #34d399); border-radius: 99px; }
+.stage-log { font-size: 11.5px; color: rgba(255,255,255,0.7); margin-top: 8px; }
+
+/* ── FEATURE CARDS ── */
+.feature-card {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 14px 16px; display: flex; align-items: flex-start; gap: 12px;
+  transition: box-shadow 0.15s;
+}
+.feature-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+.feature-icon { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.feature-card h6 { font-size: 12.5px; font-weight: 700; color: #111827; margin: 0 0 2px; }
+.feature-card p  { font-size: 11.5px; color: #6B7280; margin: 0; }
+
+/* ── STATS PANEL ── */
+.stat-pill { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; text-align: center; }
+.stat-pill .val { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; }
+.stat-pill .lbl { font-size: 10.5px; color: #9CA3AF; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+
+/* ── IMPORT OPTIONS ── */
+.import-option { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; background: #f8fafc; border: 1px solid #e2e8f0; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s; }
+.import-option:hover { border-color: #6366f1; }
+.import-option input[type=checkbox] { width: 15px; height: 15px; accent-color: #6366f1; flex-shrink: 0; }
+.import-option label { font-size: 12.5px; font-weight: 500; color: #374151; cursor: pointer; margin: 0; flex: 1; }
+.import-option small { font-size: 11px; color: #9CA3AF; }
+
+/* ── QUICK ADD ── */
+.accordion-button:not(.collapsed) { background: #f0f4ff; color: #4338ca; box-shadow: none; }
+.accordion-button { font-size: 13.5px; font-weight: 600; }
+
+/* ── SPIN ── */
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top: 2px solid #fff; border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── FILE SELECTED STATE ── */
+.file-selected-bar { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 16px; display: none; align-items: center; gap: 10px; margin-top: 12px; }
+.file-selected-bar i { color: #10b981; }
+</style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
-        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
-        <a href="/upload" class="active"><i class="fas fa-upload"></i> Upload Contacts</a>
-        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
-        <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
-        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
-        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
-        <a href="/logs"><i class="fas fa-list-alt"></i> Logs</a>
-        <hr style="border-color:#e2e8f0">
-        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
-        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<div class="main">
+{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}
+<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show py-2">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+{% endfor %}{% endif %}{% endwith %}
+
+<!-- HEADER -->
+<div class="d-flex align-items-start justify-content-between mb-4">
+  <div>
+    <h3 style="margin:0;">Import Leads</h3>
+    <small class="text-muted">Upload contacts and enrich them with AI-generated company intelligence.</small>
+  </div>
+  <a href="/contacts" class="btn btn-sm btn-outline-secondary"><i class="fas fa-users me-1"></i>View Contacts</a>
+</div>
+
+<!-- PIPELINE STAGES -->
+<div class="pipeline-stages mb-4" id="pipelineStages">
+  <div class="stage active" id="stage-upload"><i class="fas fa-upload"></i>Upload</div>
+  <div class="stage" id="stage-map"><i class="fas fa-columns"></i>Map Columns</div>
+  <div class="stage" id="stage-import"><i class="fas fa-database"></i>Import</div>
+  <div class="stage" id="stage-verify"><i class="fas fa-check-double"></i>Verify</div>
+  <div class="stage" id="stage-enrich"><i class="fas fa-robot"></i>AI Enrich</div>
+  <div class="stage" id="stage-done"><i class="fas fa-flag-checkered"></i>Done</div>
+</div>
+
+<!-- PROGRESS BANNER (hidden until import starts) -->
+<div class="progress-banner" id="progressBanner">
+  <h6 id="bannerTitle">Processing leads...</h6>
+  <div class="progress"><div class="progress-bar" id="bannerBar" style="width:0%"></div></div>
+  <div class="stage-log" id="bannerLog">Initializing...</div>
+</div>
+
+<div class="row g-4">
+  <!-- LEFT: MAIN IMPORT AREA -->
+  <div class="col-lg-8">
+
+    <!-- DROPZONE -->
+    <div class="card-box mb-4">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h5 style="margin:0;font-size:0.9rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#6B7280;">
+          <i class="fas fa-cloud-upload-alt me-2" style="color:#6366f1;"></i>Bulk Import
+        </h5>
+        <a href="#" onclick="downloadSample()" class="btn btn-sm btn-outline-secondary" style="font-size:11.5px;">
+          <i class="fas fa-download me-1"></i>Sample CSV
+        </a>
+      </div>
+
+      <form method="POST" enctype="multipart/form-data" id="uploadForm">
+        <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+          <input type="file" name="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="onFileSelected(this)">
+          <div class="dz-icon"><i class="fas fa-file-import"></i></div>
+          <h4>Drag &amp; drop CSV or Excel files</h4>
+          <p>Supports .CSV and .XLSX with automatic column detection</p>
+          <div class="d-flex gap-2 justify-content-center">
+            <span class="badge" style="background:#e0e7ff;color:#4338ca;font-size:11px;padding:5px 10px;">CSV</span>
+            <span class="badge" style="background:#dcfce7;color:#166534;font-size:11px;padding:5px 10px;">XLSX</span>
+            <span class="badge" style="background:#fef3c7;color:#92400e;font-size:11px;padding:5px 10px;">XLS</span>
+          </div>
+        </div>
+
+        <!-- FILE SELECTED STATE -->
+        <div class="file-selected-bar" id="fileSelectedBar">
+          <i class="fas fa-file-excel fa-lg"></i>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:600;color:#111827;" id="selectedFileName">file.csv</div>
+            <div style="font-size:11px;color:#6B7280;" id="selectedFileSize"></div>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="clearFile()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <!-- IMPORT OPTIONS -->
+        <div class="mt-4">
+          <div style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
+            Import Options
+          </div>
+          <div class="import-option">
+            <input type="checkbox" id="opt_skip_dup" checked>
+            <label for="opt_skip_dup">Skip duplicate emails</label>
+            <small>Recommended</small>
+          </div>
+          <div class="import-option">
+            <input type="checkbox" id="opt_verify" checked>
+            <label for="opt_verify">Verify emails after import</label>
+            <small>MX + SMTP check</small>
+          </div>
+          <div class="import-option">
+            <input type="checkbox" id="opt_enrich">
+            <label for="opt_enrich">Generate AI context automatically</label>
+            <small>Uses Groq / Gemini</small>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-4">
+          <button type="submit" class="btn btn-primary px-4" id="importBtn" disabled>
+            <i class="fas fa-rocket me-2"></i>Import Leads
+          </button>
+          <button type="button" class="btn btn-outline-secondary" onclick="clearFile()">Clear</button>
+        </div>
+      </form>
     </div>
-    <div class="main">
-        {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endif %}{% endwith %}
-        <h3 class="mb-4">📤 Upload Contacts</h3>
-        <div class="card-box mb-4">
-            <h5 class="mb-3">➕ Add Single Contact</h5>
-            <form method="POST" action="/add_contact" class="row g-2">
-                <div class="col-md-2"><input type="text" name="name" class="form-control" placeholder="Name" required></div>
-                <div class="col-md-2"><input type="text" name="company" class="form-control" placeholder="Company"></div>
-                <div class="col-md-3"><input type="email" name="email" class="form-control" placeholder="Email" required></div>
-                <div class="col-md-2"><input type="text" name="website" class="form-control" placeholder="Website"></div>
-                <div class="col-md-2"><input type="text" name="designation" class="form-control" placeholder="Designation"></div>
-                <div class="col-md-1"><button class="btn btn-success w-100">Add</button></div>
+
+    <!-- QUICK ADD (collapsed) -->
+    <div class="accordion mb-4" id="quickAddAccordion">
+      <div class="accordion-item" style="border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#quickAddBody">
+            <i class="fas fa-user-plus me-2" style="color:#6366f1;"></i>Quick Add Single Contact
+          </button>
+        </h2>
+        <div id="quickAddBody" class="accordion-collapse collapse">
+          <div class="accordion-body" style="background:#fafafa;">
+            <form method="POST" action="/add_contact">
+              <div class="row g-2">
+                <div class="col-md-4"><input type="text" name="name" class="form-control form-control-sm" placeholder="Full Name" required></div>
+                <div class="col-md-4"><input type="text" name="company" class="form-control form-control-sm" placeholder="Company"></div>
+                <div class="col-md-4"><input type="email" name="email" class="form-control form-control-sm" placeholder="Email" required></div>
+                <div class="col-md-4"><input type="text" name="website" class="form-control form-control-sm" placeholder="Website (https://...)"></div>
+                <div class="col-md-4"><input type="text" name="designation" class="form-control form-control-sm" placeholder="Designation / Title"></div>
+                <div class="col-md-4"><button type="submit" class="btn btn-primary btn-sm w-100"><i class="fas fa-plus me-1"></i>Add Contact</button></div>
+              </div>
             </form>
+          </div>
         </div>
-        <form method="POST" enctype="multipart/form-data">
-            <div class="upload-box">
-                <i class="fas fa-cloud-upload-alt fa-3x mb-3" style="color:#3b82f6"></i>
-                <h5>Excel ya CSV file upload karo</h5>
-                <p class="text-muted">System automatically detect karega columns — Name, Company, Email etc.</p>
-                <input type="file" name="file" class="form-control w-50 mx-auto mt-3" accept=".xlsx,.xls,.csv" required>
-                <button type="submit" class="btn btn-primary mt-3 px-5">Upload & Import</button>
-            </div>
-        </form>
-        <div class="card-box mt-4">
-            <h6>ℹ️ Notes:</h6>
-            <ul class="text-muted mb-0">
-                <li>Duplicate emails automatically skip ho jayenge</li>
-                <li>Koi bhi Excel format chalega — system khud columns detect karega</li>
-                <li>Agar Name nahi mila toh email se auto-extract hoga</li>
-            </ul>
-        </div>
+      </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- SMART FEATURES -->
+    <div class="card-box">
+      <div style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">
+        Smart Import Features
+      </div>
+      <div class="row g-2">
+        <div class="col-md-6">
+          <div class="feature-card">
+            <div class="feature-icon" style="background:#e0e7ff;"><i class="fas fa-columns" style="color:#4338ca;"></i></div>
+            <div><h6>Auto Column Detection</h6><p>Detects Name, Email, Company, Website automatically from any format.</p></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="feature-card">
+            <div class="feature-icon" style="background:#dcfce7;"><i class="fas fa-filter" style="color:#166534;"></i></div>
+            <div><h6>Duplicate Detection</h6><p>Skips contacts already in your database by email address.</p></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="feature-card">
+            <div class="feature-icon" style="background:#fef3c7;"><i class="fas fa-check-double" style="color:#92400e;"></i></div>
+            <div><h6>Email Verification</h6><p>MX record + SMTP handshake validation on every imported email.</p></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="feature-card">
+            <div class="feature-icon" style="background:#fdf4ff;"><i class="fas fa-robot" style="color:#7e22ce;"></i></div>
+            <div><h6>AI Enrichment Pipeline</h6><p>Auto-generates company context for personalized outreach.</p></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="feature-card">
+            <div class="feature-icon" style="background:#fff7ed;"><i class="fas fa-globe" style="color:#c2410c;"></i></div>
+            <div><h6>Website Scraping</h6><p>Scrapes company website to extract business context for AI.</p></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="feature-card">
+            <div class="feature-icon" style="background:#f0fdf4;"><i class="fas fa-bolt" style="color:#15803d;"></i></div>
+            <div><h6>Bulk Ready</h6><p>Import thousands of contacts in one go with parallel processing.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT: STATS + FORMAT GUIDE -->
+  <div class="col-lg-4">
+
+    <!-- STATS PANEL -->
+    <div class="card-box mb-4">
+      <div style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">
+        <i class="fas fa-chart-bar me-1"></i> Database Stats
+      </div>
+      <div class="row g-2">
+        <div class="col-6">
+          <div class="stat-pill">
+            <div class="val" style="color:#6366f1;" id="statTotal">—</div>
+            <div class="lbl">Total Leads</div>
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="stat-pill">
+            <div class="val" style="color:#10b981;" id="statValid">—</div>
+            <div class="lbl">Valid Emails</div>
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="stat-pill">
+            <div class="val" style="color:#8b5cf6;" id="statEnriched">—</div>
+            <div class="lbl">AI Enriched</div>
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="stat-pill">
+            <div class="val" style="color:#f59e0b;" id="statSent">—</div>
+            <div class="lbl">Contacted</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FORMAT GUIDE -->
+    <div class="card-box mb-4">
+      <div style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">
+        <i class="fas fa-table me-1"></i> Recommended Format
+      </div>
+      <table class="table table-sm mb-0" style="font-size:12px;">
+        <thead><tr style="background:#f8fafc;">
+          <th style="padding:6px 8px;">Column</th>
+          <th style="padding:6px 8px;">Required</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:6px 8px;font-weight:500;">Email</td><td><span class="badge bg-danger" style="font-size:10px;">Required</span></td></tr>
+          <tr><td style="padding:6px 8px;font-weight:500;">Name</td><td><span class="badge bg-secondary" style="font-size:10px;">Optional</span></td></tr>
+          <tr><td style="padding:6px 8px;font-weight:500;">Company</td><td><span class="badge bg-secondary" style="font-size:10px;">Optional</span></td></tr>
+          <tr><td style="padding:6px 8px;font-weight:500;">Website</td><td><span class="badge bg-secondary" style="font-size:10px;">Optional</span></td></tr>
+          <tr><td style="padding:6px 8px;font-weight:500;">Designation</td><td><span class="badge bg-secondary" style="font-size:10px;">Optional</span></td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:10px;padding:8px;background:#f8fafc;border-radius:6px;">
+        💡 Any column order works. System auto-detects by column name.
+      </div>
+    </div>
+
+    <!-- EXPORT SECTION -->
+    <div class="card-box">
+      <div style="font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">
+        <i class="fas fa-download me-1"></i> Data Export
+      </div>
+      <div class="d-grid gap-2">
+        <a href="/export/all" class="btn btn-sm btn-outline-secondary"><i class="fas fa-users me-1"></i>Export All Contacts</a>
+        <a href="/export/sent" class="btn btn-sm btn-outline-secondary"><i class="fas fa-paper-plane me-1"></i>Export Sent Emails</a>
+        <a href="/export/invalid" class="btn btn-sm btn-outline-secondary"><i class="fas fa-times-circle me-1"></i>Export Invalid Emails</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div><!-- end .main -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── DRAG & DROP ──
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if(f) { document.getElementById('fileInput').files = e.dataTransfer.files; onFileSelected({files:[f]}); }
+});
+
+function onFileSelected(input) {
+  const f = input.files ? input.files[0] : input;
+  if(!f) return;
+  const bar = document.getElementById('fileSelectedBar');
+  document.getElementById('selectedFileName').textContent = f.name;
+  document.getElementById('selectedFileSize').textContent = (f.size/1024).toFixed(1)+' KB';
+  bar.style.display = 'flex';
+  document.getElementById('importBtn').disabled = false;
+  setStage('upload');
+}
+
+function clearFile() {
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileSelectedBar').style.display = 'none';
+  document.getElementById('importBtn').disabled = true;
+  resetStages();
+}
+
+// ── PIPELINE STAGES ──
+const stages = ['upload','map','import','verify','enrich','done'];
+function setStage(name) {
+  const idx = stages.indexOf(name);
+  stages.forEach((s,i) => {
+    const el = document.getElementById('stage-'+s);
+    el.className = 'stage' + (i < idx ? ' done' : i === idx ? ' active' : '');
+  });
+}
+function resetStages() { stages.forEach(s => document.getElementById('stage-'+s).className='stage'); document.getElementById('stage-upload').className='stage active'; }
+
+// ── FORM SUBMIT ──
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+  const f = document.getElementById('fileInput').files[0];
+  if(!f) { e.preventDefault(); return; }
+
+  const btn = document.getElementById('importBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Importing...';
+
+  const banner = document.getElementById('progressBanner');
+  banner.style.display = 'block';
+
+  const doVerify  = document.getElementById('opt_verify').checked;
+  const doEnrich  = document.getElementById('opt_enrich').checked;
+
+  // Animate pipeline stages
+  const log = document.getElementById('bannerLog');
+  const bar = document.getElementById('bannerBar');
+  const title = document.getElementById('bannerTitle');
+
+  let pct = 0;
+  function animateTo(target, label, stageKey, cb) {
+    title.textContent = label;
+    setStage(stageKey);
+    const step = () => {
+      if(pct < target) { pct += 2; bar.style.width = pct+'%'; setTimeout(step, 40); }
+      else if(cb) cb();
+    };
+    step();
+  }
+
+  animateTo(20, 'Uploading file...', 'upload', () => {
+    log.textContent = '→ Reading columns...';
+    animateTo(40, 'Detecting columns...', 'map', () => {
+      log.textContent = '→ Mapping fields automatically...';
+      animateTo(60, 'Importing contacts...', 'import', () => {
+        log.textContent = '→ Saving to database...';
+        if(doVerify) {
+          animateTo(80, 'Verifying emails...', 'verify', () => {
+            log.textContent = '→ MX + SMTP validation...';
+            if(doEnrich) animateTo(95, 'Generating AI context...', 'enrich', null);
+          });
+        }
+      });
+    });
+  });
+
+  // Let form submit naturally — page will reload with flash message
+  // After reload, trigger verify/enrich if checked
+  sessionStorage.setItem('post_import_verify', doVerify ? '1' : '0');
+  sessionStorage.setItem('post_import_enrich', doEnrich ? '1' : '0');
+});
+
+// ── POST-IMPORT ACTIONS (after page reload) ──
+window.addEventListener('load', () => {
+  const doVerify = sessionStorage.getItem('post_import_verify') === '1';
+  const doEnrich = sessionStorage.getItem('post_import_enrich') === '1';
+  sessionStorage.removeItem('post_import_verify');
+  sessionStorage.removeItem('post_import_enrich');
+
+  // Check if we just imported (flash message present)
+  const hasSuccess = document.querySelector('.alert-success');
+  if(hasSuccess && doVerify) {
+    setTimeout(() => {
+      fetch('/verify_emails', {method:'POST', body: (() => { const fd=new FormData(); fd.append('reverify','0'); return fd; })()});
+    }, 1000);
+  }
+  if(hasSuccess && doEnrich) {
+    setTimeout(() => {
+      fetch('/api/enrich_all', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({force:false})});
+    }, 2000);
+  }
+});
+
+// ── LOAD STATS ──
+fetch('/api/verify_status').then(r=>r.json()).then(d => {
+  const total = d.results ? d.results.length : 0;
+  const valid = d.results ? d.results.filter(r=>r.valid===1).length : 0;
+  document.getElementById('statTotal').textContent = total || '—';
+  document.getElementById('statValid').textContent = valid || '—';
+}).catch(()=>{});
+
+// Load enriched count
+fetch('/api/hot_leads').then(r=>r.json()).then(d=>{
+  // approximate: use contacts count from verify_status
+}).catch(()=>{});
+
+// Simpler: just fetch contacts page stats
+fetch('/contacts').then(()=>{}).catch(()=>{});
+
+// Load sent count from dashboard API
+fetch('/api/click_analytics').then(r=>r.json()).then(d=>{
+  if(d.total_clicks !== undefined) document.getElementById('statSent').textContent = d.total_clicks;
+}).catch(()=>{});
+
+// ── SAMPLE CSV DOWNLOAD ──
+function downloadSample() {
+  const csv = `Name,Company,Email,Website,Designation
+John Smith,Acme Corp,john@acme.com,https://acme.com,CEO
+Jane Doe,TechStart Inc,jane@techstart.io,https://techstart.io,CTO
+Mike Johnson,Growth Labs,mike@growthlabs.com,https://growthlabs.com,Founder`;
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sample_leads.csv';
+  a.click();
+}
+</script>
 </body>
 </html>

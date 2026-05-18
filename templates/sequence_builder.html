@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sequence Builder — OutreachOS</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js" rel="preload" as="script">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+/* ── CSS VARIABLES ── */
+:root {
+  --seq-bg:        #f8f9ff;
+  --seq-card:      #ffffff;
+  --seq-border:    #e5e7eb;
+  --seq-indigo:    #6366f1;
+  --seq-violet:    #8b5cf6;
+  --seq-green:     #10b981;
+  --seq-amber:     #f59e0b;
+  --seq-red:       #ef4444;
+  --seq-gray:      #6b7280;
+  --seq-text:      #0f172a;
+  --seq-muted:     #9ca3af;
+  --seq-radius:    14px;
+  --seq-shadow:    0 2px 8px rgba(15,23,42,0.06);
+  --seq-shadow-lg: 0 8px 28px rgba(15,23,42,0.10);
+  --panel-left:    300px;
+  --panel-right:   320px;
+}
+
+/* ── BODY ── */
+body { background: var(--seq-bg); font-family: 'Inter', sans-serif; }
+
+/* ── PAGE HEADER ── */
+.seq-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 28px 14px;
+  background: var(--seq-card);
+  border-bottom: 1px solid var(--seq-border);
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 1px 4px rgba(15,23,42,0.04);
+}
+.seq-header-left { display: flex; align-items: center; gap: 14px; }
+.seq-back-btn {
+  width: 34px; height: 34px; border-radius: 9px;
+  border: 1px solid var(--seq-border); background: #f9fafb;
+  color: var(--seq-gray); display: flex; align-items: center;
+  justify-content: center; text-decoration: none; font-size: 13px;
+  transition: all 0.15s;
+}
+.seq-back-btn:hover { background: #eef2ff; border-color: #c7d2fe; color: var(--seq-indigo); }
+.seq-title { font-size: 16px; font-weight: 700; color: var(--seq-text); letter-spacing: -0.3px; }
+.seq-subtitle { font-size: 12px; color: var(--seq-muted); margin-top: 1px; }
+.seq-header-right { display: flex; align-items: center; gap: 8px; }
+
+/* ── STATUS PILLS ── */
+.spill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; padding: 3px 10px;
+  border-radius: 99px; white-space: nowrap;
+}
+.spill-active   { background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }
+.spill-draft    { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+.spill-paused   { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+
+/* ── 3-PANEL GRID ── */
+.seq-workspace {
+  display: grid;
+  grid-template-columns: var(--panel-left) 1fr var(--panel-right);
+  height: calc(100vh - 65px);
+  overflow: hidden;
+}
+
+/* ── PANEL BASE ── */
+.seq-panel {
+  overflow-y: auto;
+  border-right: 1px solid var(--seq-border);
+}
+.seq-panel:last-child { border-right: none; }
+.seq-panel-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--seq-border);
+  background: var(--seq-card);
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.seq-panel-title {
+  font-size: 11px; font-weight: 700; color: var(--seq-muted);
+  text-transform: uppercase; letter-spacing: 0.6px;
+}
+
+/* ── BUTTONS ── */
+.btn-seq-primary {
+  background: linear-gradient(135deg, var(--seq-indigo), var(--seq-violet));
+  color: #fff; border: none; border-radius: 9px;
+  padding: 8px 16px; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: opacity 0.15s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-seq-primary:hover { opacity: 0.88; }
+.btn-seq-secondary {
+  background: #f1f5f9; color: #475569;
+  border: 1px solid var(--seq-border); border-radius: 9px;
+  padding: 7px 14px; font-size: 12.5px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-seq-secondary:hover { background: #eef2ff; color: var(--seq-indigo); border-color: #c7d2fe; }
+.btn-icon {
+  width: 28px; height: 28px; border-radius: 7px;
+  border: 1px solid var(--seq-border); background: #f9fafb;
+  color: var(--seq-gray); display: inline-flex; align-items: center;
+  justify-content: center; font-size: 11px; cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-icon:hover { background: #eef2ff; border-color: #c7d2fe; color: var(--seq-indigo); }
+.btn-icon.danger:hover { background: #fef2f2; border-color: #fecaca; color: var(--seq-red); }
+
+/* ── SPINNER ── */
+.spin {
+  display: inline-block; width: 13px; height: 13px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top: 2px solid #fff; border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── TOAST ── */
+.seq-toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  background: #1e293b; color: #fff; padding: 10px 18px;
+  border-radius: 10px; font-size: 13px; font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  transform: translateY(80px); opacity: 0;
+  transition: all 0.3s; pointer-events: none;
+}
+.seq-toast.show { transform: translateY(0); opacity: 1; }
+.seq-toast.success { background: #065f46; }
+.seq-toast.error   { background: #7f1d1d; }
+/* ── STEP TIMELINE (LEFT PANEL) ── */
+.step-card {
+  position: relative;
+  background: var(--seq-card);
+  border: 1.5px solid var(--seq-border);
+  border-radius: 11px;
+  padding: 11px 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.step-card:hover { border-color: #c7d2fe; box-shadow: var(--seq-shadow); }
+.step-card.active {
+  border-color: var(--seq-indigo);
+  background: #fafbff;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.08);
+}
+.step-card.inactive { opacity: 0.5; }
+
+/* dot on timeline */
+.step-dot {
+  position: absolute;
+  left: -22px; top: 14px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px var(--seq-indigo);
+  background: var(--seq-indigo);
+  z-index: 1;
+}
+.step-dot.followup { background: var(--seq-amber); box-shadow: 0 0 0 2px var(--seq-amber); }
+.step-dot.wait     { background: var(--seq-gray);  box-shadow: 0 0 0 2px var(--seq-gray); }
+.step-dot.final    { background: var(--seq-red);   box-shadow: 0 0 0 2px var(--seq-red); }
+
+.step-day-badge {
+  display: inline-block;
+  background: #f1f5f9; color: #475569;
+  font-size: 10px; font-weight: 700;
+  padding: 2px 7px; border-radius: 99px;
+  margin-bottom: 5px;
+}
+.step-label { font-size: 13px; font-weight: 700; color: var(--seq-text); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step-subject { font-size: 11px; color: var(--seq-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step-meta { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.step-type-badge {
+  font-size: 10px; font-weight: 600; padding: 1px 6px;
+  border-radius: 99px; border: 1px solid;
+}
+.stb-email    { background:#eef2ff; color:#4338ca; border-color:#c7d2fe; }
+.stb-followup { background:#fffbeb; color:#92400e; border-color:#fde68a; }
+.stb-wait     { background:#f1f5f9; color:#475569; border-color:#e2e8f0; }
+.stb-ai_reply { background:#f5f3ff; color:#6d28d9; border-color:#ddd6fe; }
+.stb-condition{ background:#f0fdf4; color:#166534; border-color:#bbf7d0; }
+.ai-dot { width:6px;height:6px;border-radius:50%;background:var(--seq-indigo);display:inline-block; }
+
+.step-actions { display:flex; gap:4px; margin-left:auto; }
+
+/* drag handle */
+.drag-handle {
+  position: absolute; right: 8px; top: 50%;
+  transform: translateY(-50%);
+  color: #d1d5db; font-size: 11px; cursor: grab;
+  padding: 4px;
+}
+.drag-handle:active { cursor: grabbing; }
+
+/* add step button */
+.btn-seq-add {
+  width: 100%; margin-top: 4px;
+  border: 2px dashed #c7d2fe;
+  border-radius: 10px; padding: 10px;
+  background: #f8faff; color: var(--seq-indigo);
+  font-size: 12.5px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn-seq-add:hover { background: #eef2ff; border-color: var(--seq-indigo); }
+
+/* empty state */
+.timeline-empty {
+  text-align: center; padding: 40px 20px;
+  color: var(--seq-muted); font-size: 13px;
+}
+/* ── CENTER PANEL — EDITOR ── */
+.ed-label {
+  display: block; font-size: 11px; font-weight: 700;
+  color: var(--seq-muted); text-transform: uppercase;
+  letter-spacing: 0.5px; margin-bottom: 5px;
+}
+.ed-input {
+  width: 100%; padding: 8px 10px;
+  border: 1px solid var(--seq-border); border-radius: 8px;
+  font-size: 13px; font-family: 'Inter', sans-serif;
+  color: var(--seq-text); background: #fff; outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ed-input:focus {
+  border-color: var(--seq-indigo);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+}
+.ed-textarea {
+  width: 100%; padding: 10px 12px;
+  border: 1px solid var(--seq-border); border-radius: 8px;
+  font-size: 12.5px; font-family: 'Inter', sans-serif;
+  color: var(--seq-text); background: #fff; outline: none;
+  resize: vertical; line-height: 1.6;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ed-textarea:focus {
+  border-color: var(--seq-indigo);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+}
+.sortable-ghost { opacity: 0.4; background: #eef2ff; }
+
+/* ── RIGHT PANEL ── */
+.rp-stat-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 7px; margin-bottom: 12px;
+}
+.rp-stat {
+  background: #f8fafc; border: 1px solid var(--seq-border);
+  border-radius: 10px; padding: 10px 8px; text-align: center;
+}
+.rp-stat-val {
+  font-size: 18px; font-weight: 800; color: var(--seq-text);
+  letter-spacing: -0.5px; line-height: 1;
+}
+.rp-stat-lbl {
+  font-size: 9.5px; font-weight: 600; color: var(--seq-muted);
+  text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px;
+}
+.rp-green  .rp-stat-val { color: var(--seq-green); }
+.rp-violet .rp-stat-val { color: var(--seq-violet); }
+.rp-indigo .rp-stat-val { color: var(--seq-indigo); }
+.rp-amber  .rp-stat-val { color: var(--seq-amber); }
+.rp-red    .rp-stat-val { color: var(--seq-red); }
+
+/* contact row */
+.contact-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 9px;
+  border: 1px solid var(--seq-border);
+  background: #fff; margin-bottom: 6px;
+  transition: box-shadow 0.15s;
+}
+.contact-row:hover { box-shadow: var(--seq-shadow); }
+.contact-avatar {
+  width: 30px; height: 30px; border-radius: 8px;
+  background: linear-gradient(135deg,#eef2ff,#f5f3ff);
+  color: var(--seq-indigo); font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.contact-name  { font-size: 12px; font-weight: 600; color: var(--seq-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.contact-email { font-size: 10.5px; color: var(--seq-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.contact-step  { font-size: 10px; color: var(--seq-muted); white-space: nowrap; }
+
+/* contact status pills */
+.cs-pill {
+  font-size: 9.5px; font-weight: 700; padding: 2px 6px;
+  border-radius: 99px; white-space: nowrap; flex-shrink: 0;
+}
+.cs-active      { background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }
+.cs-paused      { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+.cs-completed   { background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe; }
+.cs-replied     { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+.cs-bounced     { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
+.cs-unsubscribed{ background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+
+.contact-actions { display:flex; gap:3px; margin-left:auto; flex-shrink:0; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns" class="active"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<div class="main" style="padding:0;overflow:hidden;">
+
+<!-- PAGE HEADER -->
+<div class="seq-header">
+  <div class="seq-header-left">
+    <a href="/campaign/{{ campaign.id }}" class="seq-back-btn">
+      <i class="fas fa-arrow-left"></i>
+    </a>
+    <div>
+      <div class="seq-title">{{ campaign.name }}</div>
+      <div class="seq-subtitle">Sequence Builder &mdash; multi-step outbound workflow</div>
+    </div>
+    <span class="spill spill-{{ campaign.status or 'draft' }}" id="campStatusPill">
+      {{ campaign.status or 'draft' }}
+    </span>
+  </div>
+  <div class="seq-header-right">
+    <button class="btn-seq-secondary" onclick="triggerSequence(this)">
+      <i class="fas fa-play"></i> Run Now
+    </button>
+    <button class="btn-seq-primary" onclick="openEnrollModal()">
+      <i class="fas fa-user-plus"></i> Enroll Contacts
+    </button>
+  </div>
+</div>
+
+<!-- 3-PANEL WORKSPACE -->
+<div class="seq-workspace" id="seqWorkspace">
+
+  <!-- ═══════════════════════════════
+       LEFT PANEL — Step Timeline
+  ═══════════════════════════════ -->
+  <div class="seq-panel" id="panelLeft">
+    <div class="seq-panel-header">
+      <span class="seq-panel-title"><i class="fas fa-list-ol me-1"></i>Sequence Steps</span>
+      <span style="font-size:11px;color:var(--seq-muted);" id="stepCountBadge">0 steps</span>
+    </div>
+
+    <!-- TIMELINE -->
+    <div style="padding:14px 12px;">
+      <div id="stepTimeline" style="position:relative;padding-left:28px;">
+        <!-- vertical line -->
+        <div id="timelineLine" style="position:absolute;left:10px;top:0;bottom:0;width:2px;background:var(--seq-border);border-radius:2px;"></div>
+        <!-- steps injected by JS -->
+      </div>
+
+      <!-- ADD STEP BUTTON -->
+      <button class="btn-seq-add" onclick="addStep()" id="addStepBtn">
+        <i class="fas fa-plus"></i> Add Step
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════
+       CENTER PANEL — Email Editor
+  ═══════════════════════════════ -->
+  <div class="seq-panel" id="panelCenter" style="border-right:1px solid var(--seq-border);">
+    <div class="seq-panel-header">
+      <span class="seq-panel-title"><i class="fas fa-pen me-1"></i>Step Editor</span>
+      <div style="display:flex;gap:6px;">
+        <button class="btn-icon" id="btnSaveStep" onclick="saveStep()" title="Save step">
+          <i class="fas fa-save"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- NO STEP SELECTED -->
+    <div id="editorEmpty" style="text-align:center;padding:60px 24px;color:var(--seq-muted);">
+      <i class="fas fa-mouse-pointer" style="font-size:2rem;color:#c7d2fe;display:block;margin-bottom:12px;"></i>
+      <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Select a step to edit</div>
+      <div style="font-size:12px;">Click any step on the left to open the editor.</div>
+    </div>
+
+    <!-- EDITOR FORM -->
+    <div id="editorForm" style="display:none;padding:18px 20px;">
+
+      <!-- STEP META ROW -->
+      <div style="display:flex;gap:10px;margin-bottom:16px;">
+        <div style="flex:1;">
+          <label class="ed-label">Step Type</label>
+          <select id="edStepType" class="ed-input" onchange="onStepTypeChange()">
+            <option value="email">📧 Email</option>
+            <option value="followup">↩️ Follow-up</option>
+            <option value="wait">⏳ Wait</option>
+            <option value="ai_reply">🤖 AI Reply</option>
+            <option value="condition">🔀 Condition</option>
+          </select>
+        </div>
+        <div style="width:100px;">
+          <label class="ed-label">Delay (days)</label>
+          <input type="number" id="edDelayDays" class="ed-input" min="0" max="365" value="3">
+        </div>
+        <div style="width:80px;">
+          <label class="ed-label">Active</label>
+          <div style="padding-top:6px;">
+            <input type="checkbox" id="edActive" checked
+              style="width:16px;height:16px;accent-color:var(--seq-indigo);cursor:pointer;">
+          </div>
+        </div>
+      </div>
+
+      <!-- SUBJECT -->
+      <div id="subjectRow" style="margin-bottom:14px;">
+        <label class="ed-label">Subject Line
+          <span style="color:var(--seq-muted);font-weight:400;"> — use {name}, {company}</span>
+        </label>
+        <input type="text" id="edSubject" class="ed-input"
+          placeholder="e.g. Helping {company} scale engineering faster">
+      </div>
+
+      <!-- BODY -->
+      <div id="bodyRow" style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <label class="ed-label" style="margin:0;">Email Body</label>
+          <div style="display:flex;gap:6px;">
+            <button class="btn-seq-secondary" style="padding:4px 10px;font-size:11px;" onclick="insertVar('{name}')">{name}</button>
+            <button class="btn-seq-secondary" style="padding:4px 10px;font-size:11px;" onclick="insertVar('{company}')">{company}</button>
+            <button class="btn-seq-secondary" style="padding:4px 10px;font-size:11px;" onclick="generateAIBody(this)">
+              <i class="fas fa-robot" style="font-size:10px;"></i> AI Write
+            </button>
+          </div>
+        </div>
+        <textarea id="edBody" class="ed-textarea"
+          placeholder="Write your email body here. HTML supported. Use {name} and {company} for personalization."
+          rows="12"></textarea>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          <span style="font-size:11px;color:var(--seq-muted);" id="bodyCharCount">0 chars</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="edAiEnabled"
+              style="width:13px;height:13px;accent-color:var(--seq-indigo);">
+            <label for="edAiEnabled" style="font-size:11.5px;color:#374151;cursor:pointer;margin:0;">
+              AI personalize each send
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- WAIT STEP INFO -->
+      <div id="waitInfo" style="display:none;background:#f8fafc;border:1px solid var(--seq-border);border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+        <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:4px;">
+          <i class="fas fa-clock me-2" style="color:var(--seq-gray);"></i>Wait Step
+        </div>
+        <div style="font-size:12px;color:var(--seq-muted);line-height:1.6;">
+          This step pauses the sequence for the specified number of days before moving to the next step. No email is sent.
+        </div>
+      </div>
+
+      <!-- PREVIEW STRIP -->
+      <div id="previewStrip" style="background:#f8fafc;border:1px solid var(--seq-border);border-radius:10px;padding:12px 14px;margin-bottom:16px;">
+        <div style="font-size:10px;font-weight:700;color:var(--seq-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Preview</div>
+        <div style="font-size:12px;font-weight:600;color:#111827;margin-bottom:4px;" id="previewSubject">—</div>
+        <div style="font-size:11.5px;color:#6b7280;line-height:1.5;max-height:60px;overflow:hidden;" id="previewBody">—</div>
+      </div>
+
+      <!-- SAVE BUTTON -->
+      <button class="btn-seq-primary" style="width:100%;justify-content:center;" onclick="saveStep()">
+        <i class="fas fa-save"></i> Save Step
+      </button>
+
+      <div style="margin-top:10px;text-align:center;">
+        <span style="font-size:11px;color:var(--seq-muted);" id="saveStatus"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════
+       RIGHT PANEL — Stats + Contacts
+  ═══════════════════════════════ -->
+  <div class="seq-panel" id="panelRight">
+    <div class="seq-panel-header">
+      <span class="seq-panel-title"><i class="fas fa-chart-bar me-1"></i>Sequence Stats</span>
+      <button class="btn-icon" onclick="loadStats();loadContacts();" title="Refresh">
+        <i class="fas fa-sync-alt"></i>
+      </button>
+    </div>
+
+    <!-- STAT CARDS -->
+    <div style="padding:12px 12px 0;">
+      <div class="rp-stat-grid" id="statGrid">
+        <div class="rp-stat" id="stat-total">
+          <div class="rp-stat-val">—</div>
+          <div class="rp-stat-lbl">Enrolled</div>
+        </div>
+        <div class="rp-stat rp-green" id="stat-active">
+          <div class="rp-stat-val">—</div>
+          <div class="rp-stat-lbl">Active</div>
+        </div>
+        <div class="rp-stat rp-violet" id="stat-completed">
+          <div class="rp-stat-val">—</div>
+          <div class="rp-stat-lbl">Completed</div>
+        </div>
+        <div class="rp-stat rp-indigo" id="stat-replied">
+          <div class="rp-stat-val">—</div>
+          <div class="rp-stat-lbl">Replied</div>
+        </div>
+        <div class="rp-stat rp-amber" id="stat-paused">
+          <div class="rp-stat-val">—</div>
+          <div class="rp-stat-lbl">Paused</div>
+        </div>
+        <div class="rp-stat rp-red" id="stat-bounced">
+          <div class="rp-stat-val">—</div>
+          <div class="rp-stat-lbl">Bounced</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTACT STATE TABLE -->
+    <div style="padding:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-size:11px;font-weight:700;color:var(--seq-muted);text-transform:uppercase;letter-spacing:0.5px;">Contacts</span>
+        <input type="text" id="contactSearch" placeholder="Search..." oninput="filterContacts(this.value)"
+          style="padding:4px 8px;border:1px solid var(--seq-border);border-radius:7px;font-size:11.5px;width:110px;outline:none;">
+      </div>
+
+      <div id="contactList">
+        <div style="text-align:center;padding:30px 0;color:var(--seq-muted);font-size:12px;">
+          <i class="fas fa-users" style="font-size:1.5rem;color:#c7d2fe;display:block;margin-bottom:8px;"></i>
+          No contacts enrolled yet.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- seq-workspace -->
+
+</div><!-- main -->
+
+<!-- ENROLL MODAL -->
+<div class="modal fade" id="enrollModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px;border:1px solid var(--seq-border);">
+      <div class="modal-header" style="border-bottom:1px solid var(--seq-border);padding:16px 20px;">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;">
+          <i class="fas fa-user-plus me-2" style="color:var(--seq-indigo);"></i>Enroll Contacts
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="padding:20px;">
+
+        <!-- ENROLL ALL -->
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin-bottom:14px;cursor:pointer;"
+             onclick="enrollAll(this)" id="enrollAllCard">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:36px;height:36px;background:#dcfce7;border-radius:9px;display:flex;align-items:center;justify-content:center;">
+              <i class="fas fa-users" style="color:#15803d;font-size:14px;"></i>
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#15803d;">Enroll All Valid Contacts</div>
+              <div style="font-size:11.5px;color:#166534;">Enroll every contact with a valid email in this workspace</div>
+            </div>
+            <div class="ms-auto" id="enrollAllCount" style="font-size:18px;font-weight:800;color:#15803d;">—</div>
+          </div>
+        </div>
+
+        <!-- DIVIDER -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+          <div style="flex:1;height:1px;background:var(--seq-border);"></div>
+          <span style="font-size:11px;color:var(--seq-muted);font-weight:600;">OR SELECT SPECIFIC</span>
+          <div style="flex:1;height:1px;background:var(--seq-border);"></div>
+        </div>
+
+        <!-- SEARCH + LIST -->
+        <input type="text" id="enrollSearch" placeholder="Search contacts..."
+          oninput="filterEnrollList(this.value)"
+          style="width:100%;padding:8px 10px;border:1px solid var(--seq-border);border-radius:8px;font-size:13px;margin-bottom:10px;outline:none;">
+
+        <div id="enrollContactList"
+          style="max-height:240px;overflow-y:auto;border:1px solid var(--seq-border);border-radius:10px;">
+          <div style="text-align:center;padding:20px;color:var(--seq-muted);font-size:12px;">
+            <span class="spin" style="border-color:#e5e7eb;border-top-color:var(--seq-indigo);"></span>
+            Loading contacts...
+          </div>
+        </div>
+
+        <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:11.5px;color:var(--seq-muted);" id="enrollSelectedCount">0 selected</span>
+          <button class="btn-seq-secondary" style="font-size:11.5px;padding:5px 12px;" onclick="toggleSelectAll()">
+            Select All
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--seq-border);padding:14px 20px;">
+        <button type="button" class="btn-seq-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn-seq-primary" onclick="enrollSelected(this)" id="btnEnrollSelected">
+          <i class="fas fa-user-plus"></i> Enroll Selected
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="seq-toast" id="seqToast"></div>
+
+<!-- SHARED UTILITIES (loaded first) -->
+<script>
+// ── TOAST ──
+function showToast(msg, type = '') {
+  const t = document.getElementById('seqToast');
+  t.textContent = msg;
+  t.className = 'seq-toast' + (type ? ' ' + type : '');
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── CONFIRM DIALOG (styled) ──
+function seqConfirm(msg) {
+  return window.confirm(msg);
+}
+
+// ── FORMAT DATE ──
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', {day:'2-digit', month:'short'}) +
+           ' ' + d.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', hour12:true});
+  } catch { return iso.slice(0,16); }
+}
+
+// ── DEBOUNCE ──
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+</script></div>
+
+<!-- DATA FROM SERVER -->
+<script>
+const CAMPAIGN_ID  = {{ campaign.id }};
+const CAMPAIGN_NAME = {{ campaign.name | tojson }};
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+
+<!-- panels + JS injected by 7b–7g -->
+<script>
+// ── GLOBAL STATE ──
+let allSteps     = [];
+let selectedStep = null;
+
+// ── STEP TYPE CONFIG ──
+const STEP_ICONS = {
+  email:     'fa-envelope',
+  followup:  'fa-reply',
+  wait:      'fa-clock',
+  ai_reply:  'fa-robot',
+  condition: 'fa-code-branch',
+};
+const STEP_LABELS = {
+  email:     'Email',
+  followup:  'Follow-up',
+  wait:      'Wait',
+  ai_reply:  'AI Reply',
+  condition: 'Condition',
+};
+const DOT_CLASS = {
+  email:     '',
+  followup:  'followup',
+  wait:      'wait',
+  ai_reply:  '',
+  condition: '',
+};
+
+// ── LOAD STEPS FROM API ──
+function loadSteps() {
+  fetch(`/api/sequence/${CAMPAIGN_ID}/steps`)
+    .then(r => r.json())
+    .then(d => {
+      allSteps = d.steps || [];
+      renderTimeline();
+      if (allSteps.length && !selectedStep) selectStep(allSteps[0]);
+    })
+    .catch(() => showToast('Failed to load steps', 'error'));
+}
+
+// ── SELECT BY ID (safe — no JSON in onclick) ──
+function selectStepById(id) {
+  const step = allSteps.find(s => s.id === id);
+  if (step) selectStep(step);
+}
+
+// ── RENDER TIMELINE ──
+function renderTimeline() {
+  const container = document.getElementById('stepTimeline');
+  const badge     = document.getElementById('stepCountBadge');
+  badge.textContent = allSteps.length + ' step' + (allSteps.length !== 1 ? 's' : '');
+
+  if (!allSteps.length) {
+    container.innerHTML = `
+      <div class="timeline-empty">
+        <i class="fas fa-layer-group"></i>
+        No steps yet.<br>Click "Add Step" to build your sequence.
+      </div>`;
+    return;
+  }
+
+  // Cumulative day counter
+  let cumDay = 0;
+  container.innerHTML = allSteps.map((s, idx) => {
+    cumDay += (idx === 0 ? 1 : s.delay_days);
+    const isActive  = selectedStep && selectedStep.id === s.id;
+    const dotCls    = DOT_CLASS[s.step_type] || '';
+    const typeBadge = `stb-${s.step_type}`;
+    const icon      = STEP_ICONS[s.step_type] || 'fa-envelope';
+    const inactive  = s.active ? '' : 'inactive';
+    return `
+    <div class="step-card ${isActive ? 'active' : ''} ${inactive}"
+         id="step-card-${s.id}"
+         data-id="${s.id}"
+         onclick="selectStepById(${s.id})">
+      <div class="step-dot ${dotCls}"></div>
+      <div style="padding-right:24px;">
+        <span class="step-day-badge">Day ${cumDay}</span>
+        <div class="step-label">
+          <i class="fas ${icon}" style="font-size:10px;margin-right:4px;"></i>
+          ${escHtml(s.subject || STEP_LABELS[s.step_type] || 'Step ' + (idx+1))}
+        </div>
+        <div class="step-subject">${escHtml(s.body ? stripHtml(s.body).slice(0,50) : '—')}</div>
+        <div class="step-meta">
+          <span class="step-type-badge ${typeBadge}">${STEP_LABELS[s.step_type] || s.step_type}</span>
+          ${s.ai_enabled ? '<span style="font-size:10px;color:var(--seq-indigo);font-weight:600;"><i class="fas fa-robot" style="font-size:9px;"></i> AI</span>' : ''}
+          <span style="font-size:10px;color:var(--seq-muted);margin-left:auto;">
+            ${idx === 0 ? 'Day 1' : '+' + s.delay_days + 'd'}
+          </span>
+          <div class="step-actions" onclick="event.stopPropagation()">
+            <button class="btn-icon" title="Duplicate" onclick="duplicateStep(${s.id})">
+              <i class="fas fa-copy"></i>
+            </button>
+            <button class="btn-icon ${s.active ? '' : 'danger'}" title="${s.active ? 'Pause step' : 'Activate step'}" onclick="toggleStepActive(${s.id}, ${s.active})">
+              <i class="fas ${s.active ? 'fa-pause' : 'fa-play'}"></i>
+            </button>
+            <button class="btn-icon danger" title="Delete" onclick="deleteStep(${s.id})">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="drag-handle"><i class="fas fa-grip-vertical"></i></div>
+    </div>`;
+  }).join('');
+
+  // Init SortableJS drag-reorder
+  if (window.Sortable) {
+    Sortable.create(container, {
+      animation: 150,
+      handle: '.drag-handle',
+      ghostClass: 'sortable-ghost',
+      onEnd: onStepReorder,
+    });
+  }
+}
+
+// ── HELPERS ──
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function stripHtml(s) {
+  return s.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+}
+
+// ── KEYBOARD SHORTCUT: Ctrl+S saves current step ──
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    if (selectedStep) saveStep();
+  }
+});
+
+// ── RE-SELECT after timeline re-render ──
+function reSelectAfterRender() {
+  if (!selectedStep) return;
+  const card = document.getElementById('step-card-' + selectedStep.id);
+  if (card) card.classList.add('active');
+}
+
+// Patch renderTimeline to re-select after render
+const _origRender = renderTimeline;
+function renderTimeline() {
+  _origRender();
+  reSelectAfterRender();
+}
+
+// Init on load
+document.addEventListener('DOMContentLoaded', loadSteps);
+</script>
+
+<script>
+// ── CENTER PANEL JS ──
+
+function selectStep(step) {
+  // Accept object or JSON string
+  if (typeof step === 'string') step = JSON.parse(step);
+  selectedStep = step;
+
+  // Highlight card
+  document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active'));
+  const card = document.getElementById('step-card-' + step.id);
+  if (card) card.classList.add('active');
+
+  // Show editor
+  document.getElementById('editorEmpty').style.display = 'none';
+  document.getElementById('editorForm').style.display  = 'block';
+
+  // Populate fields
+  document.getElementById('edStepType').value  = step.step_type  || 'email';
+  document.getElementById('edDelayDays').value  = step.delay_days || 1;
+  document.getElementById('edSubject').value    = step.subject    || '';
+  document.getElementById('edBody').value       = step.body       || '';
+  document.getElementById('edAiEnabled').checked = !!step.ai_enabled;
+  document.getElementById('edActive').checked   = step.active !== 0;
+
+  onStepTypeChange();
+  updatePreview();
+  updateCharCount();
+  document.getElementById('saveStatus').textContent = '';
+}
+
+function onStepTypeChange() {
+  const type = document.getElementById('edStepType').value;
+  const isWait = type === 'wait';
+  document.getElementById('subjectRow').style.display = isWait ? 'none' : 'block';
+  document.getElementById('bodyRow').style.display    = isWait ? 'none' : 'block';
+  document.getElementById('waitInfo').style.display   = isWait ? 'block' : 'none';
+  document.getElementById('previewStrip').style.display = isWait ? 'none' : 'block';
+}
+
+function updatePreview() {
+  const subj = document.getElementById('edSubject').value || '—';
+  const body  = stripHtml(document.getElementById('edBody').value || '').slice(0, 120);
+  document.getElementById('previewSubject').textContent = subj;
+  document.getElementById('previewBody').textContent    = body || '—';
+}
+
+function updateCharCount() {
+  const len = document.getElementById('edBody').value.length;
+  document.getElementById('bodyCharCount').textContent = len.toLocaleString() + ' chars';
+}
+
+// Live preview on input
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('edSubject').addEventListener('input', updatePreview);
+  document.getElementById('edBody').addEventListener('input', () => { updatePreview(); updateCharCount(); });
+});
+
+function insertVar(v) {
+  const ta = document.getElementById('edBody');
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  ta.value = ta.value.slice(0, start) + v + ta.value.slice(end);
+  ta.selectionStart = ta.selectionEnd = start + v.length;
+  ta.focus();
+  updatePreview(); updateCharCount();
+}
+
+function saveStep() {
+  if (!selectedStep) return;
+  const payload = {
+    step_type:  document.getElementById('edStepType').value,
+    delay_days: parseInt(document.getElementById('edDelayDays').value) || 1,
+    subject:    document.getElementById('edSubject').value,
+    body:       document.getElementById('edBody').value,
+    ai_enabled: document.getElementById('edAiEnabled').checked,
+    active:     document.getElementById('edActive').checked,
+    step_order: selectedStep.step_order,
+  };
+  document.getElementById('saveStatus').textContent = 'Saving...';
+  fetch(`/api/sequence/step/${selectedStep.id}/update`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      document.getElementById('saveStatus').textContent = 'Saved ✓';
+      // Update local state
+      const idx = allSteps.findIndex(s => s.id === selectedStep.id);
+      if (idx !== -1) { allSteps[idx] = {...allSteps[idx], ...payload}; selectedStep = allSteps[idx]; }
+      renderTimeline();
+      showToast('Step saved', 'success');
+    } else {
+      document.getElementById('saveStatus').textContent = 'Save failed';
+      showToast('Save failed', 'error');
+    }
+  })
+  .catch(() => { document.getElementById('saveStatus').textContent = 'Error'; showToast('Network error', 'error'); });
+}
+
+function generateAIBody(btn) {
+  if (!selectedStep) return;
+  const subject = document.getElementById('edSubject').value;
+  if (!subject) { showToast('Add a subject line first', 'error'); return; }
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<span class="spin"></span>';
+  btn.disabled = true;
+  fetch('/api/automations/followup_draft', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      contact_name: '{name}',
+      company: '{company}',
+      context: subject,
+      previous_subject: subject,
+    }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    btn.innerHTML = orig; btn.disabled = false;
+    if (d.success && d.draft) {
+      document.getElementById('edBody').value = d.draft;
+      updatePreview(); updateCharCount();
+      showToast('AI body generated', 'success');
+    } else {
+      showToast('AI generation failed', 'error');
+    }
+  })
+  .catch(() => { btn.innerHTML = orig; btn.disabled = false; showToast('Network error', 'error'); });
+}
+</script>
+
+<script>
+// ── RIGHT PANEL JS ──
+let allContacts = [];
+
+function loadStats() {
+  fetch(`/api/sequence/${CAMPAIGN_ID}/stats`)
+    .then(r => r.json())
+    .then(d => {
+      const set = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.querySelector('.rp-stat-val').textContent = val ?? '—';
+      };
+      set('stat-total',     d.total);
+      set('stat-active',    d.active);
+      set('stat-completed', d.completed);
+      set('stat-replied',   d.replied);
+      set('stat-paused',    d.paused);
+      set('stat-bounced',   d.bounced);
+    })
+    .catch(() => {});
+}
+
+function loadContacts() {
+  fetch(`/api/sequence/${CAMPAIGN_ID}/contacts`)
+    .then(r => r.json())
+    .then(d => {
+      allContacts = d.contacts || [];
+      renderContacts(allContacts);
+    })
+    .catch(() => {});
+}
+
+function renderContacts(list) {
+  const el = document.getElementById('contactList');
+  if (!list.length) {
+    el.innerHTML = `<div style="text-align:center;padding:30px 0;color:var(--seq-muted);font-size:12px;">
+      <i class="fas fa-users" style="font-size:1.5rem;color:#c7d2fe;display:block;margin-bottom:8px;"></i>
+      No contacts enrolled yet.</div>`;
+    return;
+  }
+  el.innerHTML = list.map(c => {
+    const initials = (c.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const pillCls  = `cs-${c.status || 'active'}`;
+    const nextRun  = c.next_run_at ? c.next_run_at.slice(0,10) : '—';
+    const isPaused = c.status === 'paused';
+    return `
+    <div class="contact-row" data-name="${escHtml((c.name||'').toLowerCase())}" data-email="${escHtml((c.email||'').toLowerCase())}">
+      <div class="contact-avatar">${initials}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="contact-name">${escHtml(c.name || c.email)}</div>
+        <div class="contact-email">${escHtml(c.email || '')}</div>
+        <div class="contact-step">Step ${c.current_step} &middot; Next: ${nextRun}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+        <span class="cs-pill ${pillCls}">${c.status || 'active'}</span>
+        <div class="contact-actions">
+          <button class="btn-icon" style="width:22px;height:22px;font-size:9px;"
+            title="${isPaused ? 'Resume' : 'Pause'}"
+            onclick="toggleContactSeq(${c.contact_id}, '${c.status}', this)">
+            <i class="fas ${isPaused ? 'fa-play' : 'fa-pause'}"></i>
+          </button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterContacts(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.contact-row').forEach(row => {
+    const match = !q || row.dataset.name.includes(q) || row.dataset.email.includes(q);
+    row.style.display = match ? '' : 'none';
+  });
+}
+
+function toggleContactSeq(contactId, currentStatus, btn) {
+  const isPaused = currentStatus === 'paused';
+  const url = isPaused
+    ? `/api/sequence/${CAMPAIGN_ID}/resume/${contactId}`
+    : `/api/sequence/${CAMPAIGN_ID}/pause/${contactId}`;
+  btn.disabled = true;
+  fetch(url, {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) {
+        showToast(isPaused ? 'Resumed' : 'Paused', 'success');
+        loadContacts(); loadStats();
+      }
+    })
+    .catch(() => showToast('Error', 'error'))
+    .finally(() => { btn.disabled = false; });
+}
+
+// Auto-load on page ready
+document.addEventListener('DOMContentLoaded', () => {
+  loadStats();
+  loadContacts();
+  // Refresh every 60s
+  setInterval(() => { loadStats(); loadContacts(); }, 60000);
+});
+</script>
+
+<script>
+// ── 7f: DRAG REORDER + ADD / DELETE / DUPLICATE / TOGGLE ──
+
+// ── DRAG REORDER ──
+function onStepReorder(evt) {
+  const cards = document.querySelectorAll('#stepTimeline .step-card');
+  const orderedIds = Array.from(cards).map(c => parseInt(c.dataset.id));
+  fetch(`/api/sequence/${CAMPAIGN_ID}/steps/reorder`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ordered_ids: orderedIds}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      // Update local order
+      orderedIds.forEach((id, idx) => {
+        const s = allSteps.find(s => s.id === id);
+        if (s) s.step_order = idx + 1;
+      });
+      allSteps.sort((a, b) => a.step_order - b.step_order);
+      renderTimeline();
+      showToast('Steps reordered', 'success');
+    } else {
+      showToast('Reorder failed', 'error');
+      loadSteps();
+    }
+  })
+  .catch(() => { showToast('Network error', 'error'); loadSteps(); });
+}
+
+// ── ADD STEP ──
+function addStep() {
+  const lastStep  = allSteps.length ? allSteps[allSteps.length - 1] : null;
+  const nextOrder = lastStep ? lastStep.step_order + 1 : 1;
+  const delay     = lastStep ? 3 : 1;
+  const payload   = {
+    step_order: nextOrder,
+    step_type:  'email',
+    delay_days: delay,
+    subject:    '',
+    body:       '',
+    ai_enabled: false,
+  };
+  const btn = document.getElementById('addStepBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin" style="border-color:rgba(99,102,241,0.3);border-top-color:var(--seq-indigo);"></span> Adding...';
+  fetch(`/api/sequence/${CAMPAIGN_ID}/steps/add`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(d => {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-plus"></i> Add Step';
+    if (d.success) {
+      // Add to local state
+      const newStep = {...payload, id: d.step_id, active: 1, campaign_id: CAMPAIGN_ID};
+      allSteps.push(newStep);
+      renderTimeline();
+      selectStep(newStep);
+      showToast('Step added', 'success');
+    } else {
+      showToast(d.error || 'Add failed', 'error');
+    }
+  })
+  .catch(() => {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-plus"></i> Add Step';
+    showToast('Network error', 'error');
+  });
+}
+
+// ── DELETE STEP ──
+function deleteStep(stepId) {
+  if (!seqConfirm('Delete this step? This cannot be undone.')) return;
+  fetch(`/api/sequence/step/${stepId}/delete`, {method: 'DELETE'})
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) {
+        allSteps = allSteps.filter(s => s.id !== stepId);
+        if (selectedStep && selectedStep.id === stepId) {
+          selectedStep = null;
+          document.getElementById('editorEmpty').style.display = 'block';
+          document.getElementById('editorForm').style.display  = 'none';
+        }
+        renderTimeline();
+        showToast('Step deleted', 'success');
+      } else {
+        showToast('Delete failed', 'error');
+      }
+    })
+    .catch(() => showToast('Network error', 'error'));
+}
+
+// ── DUPLICATE STEP ──
+function duplicateStep(stepId) {
+  const orig = allSteps.find(s => s.id === stepId);
+  if (!orig) return;
+  const payload = {
+    step_order: orig.step_order + 1,
+    step_type:  orig.step_type,
+    delay_days: orig.delay_days,
+    subject:    orig.subject + ' (copy)',
+    body:       orig.body,
+    ai_enabled: orig.ai_enabled,
+  };
+  fetch(`/api/sequence/${CAMPAIGN_ID}/steps/add`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      const newStep = {...payload, id: d.step_id, active: 1, campaign_id: CAMPAIGN_ID};
+      // Insert after original
+      const idx = allSteps.findIndex(s => s.id === stepId);
+      allSteps.splice(idx + 1, 0, newStep);
+      // Re-number orders
+      allSteps.forEach((s, i) => s.step_order = i + 1);
+      renderTimeline();
+      selectStep(newStep);
+      showToast('Step duplicated', 'success');
+    } else {
+      showToast('Duplicate failed', 'error');
+    }
+  })
+  .catch(() => showToast('Network error', 'error'));
+}
+
+// ── TOGGLE STEP ACTIVE/INACTIVE ──
+function toggleStepActive(stepId, currentActive) {
+  const step = allSteps.find(s => s.id === stepId);
+  if (!step) return;
+  const newActive = !currentActive;
+  fetch(`/api/sequence/step/${stepId}/update`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      step_order: step.step_order,
+      step_type:  step.step_type,
+      delay_days: step.delay_days,
+      subject:    step.subject,
+      body:       step.body,
+      ai_enabled: step.ai_enabled,
+      active:     newActive,
+    }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      step.active = newActive ? 1 : 0;
+      if (selectedStep && selectedStep.id === stepId) {
+        selectedStep.active = step.active;
+        document.getElementById('edActive').checked = newActive;
+      }
+      renderTimeline();
+      showToast(newActive ? 'Step activated' : 'Step paused', 'success');
+    } else {
+      showToast('Toggle failed', 'error');
+    }
+  })
+  .catch(() => showToast('Network error', 'error'));
+}
+</script>
+
+<script>
+// ── 7g: ENROLL MODAL + TRIGGER + STATS REFRESH ──
+
+let enrollableContacts = [];
+let selectedEnrollIds  = new Set();
+
+// ── OPEN ENROLL MODAL ──
+function openEnrollModal() {
+  selectedEnrollIds.clear();
+  updateEnrollCount();
+  new bootstrap.Modal(document.getElementById('enrollModal')).show();
+  loadEnrollableContacts();
+}
+
+// ── LOAD CONTACTS FOR MODAL ──
+function loadEnrollableContacts() {
+  fetch('/api/verify_status')
+    .then(r => r.json())
+    .then(d => {
+      enrollableContacts = (d.results || []).filter(c => c.valid === 1);
+      document.getElementById('enrollAllCount').textContent = enrollableContacts.length;
+      renderEnrollList(enrollableContacts);
+    })
+    .catch(() => {
+      document.getElementById('enrollContactList').innerHTML =
+        '<div style="padding:16px;text-align:center;color:var(--seq-muted);font-size:12px;">Failed to load contacts</div>';
+    });
+}
+
+// ── RENDER ENROLL LIST ──
+function renderEnrollList(list) {
+  const el = document.getElementById('enrollContactList');
+  if (!list.length) {
+    el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--seq-muted);font-size:12px;">No valid contacts found</div>';
+    return;
+  }
+  el.innerHTML = list.map(c => {
+    const checked = selectedEnrollIds.has(c.id);
+    return `
+    <label style="display:flex;align-items:center;gap:10px;padding:9px 12px;
+      border-bottom:1px solid #f3f4f6;cursor:pointer;
+      background:${checked ? '#f5f3ff' : '#fff'};transition:background 0.1s;"
+      data-name="${escHtml((c.name||'').toLowerCase())}"
+      data-email="${escHtml((c.email||'').toLowerCase())}">
+      <input type="checkbox" ${checked ? 'checked' : ''}
+        style="width:14px;height:14px;accent-color:var(--seq-indigo);flex-shrink:0;"
+        onchange="toggleEnrollContact(${c.id}, this)">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12.5px;font-weight:600;color:var(--seq-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(c.name || c.email)}</div>
+        <div style="font-size:11px;color:var(--seq-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(c.email)}</div>
+      </div>
+    </label>`;
+  }).join('');
+}
+
+function filterEnrollList(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('#enrollContactList label').forEach(row => {
+    const match = !q || row.dataset.name.includes(q) || row.dataset.email.includes(q);
+    row.style.display = match ? '' : 'none';
+  });
+}
+
+function toggleEnrollContact(id, cb) {
+  if (cb.checked) selectedEnrollIds.add(id);
+  else selectedEnrollIds.delete(id);
+  // Update row background
+  cb.closest('label').style.background = cb.checked ? '#f5f3ff' : '#fff';
+  updateEnrollCount();
+}
+
+function toggleSelectAll() {
+  const allSelected = selectedEnrollIds.size === enrollableContacts.length;
+  selectedEnrollIds.clear();
+  if (!allSelected) enrollableContacts.forEach(c => selectedEnrollIds.add(c.id));
+  renderEnrollList(enrollableContacts);
+  updateEnrollCount();
+}
+
+function updateEnrollCount() {
+  const el = document.getElementById('enrollSelectedCount');
+  if (el) el.textContent = selectedEnrollIds.size + ' selected';
+}
+
+// ── ENROLL ALL ──
+function enrollAll(card) {
+  if (!seqConfirm(`Enroll all ${enrollableContacts.length} valid contacts into this sequence?`)) return;
+  card.style.opacity = '0.6'; card.style.pointerEvents = 'none';
+  fetch(`/api/sequence/${CAMPAIGN_ID}/enroll`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enroll_all: true}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    card.style.opacity = ''; card.style.pointerEvents = '';
+    bootstrap.Modal.getInstance(document.getElementById('enrollModal')).hide();
+    if (d.success) {
+      showToast(`Enrolled ${d.enrolled || d.total || 'all'} contacts`, 'success');
+      loadStats(); loadContacts();
+    } else {
+      showToast(d.error || 'Enroll failed', 'error');
+    }
+  })
+  .catch(() => { card.style.opacity=''; card.style.pointerEvents=''; showToast('Network error','error'); });
+}
+
+// ── ENROLL SELECTED ──
+function enrollSelected(btn) {
+  if (!selectedEnrollIds.size) { showToast('Select at least one contact', 'error'); return; }
+  const ids = Array.from(selectedEnrollIds);
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Enrolling...';
+  fetch(`/api/sequence/${CAMPAIGN_ID}/enroll`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({contact_ids: ids}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    btn.disabled = false; btn.innerHTML = orig;
+    bootstrap.Modal.getInstance(document.getElementById('enrollModal')).hide();
+    if (d.success) {
+      const n = d.enrolled !== undefined ? d.enrolled : ids.length;
+      showToast(`${n} contact${n !== 1 ? 's' : ''} enrolled`, 'success');
+      loadStats(); loadContacts();
+    } else {
+      showToast(d.error || 'Enroll failed', 'error');
+    }
+  })
+  .catch(() => { btn.disabled=false; btn.innerHTML=orig; showToast('Network error','error'); });
+}
+
+// ── TRIGGER SEQUENCE (Run Now) ──
+function triggerSequence(btn) {
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Running...';
+  fetch(`/api/sequence/${CAMPAIGN_ID}/trigger`, {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+      btn.disabled = false; btn.innerHTML = orig;
+      if (d.success) {
+        const msg = d.queued
+          ? 'Sequence queued (Celery)'
+          : `Processed ${d.processed || 0} contacts`;
+        showToast(msg, 'success');
+        setTimeout(() => { loadStats(); loadContacts(); }, 2000);
+      } else {
+        showToast(d.error || 'Trigger failed', 'error');
+      }
+    })
+    .catch(() => { btn.disabled=false; btn.innerHTML=orig; showToast('Network error','error'); });
+}
+</script>
+</body>
+</html>

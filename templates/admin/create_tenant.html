@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create Tenant — OutreachOS Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; background: linear-gradient(160deg, #f8fafc, #f1f5ff); min-height: 100vh; font-size: 14px; -webkit-font-smoothing: antialiased; }
+.admin-nav { background: #0f172a; padding: 0 28px; height: 52px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.admin-nav .brand { font-size: 14px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }
+.admin-nav .brand span { background: linear-gradient(135deg,#6366f1,#8b5cf6); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; }
+.admin-nav a { color: rgba(255,255,255,0.5); text-decoration: none; font-size: 13px; margin-left: 20px; transition: color 0.15s; }
+.admin-nav a:hover { color: #fff; }
+.content { max-width: 560px; margin: 40px auto; padding: 0 24px; }
+.form-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 18px; padding: 32px; box-shadow: 0 4px 20px rgba(15,23,42,0.06); }
+.form-card h4 { font-size: 1.1rem; font-weight: 800; color: #0f172a; margin-bottom: 6px; }
+.form-card p  { font-size: 13px; color: #6B7280; margin-bottom: 24px; }
+.form-label { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+.form-control, .form-select { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 9px; font-size: 13.5px; padding: 10px 12px; font-family: 'Inter', sans-serif; transition: border-color 0.15s, box-shadow 0.15s; }
+.form-control:focus, .form-select:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); background: #fff; outline: none; }
+.btn-primary { background: linear-gradient(135deg,#6366f1,#8b5cf6) !important; border: none !important; color: #fff !important; font-weight: 600; border-radius: 10px; font-size: 14px; padding: 11px; box-shadow: 0 2px 10px rgba(99,102,241,0.28); transition: opacity 0.15s, transform 0.15s; }
+.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-outline-secondary { border-radius: 10px; font-size: 13px; }
+.alert { border-radius: 10px; font-size: 13px; }
+.alert-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.divider { height: 1px; background: #f3f4f6; margin: 20px 0; }
+</style>
+</head>
+<body>
+
+<div class="admin-nav">
+  <div class="brand"><i class="fas fa-paper-plane" style="color:#6366f1;"></i> OutreachOS <span>ADMIN</span></div>
+  <div>
+    <a href="/admin"><i class="fas fa-arrow-left me-1"></i>Back to Tenants</a>
+    <a href="/admin/logout" style="color:#f87171;"><i class="fas fa-sign-out-alt me-1"></i>Logout</a>
+  </div>
+</div>
+
+<div class="content">
+
+  {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show mb-3 py-2">
+    {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}{% endif %}{% endwith %}
+
+  <div class="form-card">
+    <h4><i class="fas fa-building me-2" style="color:#6366f1;"></i>Create New Tenant</h4>
+    <p>Creates a workspace, admin user, default settings, and automation rules.</p>
+
+    <form method="POST">
+      <div class="mb-3">
+        <label class="form-label">Workspace Name <span class="text-danger">*</span></label>
+        <input type="text" name="workspace_name" class="form-control" placeholder="e.g. Acme Corp" required autofocus>
+        <small class="text-muted" style="font-size:11.5px;">This is the company/client name.</small>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="mb-3">
+        <label class="form-label">Admin Username <span class="text-danger">*</span></label>
+        <input type="text" name="username" class="form-control" placeholder="e.g. acme_admin" required>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Password <span class="text-danger">*</span></label>
+        <input type="text" name="password" class="form-control" placeholder="Min 6 characters" required minlength="6">
+        <small class="text-muted" style="font-size:11.5px;">Share this with the client. They can change it from Settings.</small>
+      </div>
+
+      <div class="mb-4">
+        <label class="form-label">Plan</label>
+        <select name="plan" class="form-select">
+          <option value="free">Free</option>
+          <option value="pro">Pro</option>
+          <option value="enterprise">Enterprise</option>
+        </select>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="fas fa-plus me-2"></i>Create Tenant
+        </button>
+        <a href="/admin" class="btn btn-outline-secondary px-4">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,86 +1,247 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><title>Campaign - {{ campaign.name }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="/static/style.css" rel="stylesheet">
-    <style>
-        .btn-purple { background:#8b5cf6; color:#fff; border:none; }
-        .btn-purple:hover { background:#7c3aed; color:#fff; }
-        .ai-preview-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:15px; margin-bottom:10px; }
-        .ai-preview-card h6 { color:#3b82f6; }
-        .spin-sm { display:inline-block; width:14px; height:14px; border:2px solid #e2e8f0; border-top:2px solid #8b5cf6; border-radius:50%; animation:spin 0.6s linear infinite; }
-        @keyframes spin { to { transform:rotate(360deg); } }
-    </style>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ campaign.name }} — Campaign Workspace</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+/* ── WORKSPACE LAYOUT ── */
+.workspace { display: flex; gap: 0; height: calc(100vh - 80px); overflow: hidden; }
+.seq-sidebar { width: 220px; flex-shrink: 0; background: #fff; border-right: 1px solid #e2e8f0; overflow-y: auto; display: flex; flex-direction: column; }
+.composer-area { flex: 1; overflow-y: auto; padding: 20px; background: #f8fafc; }
+.preview-sidebar { width: 300px; flex-shrink: 0; background: #fff; border-left: 1px solid #e2e8f0; overflow-y: auto; }
+
+/* ── SEQUENCE SIDEBAR ── */
+.seq-header { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; }
+.seq-header h6 { font-size: 10.5px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.6px; margin: 0; }
+.seq-step-item {
+  padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f8fafc;
+  transition: background 0.15s; position: relative;
+}
+.seq-step-item:hover { background: #f8fafc; }
+.seq-step-item.active { background: #eef2ff; border-left: 3px solid #6366f1; }
+.seq-step-item .step-day { font-size: 10px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.4px; }
+.seq-step-item .step-name { font-size: 12.5px; font-weight: 600; color: #111827; margin: 2px 0; }
+.seq-step-item .step-sub { font-size: 11px; color: #9CA3AF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.seq-step-item .step-dot { width: 8px; height: 8px; border-radius: 50%; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); }
+.dot-intro    { background: #6366f1; }
+.dot-followup { background: #f59e0b; }
+.dot-final    { background: #ef4444; }
+.seq-add-btn { padding: 10px 14px; text-align: center; font-size: 12px; font-weight: 600; color: #6366f1; cursor: pointer; border-top: 1px solid #f1f5f9; margin-top: auto; }
+.seq-add-btn:hover { background: #f5f3ff; }
+
+/* ── COMPOSER ── */
+.composer-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+.composer-toolbar { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: #fafafa; }
+.tb-btn { background: #fff; border: 1px solid #e2e8f0; color: #374151; padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+.tb-btn:hover { background: #f1f5f9; border-color: #6366f1; color: #4338ca; }
+.tb-sep { width: 1px; height: 20px; background: #e2e8f0; margin: 0 2px; }
+.var-chip { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; padding: 3px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+.var-chip:hover { background: #e0e7ff; }
+.composer-body { padding: 16px; }
+.email-editor { width: 100%; min-height: 280px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; font-size: 13.5px; line-height: 1.7; color: #111827; resize: vertical; font-family: inherit; background: #fff; }
+.email-editor:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.08); }
+
+/* ── QUALITY SCORE ── */
+.quality-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.quality-bar .ql { font-size: 11.5px; color: #6B7280; width: 120px; flex-shrink: 0; }
+.quality-bar .qbar { flex: 1; height: 5px; background: #f1f5f9; border-radius: 99px; overflow: hidden; }
+.quality-bar .qfill { height: 100%; border-radius: 99px; transition: width 0.4s; }
+.quality-bar .qval { font-size: 11px; font-weight: 700; width: 28px; text-align: right; }
+
+/* ── PREVIEW SIDEBAR ── */
+.prev-header { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; }
+.prev-header h6 { font-size: 10.5px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.6px; margin: 0; }
+.email-preview-frame { padding: 14px 16px; }
+.preview-email { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; font-size: 12.5px; line-height: 1.7; color: #374151; max-height: 320px; overflow-y: auto; }
+.preview-subject { font-weight: 700; font-size: 13px; color: #111827; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #f1f5f9; }
+.deliv-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #f8fafc; }
+.deliv-row:last-child { border-bottom: none; }
+.deliv-label { font-size: 11.5px; color: #6B7280; }
+.deliv-val   { font-size: 12px; font-weight: 700; }
+.green-val { color: #10b981; }
+.amber-val { color: #f59e0b; }
+.red-val   { color: #ef4444; }
+
+/* ── AUDIENCE PANEL ── */
+.audience-filter { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; }
+.audience-filter label { font-size: 12px; font-weight: 500; color: #374151; margin: 0; flex: 1; }
+.contact-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; transition: background 0.1s; }
+.contact-row:hover { background: #f8fafc; }
+.contact-row label { font-size: 12px; color: #374151; margin: 0; cursor: pointer; flex: 1; }
+.contact-row .score-mini { font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 99px; }
+.score-hot-mini  { background: #fef2f2; color: #dc2626; }
+.score-warm-mini { background: #fff7ed; color: #c2410c; }
+.score-cold-mini { background: #f1f5f9; color: #64748b; }
+
+/* ── SEND BUTTONS ── */
+.btn-launch { background: linear-gradient(135deg,#6366f1,#8b5cf6); color: #fff; border: none; font-weight: 700; font-size: 14px; padding: 10px 28px; border-radius: 10px; cursor: pointer; transition: opacity 0.15s; }
+.btn-launch:hover { opacity: 0.88; color: #fff; }
+.btn-ai-send { background: linear-gradient(135deg,#0ea5e9,#6366f1); color: #fff; border: none; font-weight: 600; font-size: 13px; padding: 9px 20px; border-radius: 10px; cursor: pointer; transition: opacity 0.15s; }
+.btn-ai-send:hover { opacity: 0.88; color: #fff; }
+
+/* ── MISC ── */
+.spin-sm { display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,0.3); border-top:2px solid #fff; border-radius:50%; animation:spin 0.6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.section-lbl { font-size: 10.5px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px; }
+.ai-gen-strip { background: linear-gradient(135deg,#1e1b4b,#312e81); border-radius: 10px; padding: 14px 18px; color: #fff; display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.ai-gen-strip p { font-size: 12px; color: rgba(255,255,255,0.7); margin: 0; }
+
+/* Sent table */
+.sent-badge-sent    { background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:99px; }
+.sent-badge-bounced { background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:99px; }
+.sent-badge-failed  { background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:99px; }
+
+@media(max-width:1100px){ .preview-sidebar { display: none; } }
+@media(max-width:768px){ .seq-sidebar { display: none; } .composer-area { padding: 12px; } }
+</style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
-        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
-        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
-        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
-        <a href="/campaigns" class="active"><i class="fas fa-bullhorn"></i> Campaigns</a>
-        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
-        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
-        <a href="/logs"><i class="fas fa-list-alt"></i> Logs</a>
-        <hr style="border-color:#e2e8f0">
-        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
-        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns" class="active"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<div class="main" style="padding:0;display:flex;flex-direction:column;height:100vh;overflow:hidden;">
+
+<!-- TOP BAR -->
+<div style="padding:12px 24px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+  <a href="/campaigns" style="color:#6B7280;font-size:13px;text-decoration:none;"><i class="fas fa-arrow-left me-1"></i>Campaigns</a>
+  <span style="color:#e2e8f0;">/</span>
+  <span style="font-size:14px;font-weight:700;color:#111827;">{{ campaign.name }}</span>
+  <span class="ms-1" style="background:{% if campaign.status=='sent' %}#f0fdf4{% else %}#fef3c7{% endif %};color:{% if campaign.status=='sent' %}#15803d{% else %}#92400e{% endif %};border:1px solid {% if campaign.status=='sent' %}#bbf7d0{% else %}#fde68a{% endif %};font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px;">{{ campaign.status.upper() }}</span>
+  <div class="ms-auto d-flex gap-2 align-items-center">
+    {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} py-1 px-3 mb-0" style="font-size:12px;">{{ msg }}</div>{% endfor %}{% endif %}{% endwith %}
+    <span style="font-size:12px;color:#6B7280;" id="selectedCountTop">0 selected</span>
+    <a href="/campaign/{{ campaign.id }}/sequence"
+       style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
+              background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;
+              border-radius:9px;font-size:12.5px;font-weight:600;text-decoration:none;
+              transition:all 0.15s;"
+       onmouseover="this.style.background='#ede9fe'"
+       onmouseout="this.style.background='#f5f3ff'">
+      <i class="fas fa-layer-group" style="font-size:11px;"></i> Sequence Builder
+    </a>
+    <button class="btn-launch" id="launchBtn" onclick="confirmSend('template')"><i class="fas fa-paper-plane me-1"></i>Send Template</button>
+    <button class="btn-ai-send" id="aiSendBtn" onclick="confirmSend('ai')"><i class="fas fa-magic me-1"></i>Send AI Personalized</button>
+  </div>
+</div>
+
+<!-- WORKSPACE -->
+<div class="workspace">
+
+<!-- ── LEFT: SEQUENCE SIDEBAR ── -->
+<div class="seq-sidebar">
+  <div class="seq-header"><h6><i class="fas fa-list-ol me-1"></i>Sequence</h6></div>
+
+  <div id="seqList">
+    <div class="seq-step-item active" onclick="switchStep(0)">
+      <div class="step-day">Day 1</div>
+      <div class="step-name">Intro Email</div>
+      <div class="step-sub">Helping {company} scale...</div>
+      <span class="step-dot dot-intro"></span>
     </div>
-    <div class="main">
-        {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for cat, msg in messages %}<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endif %}{% endwith %}
-        <h3 class="mb-4">📢 {{ campaign.name }} <span class="badge bg-{{ 'success' if campaign.status=='sent' else 'warning' }}">{{ campaign.status }}</span></h3>
+    <div class="seq-step-item" onclick="switchStep(1)">
+      <div class="step-day">Day 3</div>
+      <div class="step-name">Follow-up #1</div>
+      <div class="step-sub">Re: Helping {company}</div>
+      <span class="step-dot dot-followup"></span>
+    </div>
+    <div class="seq-step-item" onclick="switchStep(2)">
+      <div class="step-day">Day 7</div>
+      <div class="step-name">Case Study</div>
+      <div class="step-sub">How we helped similar...</div>
+      <span class="step-dot dot-followup"></span>
+    </div>
+    <div class="seq-step-item" onclick="switchStep(3)">
+      <div class="step-day">Day 14</div>
+      <div class="step-name">Final Check-in</div>
+      <div class="step-sub">Last note from Anshul</div>
+      <span class="step-dot dot-final"></span>
+    </div>
+  </div>
 
-        {% if emails %}
-        <div class="card-box mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">Sent Emails ({{ emails|length }})</h5>
-                <div class="d-flex align-items-center gap-2">
-                    <small class="text-muted" id="sentPageInfo"></small>
-                    <nav><ul class="pagination pagination-sm mb-0" id="sentPagination"></ul></nav>
-                </div>
-            </div>
-            <table class="table table-hover mb-0">
-                <thead><tr><th>Name</th><th>Company</th><th>Email</th><th>Status</th><th>Reason</th><th>Replied</th><th>Sent At</th><th></th></tr></thead>
-                <tbody id="sentBody">
-                {% for e in emails %}<tr class="sent-row"><td>{{ e.name }}</td><td>{{ e.company }}</td><td>{{ e.email }}</td><td><span class="badge bg-{{ 'success' if e.status=='sent' else 'danger' }}">{{ e.status }}</span></td><td><small class="text-danger">{{ e.bounce_reason or '-' }}</small></td><td>{{ '✅' if e.replied else '—' }}</td><td>{{ e.sent_at[:16] if e.sent_at else '-' }}</td><td id="camp-action-{{ e.id }}">{% if e.status in ['failed','bounced'] %}<button class="btn btn-warning btn-sm py-0 px-2" onclick="retryCampaign({{ e.id }}, this)" title="Retry"><i class="fas fa-redo"></i></button>{% endif %}</td></tr>{% endfor %}
-                </tbody>
-            </table>
+  <div class="seq-add-btn" onclick="addSeqStep()"><i class="fas fa-plus me-1"></i>Add Step</div>
+</div>
+
+<!-- ── CENTER: COMPOSER ── -->
+<div class="composer-area">
+
+  <!-- AI GENERATION STRIP -->
+  <div class="ai-gen-strip">
+    <div style="width:36px;height:36px;background:rgba(255,255,255,0.15);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-robot" style="font-size:1rem;"></i>
+    </div>
+    <div style="flex:1;">
+      <div style="font-size:13px;font-weight:700;margin-bottom:2px;">AI Personalization Engine</div>
+      <p>Generate unique, context-aware emails for each contact using company intelligence.</p>
+    </div>
+    <button class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3);white-space:nowrap;" onclick="generateAIPreview()" id="aiBtn">
+      <i class="fas fa-magic me-1"></i>Generate Previews
+    </button>
+  </div>
+
+  <!-- COMPOSER CARD -->
+  <div class="composer-card">
+    <!-- TOOLBAR -->
+    <div class="composer-toolbar">
+      <span style="font-size:10.5px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.4px;margin-right:4px;">Variables</span>
+      <span class="var-chip" onclick="insertVar('{name}')">name</span>
+      <span class="var-chip" onclick="insertVar('{company}')">company</span>
+      <span class="var-chip" onclick="insertVar('{designation}')">designation</span>
+      <span class="var-chip" onclick="insertVar('{industry}')">industry</span>
+      <span class="var-chip" onclick="insertVar('{ai_summary}')">ai_summary</span>
+      <div class="tb-sep"></div>
+      <button class="tb-btn" onclick="wrapTag('b')" title="Bold"><b>B</b></button>
+      <button class="tb-btn" onclick="wrapTag('i')" title="Italic"><i>I</i></button>
+      <button class="tb-btn" onclick="wrapTag('u')" title="Underline"><u>U</u></button>
+      <button class="tb-btn" onclick="insertBlock('cta')" title="CTA Block"><i class="fas fa-hand-pointer"></i></button>
+      <button class="tb-btn" onclick="insertBlock('signature')" title="Signature"><i class="fas fa-signature"></i></button>
+      <div class="tb-sep"></div>
+      <button class="tb-btn" onclick="togglePreviewMode()" id="previewToggle" title="Toggle Preview"><i class="fas fa-eye"></i> Preview</button>
+    </div>
+
+    <div class="composer-body">
+      <form method="POST" action="/campaign/{{ campaign.id }}/send" id="sendForm" enctype="multipart/form-data">
+
+        <!-- SUBJECT -->
+        <div class="mb-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <label class="form-label mb-0" style="font-size:12px;font-weight:600;color:#374151;">Subject Line</label>
+            <span id="subjectScore" style="font-size:11px;font-weight:700;color:#10b981;"></span>
+          </div>
+          <input type="text" name="subject" id="subjectInput" class="form-control" value="Helping {company} scale engineering faster" oninput="updateQuality()" required>
         </div>
-        {% endif %}
 
-        {% if available %}
-        <div class="compose-box">
-            <h5 class="mb-3">✉️ Compose & Send</h5>
-            <form method="POST" action="/campaign/{{ campaign.id }}/send" id="sendForm" enctype="multipart/form-data">
-
-                <div class="mb-3">
-                    <label class="form-label">Subject (use {name} and {company})</label>
-                    <input type="text" name="subject" class="form-control" value="Helping {company} scale engineering faster" required>
-                </div>
-
-                <div class="mb-3">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <label class="form-label mb-0">Email Body (HTML)</label>
-                        <div>
-                            <button type="button" class="btn btn-purple btn-sm" onclick="generateAIPreview()" id="aiBtn">
-                                <i class="fas fa-magic"></i> Generate AI Emails
-                            </button>
-                            <small class="text-muted ms-2">Uses prompt from Settings</small>
-                        </div>
-                    </div>
-                    <textarea name="body" class="form-control" rows="14" id="emailBody" required><p>Hi {name},</p>
+        <!-- BODY EDITOR -->
+        <div class="mb-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <label class="form-label mb-0" style="font-size:12px;font-weight:600;color:#374151;">Email Body</label>
+            <small class="text-muted" style="font-size:11px;">HTML supported · {variables} auto-replaced</small>
+          </div>
+          <!-- EDITOR MODE -->
+          <textarea name="body" id="emailBody" class="email-editor" oninput="updateQuality(); updatePreview();" required><p>Hi {name},</p>
 
 <p>{company} is doing solid work. Scaling engineering at this stage usually means you need reliable talent, fast.</p>
 
 <p>Here's what we bring to the table:</p>
 <ul>
-<li>🏢 <b>Shiksha Infotech</b> — Est. 2009, 400+ engineers</li>
-<li>🎓 Founded by alumni of top Indian engineering schools</li>
-<li>🌍 Offices in US & India</li>
-<li>💰 <b>Pre-vetted AI/ML engineers at $30–55/hr</b> (vs $100–150/hr US rates)</li>
-<li>⚡ Onboarded in just <b>2–3 weeks</b></li>
+<li><b>Shiksha Infotech</b> &mdash; Est. 2009, 400+ engineers</li>
+<li>Founded by alumni of top Indian engineering schools</li>
+<li>Offices in US &amp; India</li>
+<li><b>Pre-vetted AI/ML engineers at $30&ndash;55/hr</b> (vs $100&ndash;150/hr US rates)</li>
+<li>Onboarded in just <b>2&ndash;3 weeks</b></li>
 </ul>
 
 <p>Open to a quick 15-minute chat?</p>
@@ -89,193 +250,501 @@
 Anshul<br>
 <b>Shiksha Infotech</b> | Est. 2009<br>
 <a href="https://shikshainfotech.com">shikshainfotech.com</a></p></textarea>
-                    <small class="text-muted">💡 Use {name} and {company} placeholders. Or click "Generate AI Emails" for personalized content per contact.</small>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Attachment (upload file)</label>
-                    <input type="file" name="attachment_file" class="form-control">
-                </div>
-
-                <div class="mb-3">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <label class="form-label mb-0">Select Contacts ({{ available|length }} available)</label>
-                        <div class="d-flex align-items-center gap-2">
-                            <input type="text" id="contactSearch" class="form-control form-control-sm" style="width:200px" placeholder="Search name, email..." oninput="searchAvail(this.value)">
-                            <span class="badge bg-primary" id="selectedCount">0 selected</span>
-                            <small class="text-muted" id="availPageInfo"></small>
-                            <nav><ul class="pagination pagination-sm mb-0" id="availPagination"></ul></nav>
-                        </div>
-                    </div>
-                    <div style="max-height:400px;overflow-y:auto;background:#f8fafc;border-radius:8px;padding:15px;border:1px solid #e2e8f0;">
-                        <div class="form-check mb-2"><input type="checkbox" id="selectAll" class="form-check-input" onclick="toggleAll(this)"><label class="form-check-label" for="selectAll"><strong>Select All (all pages)</strong></label></div><hr>
-                        <div id="availBody">
-                        {% for c in available %}<div class="form-check mb-1 avail-row"><input type="checkbox" name="contact_ids" value="{{ c.id }}" class="form-check-input contact-cb" id="c{{ c.id }}" data-name="{{ c.name }}" data-company="{{ c.company }}" onchange="updateCount()"><label class="form-check-label" for="c{{ c.id }}">{{ c.name or 'Unknown' }} ({{ c.company or '-' }}) - {{ c.email }}</label></div>{% endfor %}
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row g-2">
-                    <div class="col-md-4">
-                        <button type="submit" class="btn btn-success btn-lg w-100" onclick="return confirm('Send template email to selected contacts?')">
-                            <i class="fas fa-paper-plane"></i> Send Template
-                        </button>
-                    </div>
-                    <div class="col-md-4">
-                        <button type="submit" class="btn btn-purple btn-lg w-100" formaction="/campaign/{{ campaign.id }}/send_ai" onclick="return confirm('AI will generate personalized email for each contact and send. This may take time. Continue?')">
-                            <i class="fas fa-magic"></i> Send AI Personalized
-                        </button>
-                    </div>
-                    <div class="col-md-4">
-                        <button type="button" class="btn btn-outline-primary btn-lg w-100" onclick="generateAIPreview()">
-                            <i class="fas fa-eye"></i> Preview AI Emails
-                        </button>
-                    </div>
-                </div>
-            </form>
-
-            <!-- AI Preview Section -->
-            <div id="aiPreview" style="display:none;margin-top:20px;">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="mb-0">🤖 AI Generated Previews</h5>
-                    <span id="aiProgress" class="text-muted"></span>
-                </div>
-                <div id="aiResults"></div>
-            </div>
+          <!-- PREVIEW MODE (hidden by default) -->
+          <div id="previewMode" style="display:none;border:1px solid #e2e8f0;border-radius:8px;padding:16px;background:#fff;min-height:280px;font-size:13.5px;line-height:1.7;"></div>
         </div>
-        {% elif not emails %}<div class="text-center text-muted mt-5"><p>No valid contacts. <a href="/upload">Upload more</a> or <a href="/contacts">verify emails</a> first.</p></div>{% endif %}
+
+        <!-- ATTACHMENT -->
+        <div class="mb-3">
+          <label class="form-label" style="font-size:12px;font-weight:600;color:#374151;">Attachment <small class="text-muted fw-normal">(optional)</small></label>
+          <input type="file" name="attachment_file" class="form-control form-control-sm">
+        </div>
+
+        <!-- HIDDEN for AI send -->
+        <input type="hidden" name="_send_type" id="sendTypeInput" value="template">
+      </form>
+    </div>
+  </div>
+
+  <!-- EMAIL QUALITY SCORE -->
+  <div class="composer-card" style="padding:16px;">
+    <div class="section-lbl"><i class="fas fa-chart-bar me-1"></i>Email Quality Score</div>
+    <div class="quality-bar">
+      <span class="ql">Subject Quality</span>
+      <div class="qbar"><div class="qfill" id="q-subject" style="width:72%;background:#10b981;"></div></div>
+      <span class="qval" id="qv-subject" style="color:#10b981;">72</span>
+    </div>
+    <div class="quality-bar">
+      <span class="ql">Spam Risk</span>
+      <div class="qbar"><div class="qfill" id="q-spam" style="width:15%;background:#10b981;"></div></div>
+      <span class="qval" id="qv-spam" style="color:#10b981;">Low</span>
+    </div>
+    <div class="quality-bar">
+      <span class="ql">Personalization</span>
+      <div class="qbar"><div class="qfill" id="q-personal" style="width:60%;background:#6366f1;"></div></div>
+      <span class="qval" id="qv-personal" style="color:#6366f1;">60</span>
+    </div>
+    <div class="quality-bar">
+      <span class="ql">CTA Strength</span>
+      <div class="qbar"><div class="qfill" id="q-cta" style="width:80%;background:#f59e0b;"></div></div>
+      <span class="qval" id="qv-cta" style="color:#f59e0b;">80</span>
+    </div>
+  </div>
+
+  <!-- SENT EMAILS TABLE (if any) -->
+  {% if emails %}
+  <div class="composer-card" style="padding:16px;">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div class="section-lbl" style="margin:0;"><i class="fas fa-check-circle me-1"></i>Sent Emails ({{ emails|length }})</div>
+      <div class="d-flex gap-2">
+        <small class="text-muted" id="sentPageInfo"></small>
+        <nav><ul class="pagination pagination-sm mb-0" id="sentPagination"></ul></nav>
+      </div>
+    </div>
+    <div style="overflow-x:auto;">
+    <table class="table table-hover mb-0" style="font-size:12px;">
+      <thead><tr><th>Contact</th><th>Status</th><th>Opened</th><th>Replied</th><th>Sent</th><th></th></tr></thead>
+      <tbody id="sentBody">
+      {% for e in emails %}
+      <tr class="sent-row">
+        <td>
+          <div style="font-weight:600;color:#111827;">{{ e.name }}</div>
+          <div style="font-size:10.5px;color:#9CA3AF;">{{ e.company }} · {{ e.email }}</div>
+        </td>
+        <td>
+          {% if e.status == 'sent' %}<span class="sent-badge-sent">Sent</span>
+          {% elif e.status == 'bounced' %}<span class="sent-badge-bounced">Bounced</span>
+          {% else %}<span class="sent-badge-failed">{{ e.status }}</span>{% endif %}
+        </td>
+        <td>{% if e.opened %}<span style="color:#10b981;font-weight:600;">✓</span>{% else %}<span style="color:#d1d5db;">—</span>{% endif %}</td>
+        <td>{% if e.replied %}<span style="color:#6366f1;font-weight:600;">✓</span>{% else %}<span style="color:#d1d5db;">—</span>{% endif %}</td>
+        <td><small class="text-muted">{{ e.sent_at[:10] if e.sent_at else '—' }}</small></td>
+        <td id="camp-action-{{ e.id }}">
+          {% if e.status in ['failed','bounced'] %}
+          <button style="background:#fff7ed;border:1px solid #fed7aa;color:#c2410c;padding:2px 7px;border-radius:6px;font-size:11px;cursor:pointer;" onclick="retryCampaign({{ e.id }}, this)"><i class="fas fa-redo"></i></button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- AI PREVIEW RESULTS -->
+  <div id="aiPreview" style="display:none;">
+    <div class="composer-card" style="padding:16px;">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div class="section-lbl" style="margin:0;"><i class="fas fa-robot me-1"></i>AI Generated Previews</div>
+        <span id="aiProgress" class="text-muted" style="font-size:12px;"></span>
+      </div>
+      <div id="aiResults"></div>
+    </div>
+  </div>
+
+</div><!-- composer-area -->
+
+<!-- ── RIGHT: PREVIEW + DELIVERABILITY ── -->
+<div class="preview-sidebar">
+
+  <!-- LIVE PREVIEW -->
+  <div class="prev-header">
+    <h6><i class="fas fa-eye me-1"></i>Live Preview</h6>
+    <select id="previewContact" class="form-select form-select-sm" style="width:110px;font-size:11px;" onchange="updatePreview()">
+      <option value="founder">SaaS Founder</option>
+      <option value="cto">CTO</option>
+      <option value="marketing">Marketing Lead</option>
+      <option value="ceo">CEO</option>
+    </select>
+  </div>
+  <div class="email-preview-frame">
+    <div class="preview-email">
+      <div class="preview-subject" id="previewSubject">Helping Acme Corp scale engineering faster</div>
+      <div id="previewBody"></div>
+    </div>
+  </div>
+
+  <!-- DELIVERABILITY -->
+  <div style="padding:14px 16px;border-top:1px solid #f1f5f9;">
+    <div class="section-lbl"><i class="fas fa-shield-alt me-1"></i>Deliverability</div>
+    <div class="deliv-row"><span class="deliv-label">Risk Level</span><span class="deliv-val green-val" id="deliv-risk">Low ✓</span></div>
+    <div class="deliv-row"><span class="deliv-label">Active Inboxes</span><span class="deliv-val" id="deliv-inboxes">—</span></div>
+    <div class="deliv-row"><span class="deliv-label">Daily Capacity</span><span class="deliv-val" id="deliv-capacity">—</span></div>
+    <div class="deliv-row"><span class="deliv-label">Warmup Safe</span><span class="deliv-val green-val">Yes ✓</span></div>
+    <div class="deliv-row"><span class="deliv-label">Avg Health Score</span><span class="deliv-val" id="deliv-health">—</span></div>
+  </div>
+
+  <!-- AUDIENCE TARGETING -->
+  <div style="padding:14px 16px;border-top:1px solid #f1f5f9;">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <div class="section-lbl" style="margin:0;"><i class="fas fa-users me-1"></i>Audience</div>
+      <span style="font-size:11px;font-weight:700;color:#6366f1;" id="selectedCountSide">0 selected</span>
     </div>
 
-    <script>
-    // Pagination helper
-    function paginate(rowClass, bodyId, paginationId, infoId, perPage) {
-        const rows = Array.from(document.querySelectorAll('#' + bodyId + ' .' + rowClass));
-        let page = 1;
-        function render(p) {
-            page = p;
-            const start = (p-1)*perPage, end = start+perPage;
-            rows.forEach((r,i) => { r.style.display = (i>=start && i<end)?'':'none'; });
-            const total = Math.ceil(rows.length/perPage);
-            if (document.getElementById(infoId))
-                document.getElementById(infoId).textContent = rows.length ? `${start+1}–${Math.min(end,rows.length)} of ${rows.length}` : '';
-            const ul = document.getElementById(paginationId); ul.innerHTML='';
-            if(total<=1) return;
-            const btn=(label,pg,dis,act)=>{ const li=document.createElement('li'); li.className='page-item'+(dis?' disabled':'')+(act?' active':''); li.innerHTML='<a class="page-link" href="#">'+label+'</a>'; if(!dis) li.onclick=(e)=>{e.preventDefault();render(pg);}; ul.appendChild(li); };
-            btn('‹',page-1,page===1,false);
-            for(let i=1;i<=total;i++) btn(i,i,false,i===page);
-            btn('›',page+1,page===total,false);
-        }
-        if(rows.length) render(1);
-    }
+    <!-- Filters -->
+    <div style="margin-bottom:8px;">
+      <input type="text" id="contactSearch" class="form-control form-control-sm" placeholder="Search contacts..." oninput="searchAvail(this.value)" style="font-size:12px;">
+    </div>
+    <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;">
+      <button class="tb-btn" onclick="filterAudience('all')" id="fAll" style="font-size:10.5px;padding:3px 7px;">All</button>
+      <button class="tb-btn" onclick="filterAudience('hot')" id="fHot" style="font-size:10.5px;padding:3px 7px;">🔥 Hot</button>
+      <button class="tb-btn" onclick="filterAudience('enriched')" id="fEnriched" style="font-size:10.5px;padding:3px 7px;">✨ AI</button>
+    </div>
 
-    // Paginate sent emails (20 per page)
-    paginate('sent-row','sentBody','sentPagination','sentPageInfo',20);
+    <!-- Select All -->
+    <div style="padding:6px 10px;background:#f8fafc;border-radius:6px;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="selectAll" onclick="toggleAll(this)" style="accent-color:#6366f1;">
+      <label for="selectAll" style="font-size:11.5px;font-weight:600;color:#374151;cursor:pointer;margin:0;">Select All ({{ available|length }})</label></label>
+    </div>
 
-    function retryCampaign(id, btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<div class="spin-sm"></div>';
-        fetch('/api/retry/' + id, {method: 'POST'})
-        .then(r => r.json())
-        .then(data => {
-            const td = document.getElementById('camp-action-' + id);
-            if (data.success) {
-                td.innerHTML = '<span style="color:#198754;font-weight:bold"><i class="fas fa-check"></i> Sent!</span>';
-            } else {
-                td.innerHTML = '<span style="color:#dc3545;font-size:0.8rem">' + (data.error || 'Failed') + '</span>';
-            }
-        })
-        .catch(() => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-redo"></i>'; });
-    }
+    <!-- Contact List -->
+    <div id="availBody" style="max-height:280px;overflow-y:auto;">
+      {% if available %}
+      {% for c in available %}
+      {% set score = c.lead_score or 0 %}
+      <div class="contact-row avail-row" data-name="{{ (c.name or '')|lower }}" data-company="{{ (c.company or '')|lower }}" data-score="{{ score }}" data-enriched="{{ '1' if c.context else '0' }}">
+        <input type="checkbox" name="contact_ids" value="{{ c.id }}" class="contact-cb form-check-input" id="c{{ c.id }}" data-name="{{ c.name }}" data-company="{{ c.company or '' }}" onchange="updateCount()" style="accent-color:#6366f1;">
+        <label for="c{{ c.id }}" style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:12px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ c.name or 'Unknown' }}</div>
+          <div style="font-size:10.5px;color:#9CA3AF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ c.company or c.email }}</div>
+        </label>
+        {% if score >= 50 %}<span class="score-mini score-hot-mini">🔥{{ score }}</span>
+        {% elif score >= 20 %}<span class="score-mini score-warm-mini">{{ score }}</span>
+        {% else %}<span class="score-mini score-cold-mini">{{ score }}</span>{% endif %}
+        {% if c.context %}<i class="fas fa-robot" style="font-size:9px;color:#6366f1;" title="AI Enriched"></i>{% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      <div style="text-align:center;padding:20px;color:#9CA3AF;font-size:12px;">
+        No valid contacts available.<br><a href="/contacts" style="color:#6366f1;">Verify emails first →</a>
+      </div>
+      {% endif %}
+    </div>
 
-    function toggleAll(el) {
-        document.querySelectorAll('.contact-cb').forEach(cb => { cb.checked = el.checked; });
-        updateCount();
-    }
+    <!-- Pagination -->
+    <div class="d-flex justify-content-between align-items-center mt-2">
+      <small class="text-muted" id="availPageInfo" style="font-size:10.5px;"></small>
+      <nav><ul class="pagination pagination-sm mb-0" id="availPagination" style="font-size:10.5px;"></ul></nav>
+    </div>
+  </div>
 
-    function updateCount() {
-        const count = document.querySelectorAll('.contact-cb:checked').length;
-        document.getElementById('selectedCount').textContent = count + ' selected';
-    }
+</div><!-- preview-sidebar -->
 
-    // Paginate available contacts (30 per page)
-    function searchAvail(query) {
-        query = query.toLowerCase();
-        document.querySelectorAll('#availBody .avail-row').forEach(r => {
-            const text = r.textContent.toLowerCase();
-            r.dataset.hidden = (!query || text.includes(query)) ? '0' : '1';
-        });
-        paginateAvail(1);
-    }
+</div><!-- workspace -->
+</div><!-- main -->
 
-    function paginateAvail(page) {
-        const rows = Array.from(document.querySelectorAll('#availBody .avail-row')).filter(r => r.dataset.hidden !== '1');
-        const perPage = 30;
-        const total = Math.ceil(rows.length / perPage);
-        page = Math.min(page, total || 1);
-        const start = (page-1)*perPage, end = start+perPage;
-        document.querySelectorAll('#availBody .avail-row').forEach(r => r.style.display = 'none');
-        rows.forEach((r,i) => { r.style.display = (i>=start && i<end)?'':'none'; });
-        if(document.getElementById('availPageInfo'))
-            document.getElementById('availPageInfo').textContent = rows.length ? `${start+1}\u2013${Math.min(end,rows.length)} of ${rows.length}` : '0 results';
-        const ul = document.getElementById('availPagination'); ul.innerHTML='';
-        if(total<=1) return;
-        const btn=(label,pg,dis,act)=>{ const li=document.createElement('li'); li.className='page-item'+(dis?' disabled':'')+(act?' active':''); li.innerHTML='<a class="page-link" href="#">'+label+'</a>'; if(!dis) li.onclick=(e)=>{e.preventDefault();paginateAvail(pg);}; ul.appendChild(li); };
-        btn('\u2039',page-1,page===1,false);
-        for(let i=1;i<=total;i++) btn(i,i,false,i===page);
-        btn('\u203a',page+1,page===total,false);
-    }
-    paginateAvail(1);
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── PREVIEW CONTACTS ──
+const PREVIEW_CONTACTS = {
+  founder: { name:'Alex Chen', company:'TechFlow AI', designation:'Founder' },
+  cto:     { name:'Sarah Kim', company:'DataStack Inc', designation:'CTO' },
+  marketing:{ name:'Mike Ross', company:'GrowthLabs', designation:'VP Marketing' },
+  ceo:     { name:'Priya Sharma', company:'ScaleUp SaaS', designation:'CEO' },
+};
 
-    function generateAIPreview() {
-        const checked = document.querySelectorAll('.contact-cb:checked');
-        if (checked.length === 0) { alert('Pehle contacts select karo!'); return; }
+function updatePreview() {
+  const contact = PREVIEW_CONTACTS[document.getElementById('previewContact').value] || PREVIEW_CONTACTS.founder;
+  const subject = (document.getElementById('subjectInput').value || '')
+    .replace(/{name}/g, contact.name).replace(/{company}/g, contact.company).replace(/{designation}/g, contact.designation);
+  const body = (document.getElementById('emailBody').value || '')
+    .replace(/{name}/g, contact.name).replace(/{company}/g, contact.company).replace(/{designation}/g, contact.designation)
+    .replace(/{ai_summary}/g, '<em style="color:#6366f1;">[AI context for '+contact.company+']</em>')
+    .replace(/{industry}/g, 'SaaS');
+  document.getElementById('previewSubject').textContent = subject;
+  document.getElementById('previewBody').innerHTML = body;
+  // Also update preview mode if active
+  if(document.getElementById('previewMode').style.display !== 'none') {
+    document.getElementById('previewMode').innerHTML = '<div style="font-weight:700;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #f1f5f9;">'+subject+'</div>'+body;
+  }
+}
 
-        const btn = document.getElementById('aiBtn');
-        btn.innerHTML = '<div class="spin-sm"></div> Generating...';
-        btn.disabled = true;
+// ── PREVIEW TOGGLE ──
+let previewOn = false;
+function togglePreviewMode() {
+  previewOn = !previewOn;
+  document.getElementById('emailBody').style.display = previewOn ? 'none' : '';
+  document.getElementById('previewMode').style.display = previewOn ? '' : 'none';
+  document.getElementById('previewToggle').innerHTML = previewOn ? '<i class="fas fa-edit"></i> Edit' : '<i class="fas fa-eye"></i> Preview';
+  if(previewOn) updatePreview();
+}
 
-        document.getElementById('aiPreview').style.display = 'block';
-        document.getElementById('aiResults').innerHTML = '';
+// ── VARIABLE INSERT ──
+function insertVar(v) {
+  const ta = document.getElementById('emailBody');
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  ta.value = ta.value.slice(0,start) + v + ta.value.slice(end);
+  ta.selectionStart = ta.selectionEnd = start + v.length;
+  ta.focus();
+  updatePreview(); updateQuality();
+}
 
-        let completed = 0;
-        const total = checked.length;
+// ── CONTENT BLOCKS ──
+const BLOCKS = {
+  cta: '\n<p style="margin-top:16px;"><a href="https://calendly.com/anshul" style="background:#6366f1;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">Book a 15-min call →</a></p>\n',
+  signature: '\n<p>Best regards,</p>\n<p>Anshul<br><b>Shiksha Infotech</b> | Est. 2009<br><a href="https://shikshainfotech.com">shikshainfotech.com</a></p>\n',
+};
+function insertBlock(type) {
+  const ta = document.getElementById('emailBody');
+  ta.value += BLOCKS[type] || '';
+  updatePreview(); updateQuality();
+}
 
-        checked.forEach((cb, idx) => {
-            const name = cb.dataset.name;
-            const company = cb.dataset.company;
+// ── WRAP TAG ──
+function wrapTag(tag) {
+  const ta = document.getElementById('emailBody');
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const sel = ta.value.slice(start, end) || 'text';
+  ta.value = ta.value.slice(0,start) + `<${tag}>${sel}</${tag}>` + ta.value.slice(end);
+  ta.focus(); updatePreview();
+}
 
-            setTimeout(() => {
-                document.getElementById('aiProgress').textContent = `${completed}/${total} done...`;
+// ── QUALITY SCORE ──
+function updateQuality() {
+  const subject = document.getElementById('subjectInput').value || '';
+  const body = document.getElementById('emailBody').value || '';
+  const hasName = body.includes('{name}') || body.includes('{company}');
+  const hasCTA = body.toLowerCase().includes('chat') || body.toLowerCase().includes('call') || body.toLowerCase().includes('calendly');
+  const spamWords = ['free','guaranteed','click here','urgent','limited time'].filter(w => body.toLowerCase().includes(w)).length;
 
-                fetch('/api/generate_email', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name: name, company: company, contact_id: cb.value})
-                })
-                .then(r => r.json())
-                .then(data => {
-                    completed++;
-                    document.getElementById('aiProgress').textContent = `${completed}/${total} done`;
+  const subjectScore = Math.min(100, 40 + (subject.length > 20 ? 20 : 0) + (subject.includes('{company}') ? 20 : 0) + (subject.length < 60 ? 20 : 0));
+  const personalScore = Math.min(100, (hasName ? 60 : 20) + (body.includes('{ai_summary}') ? 40 : 0));
+  const ctaScore = hasCTA ? 85 : 40;
+  const spamScore = Math.max(0, 100 - spamWords * 25);
 
-                    const div = document.createElement('div');
-                    div.className = 'ai-preview-card';
-                    if (data.success) {
-                        div.innerHTML = `<h6>${name} (${company})</h6><div style="font-size:0.9rem">${data.body}</div>`;
-                    } else {
-                        div.innerHTML = `<h6>${name} (${company})</h6><span class="text-danger">${data.error}</span>`;
-                    }
-                    document.getElementById('aiResults').appendChild(div);
+  setQuality('subject', subjectScore, subjectScore > 70 ? '#10b981' : subjectScore > 40 ? '#f59e0b' : '#ef4444');
+  setQuality('spam', spamScore, spamScore > 70 ? '#10b981' : '#ef4444', spamScore > 70 ? 'Low' : 'High');
+  setQuality('personal', personalScore, '#6366f1');
+  setQuality('cta', ctaScore, '#f59e0b');
+  document.getElementById('subjectScore').textContent = subjectScore + '/100';
+  document.getElementById('subjectScore').style.color = subjectScore > 70 ? '#10b981' : '#f59e0b';
+}
 
-                    if (completed === total) {
-                        btn.innerHTML = '<i class="fas fa-magic"></i> Generate AI Emails';
-                        btn.disabled = false;
-                        document.getElementById('aiProgress').textContent = `✅ All ${total} done!`;
-                    }
-                });
-            }, idx * 2000);
-        });
-    }
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+function setQuality(key, val, color, label) {
+  const fill = document.getElementById('q-'+key);
+  const valEl = document.getElementById('qv-'+key);
+  if(fill) { fill.style.width = val+'%'; fill.style.background = color; }
+  if(valEl) { valEl.textContent = label || val; valEl.style.color = color; }
+}
+
+// ── SEQUENCE SIDEBAR ──
+function switchStep(idx) {
+  document.querySelectorAll('.seq-step-item').forEach((el,i) => el.classList.toggle('active', i===idx));
+}
+function addSeqStep() {
+  const list = document.getElementById('seqList');
+  const count = list.querySelectorAll('.seq-step-item').length;
+  const div = document.createElement('div');
+  div.className = 'seq-step-item';
+  div.onclick = () => switchStep(count);
+  div.innerHTML = `<div class="step-day">Day ${(count+1)*3}</div><div class="step-name">Follow-up #${count}</div><div class="step-sub">Following up...</div><span class="step-dot dot-followup"></span>`;
+  list.appendChild(div);
+}
+
+// ── AUDIENCE FILTER ──
+const allRows = Array.from(document.querySelectorAll('#availBody .avail-row'));
+let activeFilter = 'all';
+
+function filterAudience(type) {
+  activeFilter = type;
+  ['all','hot','enriched'].forEach(t => {
+    const btn = document.getElementById('f'+t.charAt(0).toUpperCase()+t.slice(1));
+    if(btn) btn.style.background = t===type ? '#eef2ff' : '';
+  });
+  applyFilters();
+}
+
+function searchAvail(q) { applyFilters(q.toLowerCase()); }
+
+function applyFilters(search) {
+  search = search !== undefined ? search : document.getElementById('contactSearch').value.toLowerCase();
+  allRows.forEach(r => {
+    const matchSearch = !search || r.dataset.name.includes(search) || r.dataset.company.includes(search);
+    const matchFilter = activeFilter === 'all' ||
+      (activeFilter === 'hot' && parseInt(r.dataset.score||0) >= 50) ||
+      (activeFilter === 'enriched' && r.dataset.enriched === '1');
+    r.dataset.hidden = (matchSearch && matchFilter) ? '0' : '1';
+  });
+  paginateAvail(1);
+}
+
+function paginateAvail(page) {
+  const visible = allRows.filter(r => r.dataset.hidden !== '1');
+  const perPage = 20, total = Math.ceil(visible.length/perPage);
+  page = Math.min(page, total||1);
+  const start = (page-1)*perPage, end = start+perPage;
+  allRows.forEach(r => r.style.display = 'none');
+  visible.forEach((r,i) => r.style.display = (i>=start && i<end) ? '' : 'none');
+  const info = visible.length ? `${start+1}–${Math.min(end,visible.length)} of ${visible.length}` : '0';
+  document.getElementById('availPageInfo').textContent = info;
+  const ul = document.getElementById('availPagination'); ul.innerHTML='';
+  if(total<=1) return;
+  const btn=(label,p,dis,act)=>{ ul.innerHTML+=`<li class="page-item ${dis?'disabled':''} ${act?'active':''}"><a class="page-link" href="#" onclick="event.preventDefault();${dis?'':('paginateAvail('+p+')')}">` +label+ `</a></li>`; };
+  btn('‹',page-1,page===1,false);
+  for(let i=1;i<=total;i++) btn(i,i,false,i===page);
+  btn('›',page+1,page===total,false);
+}
+paginateAvail(1);
+
+function toggleAll(el) {
+  // Select ALL contacts (not just visible page) — needed for proper send
+  allRows.forEach(r => {
+    const cb = r.querySelector('.contact-cb');
+    if(cb) cb.checked = el.checked;
+  });
+  updateCount();
+}
+
+function updateCount() {
+  const count = document.querySelectorAll('.contact-cb:checked').length;
+  const total = allRows.length;
+  document.getElementById('selectedCountSide').textContent = count + ' selected';
+  document.getElementById('selectedCountTop').textContent = count + ' selected';
+  // Sync selectAll checkbox state
+  const selectAllCb = document.getElementById('selectAll');
+  if(selectAllCb) {
+    selectAllCb.checked = count > 0 && count === total;
+    selectAllCb.indeterminate = count > 0 && count < total;
+  }
+}
+
+// ── SEND CONFIRM ──
+function confirmSend(type) {
+  const checked = document.querySelectorAll('.contact-cb:checked');
+  const count = checked.length;
+  if(count === 0) { alert('Please select at least one contact before sending.'); return; }
+  const msg = type === 'ai'
+    ? `Send AI-personalized emails to ${count} contact${count>1?'s':''}? AI will generate unique content per contact. This may take a few minutes.`
+    : `Send template email to ${count} contact${count>1?'s':''}?`;
+  if(!confirm(msg)) return;
+
+  // Build form and submit to new backend-driven launch route
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/campaign/{{ campaign.id }}/launch';
+  form.enctype = 'multipart/form-data';
+
+  const addField = (name, value) => {
+    const inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = name; inp.value = value;
+    form.appendChild(inp);
+  };
+
+  addField('send_mode', type === 'ai' ? 'ai' : 'template');
+  addField('subject', document.getElementById('subjectInput').value || 'Helping {company} scale engineering faster');
+  addField('body', document.getElementById('emailBody').value || '');
+
+  // Add selected contact IDs
+  checked.forEach(cb => addField('contact_ids', cb.value));
+
+  // Attachment
+  const attachFile = document.querySelector('input[name="attachment_file"]');
+  if (attachFile && attachFile.files.length > 0) {
+    // Can't add file input to dynamic form easily — use existing form
+    document.getElementById('sendForm').action = '/campaign/{{ campaign.id }}/launch';
+    document.getElementById('sendTypeInput').value = type === 'ai' ? 'ai' : 'template';
+    document.querySelectorAll('.dynamic-contact-id').forEach(el => el.remove());
+    const sf = document.getElementById('sendForm');
+    checked.forEach(cb => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'contact_ids'; inp.value = cb.value;
+      inp.className = 'dynamic-contact-id';
+      sf.appendChild(inp);
+    });
+    const modeInp = document.createElement('input');
+    modeInp.type = 'hidden'; modeInp.name = 'send_mode';
+    modeInp.value = type === 'ai' ? 'ai' : 'template';
+    modeInp.className = 'dynamic-contact-id';
+    sf.appendChild(modeInp);
+    sf.submit();
+    return;
+  }
+
+  document.body.appendChild(form);
+  form.submit();
+}
+
+// ── AI PREVIEW ──
+function generateAIPreview() {
+  const checked = document.querySelectorAll('.contact-cb:checked');
+  if(checked.length === 0) { alert('Select contacts first.'); return; }
+  const btn = document.getElementById('aiBtn');
+  btn.innerHTML = '<span class="spin-sm"></span> Generating...';
+  btn.disabled = true;
+  document.getElementById('aiPreview').style.display = 'block';
+  document.getElementById('aiResults').innerHTML = '';
+  let done = 0;
+  const total = Math.min(checked.length, 5); // preview max 5
+  Array.from(checked).slice(0,5).forEach((cb, idx) => {
+    setTimeout(() => {
+      document.getElementById('aiProgress').textContent = `${done}/${total} done...`;
+      fetch('/api/generate_email', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({name:cb.dataset.name, company:cb.dataset.company, contact_id:cb.value})
+      }).then(r=>r.json()).then(d=>{
+        done++;
+        document.getElementById('aiProgress').textContent = `${done}/${total} done`;
+        const div = document.createElement('div');
+        div.style.cssText = 'background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px;';
+        div.innerHTML = d.success
+          ? `<div style="font-weight:700;font-size:12.5px;color:#6366f1;margin-bottom:8px;">${cb.dataset.name} · ${cb.dataset.company}</div><div style="font-size:12.5px;line-height:1.7;">${d.body}</div>`
+          : `<div style="color:#dc2626;font-size:12px;">${cb.dataset.name}: ${d.error}</div>`;
+        document.getElementById('aiResults').appendChild(div);
+        if(done===total) { btn.innerHTML='<i class="fas fa-magic me-1"></i>Generate Previews'; btn.disabled=false; }
+      });
+    }, idx*1500);
+  });
+}
+
+// ── RETRY ──
+function retryCampaign(id, btn) {
+  btn.disabled=true; btn.innerHTML='<span class="spin-sm"></span>';
+  fetch('/api/retry/'+id,{method:'POST'}).then(r=>r.json()).then(d=>{
+    const td = document.getElementById('camp-action-'+id);
+    td.innerHTML = d.success
+      ? '<span style="color:#10b981;font-weight:600;font-size:11px;">✓ Sent</span>'
+      : '<span style="color:#dc2626;font-size:11px;">'+(d.error||'Failed')+'</span>';
+  }).catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="fas fa-redo"></i>'; });
+}
+
+// ── SENT PAGINATION ──
+(function(){
+  const rows = Array.from(document.querySelectorAll('#sentBody .sent-row'));
+  if(!rows.length) return;
+  const perPage=20; let page=1;
+  function render(p){
+    page=p; const start=(p-1)*perPage, end=start+perPage;
+    rows.forEach((r,i)=>r.style.display=(i>=start&&i<end)?'':'none');
+    const total=Math.ceil(rows.length/perPage);
+    document.getElementById('sentPageInfo').textContent=rows.length?`${start+1}–${Math.min(end,rows.length)} of ${rows.length}`:'';
+    const ul=document.getElementById('sentPagination'); ul.innerHTML='';
+    if(total<=1) return;
+    const btn=(l,pg,d,a)=>{ul.innerHTML+=`<li class="page-item ${d?'disabled':''} ${a?'active':''}"><a class="page-link" href="#" onclick="event.preventDefault();${d?'':('render('+pg+')')}">` +l+ `</a></li>`;};
+    btn('‹',page-1,page===1,false);
+    for(let i=1;i<=total;i++) btn(i,i,false,i===page);
+    btn('›',page+1,page===total,false);
+  }
+  render(1);
+})();
+
+// ── LOAD DELIVERABILITY ──
+fetch('/api/smtp_accounts').then(r=>r.json()).then(d=>{
+  const accounts = d.accounts||[];
+  const active = accounts.filter(a=>a.active);
+  const capacity = active.reduce((s,a)=>s+(a.daily_limit-a.sent_today),0);
+  const avgHealth = active.length ? Math.round(active.reduce((s,a)=>s+a.health_score,0)/active.length) : 0;
+  document.getElementById('deliv-inboxes').textContent = active.length + ' active';
+  document.getElementById('deliv-capacity').textContent = capacity + '/day';
+  document.getElementById('deliv-health').textContent = avgHealth + '/100';
+  document.getElementById('deliv-health').style.color = avgHealth>=70?'#10b981':avgHealth>=40?'#f59e0b':'#ef4444';
+  document.getElementById('deliv-risk').textContent = avgHealth>=70?'Low ✓':avgHealth>=40?'Medium':'High ⚠';
+  document.getElementById('deliv-risk').style.color = avgHealth>=70?'#10b981':avgHealth>=40?'#f59e0b':'#ef4444';
+}).catch(()=>{});
+
+// ── INIT ──
+updatePreview();
+updateQuality();
+</script>
 </body>
 </html>

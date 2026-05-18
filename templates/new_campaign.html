@@ -1,41 +1,849 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><title>New Campaign</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="/static/style.css" rel="stylesheet">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Campaign — Outbound Builder</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+/* ── WIZARD PROGRESS ── */
+..wizard-progress {
+  display: flex; flex-direction: row !important; align-items: center !important;
+  flex-wrap: nowrap !important;
+  background: #fff; border: 1px solid #e5e7eb;
+  border-radius: 14px; padding: 12px 20px;
+  margin-bottom: 28px;
+  box-shadow: 0 1px 4px rgba(15,23,42,0.05);
+  width: 100%; box-sizing: border-box;
+}
+.wp-step {
+  display: flex !important; flex-direction: row !important;
+  align-items: center !important; gap: 8px;
+  flex: 1 1 0; position: relative; min-width: 0;
+}
+.wp-step:not(:last-child)::after {
+  content: '';
+  position: absolute; left: 38px; right: 0; top: 50%;
+  height: 2px; background: #e5e7eb;
+  transform: translateY(-50%); z-index: 0;
+  transition: background 0.3s;
+  display: block !important;
+  width: auto !important;
+}
+.wp-step.done::after { background: #10b981; }
+.wp-dot {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex !important; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; flex-shrink: 0;
+  border: 2px solid #e5e7eb; background: #fff; color: #9ca3af;
+  z-index: 1; position: relative; transition: all 0.25s;
+}
+.wp-step.active .wp-dot { border-color: #6366f1; background: #6366f1; color: #fff; }
+.wp-step.done .wp-dot   { border-color: #10b981; background: #10b981; color: #fff; }
+.wp-label {
+  font-size: 12px; font-weight: 600; color: #9ca3af;
+  white-space: nowrap; z-index: 1; display: none !important;
+}
+.wp-step.active .wp-label { display: inline !important; color: #4338ca; font-weight: 700; }
+.wp-connector { display: none !important; }
+
+/* ── STEP PANELS ── */
+.step-panel { display: none; }
+.step-panel.active { display: block; }
+
+/* ── OBJECTIVE CARDS ── */
+.obj-card {
+  border: 2px solid #e2e8f0; border-radius: 10px; padding: 14px 16px;
+  cursor: pointer; transition: all 0.15s; background: #fff;
+  display: flex; align-items: center; gap: 12px;
+}
+.obj-card:hover { border-color: #6366f1; background: #f5f3ff; }
+.obj-card.selected { border-color: #6366f1; background: #eef2ff; }
+.obj-card .obj-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.obj-card h6 { font-size: 13px; font-weight: 700; color: #111827; margin: 0 0 2px; }
+.obj-card p  { font-size: 11px; color: #6B7280; margin: 0; }
+
+/* ── SEQUENCE TIMELINE ── */
+.seq-timeline { position: relative; padding-left: 40px; }
+.seq-timeline::before { content:''; position:absolute; left:15px; top:0; bottom:0; width:2px; background:#e2e8f0; }
+.seq-step {
+  position: relative; margin-bottom: 16px;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 14px 16px; transition: box-shadow 0.15s;
+}
+.seq-step:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+.seq-step::before {
+  content: ''; position: absolute; left: -32px; top: 18px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #6366f1; border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #6366f1;
+}
+.seq-step.followup::before { background: #f59e0b; box-shadow: 0 0 0 2px #f59e0b; }
+.seq-step.final::before    { background: #ef4444; box-shadow: 0 0 0 2px #ef4444; }
+.seq-day-badge { display: inline-block; background: #f1f5f9; color: #475569; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 99px; margin-bottom: 8px; }
+.seq-step-title { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 4px; }
+.seq-step-sub   { font-size: 11.5px; color: #6B7280; }
+.add-step-btn {
+  border: 2px dashed #c7d2fe; border-radius: 10px; padding: 12px;
+  text-align: center; cursor: pointer; color: #6366f1; font-size: 13px;
+  font-weight: 600; transition: all 0.15s; background: #f8faff;
+  margin-left: 0;
+}
+.add-step-btn:hover { background: #eef2ff; border-color: #6366f1; }
+
+/* ── TEMPLATE CARDS ── */
+.tmpl-card {
+  border: 2px solid #e2e8f0; border-radius: 10px; padding: 14px;
+  cursor: pointer; transition: all 0.15s; background: #fff; text-align: center;
+}
+.tmpl-card:hover { border-color: #6366f1; background: #f5f3ff; }
+.tmpl-card.selected { border-color: #6366f1; background: #eef2ff; }
+.tmpl-card .tmpl-icon { font-size: 1.6rem; margin-bottom: 6px; }
+.tmpl-card h6 { font-size: 12px; font-weight: 700; color: #111827; margin: 0; }
+
+/* ── AI DEPTH SELECTOR ── */
+.depth-btn {
+  flex: 1; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;
+  background: #fff; cursor: pointer; text-align: center; transition: all 0.15s;
+  font-size: 12.5px; font-weight: 600; color: #6B7280;
+}
+.depth-btn:hover { border-color: #6366f1; color: #4338ca; }
+.depth-btn.selected { border-color: #6366f1; background: #eef2ff; color: #4338ca; }
+.depth-btn small { display: block; font-size: 10.5px; font-weight: 400; color: #9CA3AF; margin-top: 2px; }
+
+/* ── REVIEW SUMMARY ── */
+.review-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid #f1f5f9;
+}
+.review-row:last-child { border-bottom: none; }
+.review-label { font-size: 12px; color: #6B7280; font-weight: 500; }
+.review-value { font-size: 13px; font-weight: 700; color: #111827; }
+
+/* ── LIVE PREVIEW PANEL ── */
+.preview-panel { position: sticky; top: 20px; }
+.preview-metric { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+.preview-metric:last-child { border-bottom: none; }
+.preview-metric .pm-label { font-size: 12px; color: #6B7280; }
+.preview-metric .pm-val   { font-size: 13px; font-weight: 700; color: #111827; }
+.risk-low    { color: #10b981; }
+.risk-medium { color: #f59e0b; }
+.risk-high   { color: #ef4444; }
+
+/* ── AI GENERATOR ── */
+.ai-gen-box {
+  background: linear-gradient(135deg, #1e1b4b, #312e81);
+  border-radius: 12px; padding: 20px; color: #fff; margin-bottom: 20px;
+}
+.ai-gen-box h5 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+.ai-gen-box p  { font-size: 12px; color: rgba(255,255,255,0.7); margin-bottom: 12px; }
+.ai-gen-box textarea { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; font-size: 13px; }
+.ai-gen-box textarea::placeholder { color: rgba(255,255,255,0.4); }
+.ai-gen-box textarea:focus { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.4); box-shadow: none; color: #fff; }
+
+/* ── MISC ── */
+.spin { display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,0.3); border-top:2px solid #fff; border-radius:50%; animation:spin 0.6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.section-label { font-size: 10.5px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px; }
+.nav-btns { display: flex; gap: 10px; margin-top: 24px; padding-top: 20px; border-top: 1px solid #f1f5f9; }
+</style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
-        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
-        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
-        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
-        <a href="/campaigns" class="active"><i class="fas fa-bullhorn"></i> Campaigns</a>
-        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
-        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
-        <a href="/logs"><i class="fas fa-list-alt"></i> Logs</a>
-        <hr style="border-color:#e2e8f0">
-        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
-        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns" class="active"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<div class="main">
+
+<!-- HEADER -->
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h3 style="margin:0;">New Campaign</h3>
+    <small class="text-muted">Build an AI-powered outbound sequence</small>
+  </div>
+  <a href="/campaigns" class="btn btn-sm btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Back</a>
+</div>
+
+<!-- WIZARD PROGRESS -->
+<div id="wizardProgress" style="display:flex;flex-direction:row;align-items:center;flex-wrap:nowrap;background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:12px 20px;margin-bottom:28px;box-shadow:0 1px 4px rgba(15,23,42,0.05);width:100%;box-sizing:border-box;">
+  <div class="wp-step active" id="wp-1" style="display:flex;flex-direction:row;align-items:center;flex:1;position:relative;gap:8px;">
+    <div class="wp-dot">1</div><span class="wp-label">Basics</span>
+  </div>
+  <div class="wp-step" id="wp-2" style="display:flex;flex-direction:row;align-items:center;flex:1;position:relative;gap:8px;">
+    <div class="wp-dot">2</div><span class="wp-label">Audience</span>
+  </div>
+  <div class="wp-step" id="wp-3" style="display:flex;flex-direction:row;align-items:center;flex:1;position:relative;gap:8px;">
+    <div class="wp-dot">3</div><span class="wp-label">Sequence</span>
+  </div>
+  <div class="wp-step" id="wp-4" style="display:flex;flex-direction:row;align-items:center;flex:1;position:relative;gap:8px;">
+    <div class="wp-dot">4</div><span class="wp-label">AI Setup</span>
+  </div>
+  <div class="wp-step" id="wp-5" style="display:flex;flex-direction:row;align-items:center;flex:1;position:relative;gap:8px;">
+    <div class="wp-dot">5</div><span class="wp-label">Sending</span>
+  </div>
+  <div class="wp-step" id="wp-6" style="display:flex;flex-direction:row;align-items:center;flex:1;position:relative;gap:8px;">
+    <div class="wp-dot"><i class="fas fa-rocket" style="font-size:9px;"></i></div><span class="wp-label">Launch</span>
+  </div>
+</div>
+
+<div class="row g-4" id="mainRow">
+<div class="col-lg-8" id="leftCol">
+
+<!-- ═══════════════════════════════════════════
+     STEP 1 — CAMPAIGN BASICS
+═══════════════════════════════════════════ -->
+<div class="step-panel active" id="step-1">
+  <!-- AI GENERATOR -->
+  <div class="ai-gen-box">
+    <h5><i class="fas fa-magic me-2"></i>AI Campaign Generator</h5>
+    <p>Describe your goal and AI will build the sequence, emails, and targeting for you.</p>
+    <textarea class="form-control mb-2" id="aiGoalInput" rows="2" placeholder="e.g. Reach SaaS founders and book 15-min demos for our engineering staffing service..."></textarea>
+    <button class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3);" onclick="generateWithAI(this)">
+      <i class="fas fa-bolt me-1"></i>Generate Campaign
+    </button>
+  </div>
+
+  <div class="card-box">
+    <div class="section-label">Campaign Details</div>
+    <div class="mb-3">
+      <label class="form-label">Campaign Name <span class="text-danger">*</span></label>
+      <input type="text" id="campName" class="form-control" placeholder="e.g. SaaS Founders — Q1 2026" required>
     </div>
-    <div class="main">
-        <h3 class="mb-4">🆕 New Campaign</h3>
-        <div class="form-box" style="max-width:500px;">
-            <form method="POST">
-                <div class="mb-3">
-                    <label class="form-label">Campaign Name</label>
-                    <input type="text" name="campaign_name" class="form-control" placeholder="e.g. AI Startup Outreach - May 2026" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Description (optional)</label>
-                    <textarea name="description" class="form-control" rows="3" placeholder="Campaign ka purpose, target audience..."></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary w-100">Create Campaign</button>
-            </form>
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <label class="form-label">Campaign Objective</label>
+        <select class="form-select" id="campObjective">
+          <option value="book_meetings">📅 Book Meetings</option>
+          <option value="generate_replies">💬 Generate Replies</option>
+          <option value="outbound_prospecting">🎯 Outbound Prospecting</option>
+          <option value="re_engage">🔄 Re-engage Leads</option>
+          <option value="webinar">📢 Webinar Promotion</option>
+          <option value="partnership">🤝 Partnership Outreach</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Campaign Type</label>
+        <select class="form-select" id="campType">
+          <option value="cold">❄️ Cold Outreach</option>
+          <option value="warm">🔥 Warm Outreach</option>
+          <option value="followup">↩️ Follow-up</option>
+          <option value="re_engagement">🔁 Re-engagement</option>
+          <option value="abm">🏢 ABM Campaign</option>
+        </select>
+      </div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Notes <small class="text-muted">(optional)</small></label>
+      <textarea class="form-control" id="campDesc" rows="2" placeholder="Internal notes about this campaign..."></textarea>
+    </div>
+
+    <div class="section-label mt-4">Choose a Template</div>
+    <div class="row g-2">
+      {% set templates = [
+        ('saas','💻','SaaS Outreach','3-step cold sequence'),
+        ('agency','🏢','Agency Outreach','Value-first approach'),
+        ('founder','🚀','Founder Outreach','Peer-to-peer tone'),
+        ('reengagement','🔄','Re-engagement','Win back cold leads'),
+        ('followup','↩️','Follow-up','Post-event sequence'),
+        ('custom','✏️','Custom','Start from scratch')
+      ] %}
+      {% for key, icon, name, desc in templates %}
+      <div class="col-4 col-md-2">
+        <div class="tmpl-card {{ 'selected' if key=='saas' }}" onclick="selectTemplate('{{ key }}', this)" data-key="{{ key }}">
+          <div class="tmpl-icon">{{ icon }}</div>
+          <h6>{{ name }}</h6>
+          <small style="font-size:10px;color:#9CA3AF;">{{ desc }}</small>
         </div>
+      </div>
+      {% endfor %}
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <div class="nav-btns">
+      <button class="btn btn-primary px-4" onclick="goStep(2)">Next: Audience <i class="fas fa-arrow-right ms-1"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STEP 2 — AUDIENCE SELECTION
+═══════════════════════════════════════════ -->
+<div class="step-panel" id="step-2">
+  <div class="card-box">
+    <div class="section-label">Audience Filters</div>
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <label class="form-label">Contact Status</label>
+        <select class="form-select" id="filterStatus" onchange="updateAudienceCount()">
+          <option value="all">All Contacts</option>
+          <option value="new">New Only</option>
+          <option value="valid">Valid Emails Only</option>
+          <option value="enriched">AI Enriched Only</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Min Lead Score</label>
+        <select class="form-select" id="filterScore" onchange="updateAudienceCount()">
+          <option value="0">Any Score</option>
+          <option value="10">Score ≥ 10 (Engaged)</option>
+          <option value="30">Score ≥ 30 (Warm)</option>
+          <option value="50">Score ≥ 50 (Hot)</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Company Filter <small class="text-muted">(optional)</small></label>
+        <input type="text" class="form-control" id="filterCompany" placeholder="e.g. SaaS, Fintech..." oninput="updateAudienceCount()">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Email Validation</label>
+        <select class="form-select" id="filterValid" onchange="updateAudienceCount()">
+          <option value="all">All Emails</option>
+          <option value="valid_only" selected>Valid Emails Only</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- AUDIENCE COUNT PREVIEW -->
+    <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #bbf7d0;border-radius:10px;padding:16px 20px;display:flex;align-items:center;gap:14px;">
+      <i class="fas fa-users" style="font-size:1.4rem;color:#15803d;"></i>
+      <div>
+        <div style="font-size:1.4rem;font-weight:800;color:#15803d;" id="audienceCount">—</div>
+        <div style="font-size:12px;color:#166534;font-weight:500;">leads match your filters</div>
+      </div>
+      <div class="ms-auto">
+        <button class="btn btn-sm" style="background:#15803d;color:#fff;font-size:12px;" onclick="updateAudienceCount()">
+          <i class="fas fa-sync-alt me-1"></i>Refresh
+        </button>
+      </div>
+    </div>
+
+    <div class="nav-btns">
+      <button class="btn btn-outline-secondary" onclick="goStep(1)"><i class="fas fa-arrow-left me-1"></i>Back</button>
+      <button class="btn btn-primary px-4" onclick="goStep(3)">Next: Sequence <i class="fas fa-arrow-right ms-1"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STEP 3 — SEQUENCE BUILDER
+═══════════════════════════════════════════ -->
+<div class="step-panel" id="step-3">
+  <div class="card-box">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div class="section-label" style="margin:0;">Outreach Sequence</div>
+      <span style="font-size:11.5px;color:#6B7280;" id="seqStepCount">3 steps</span>
+    </div>
+
+    <div class="seq-timeline" id="seqTimeline">
+      <!-- Steps rendered by JS -->
+    </div>
+
+    <div class="add-step-btn mt-2" onclick="addSeqStep()">
+      <i class="fas fa-plus me-2"></i>Add Step
+    </div>
+
+    <div class="nav-btns">
+      <button class="btn btn-outline-secondary" onclick="goStep(2)"><i class="fas fa-arrow-left me-1"></i>Back</button>
+      <button class="btn btn-primary px-4" onclick="goStep(4)">Next: AI Setup <i class="fas fa-arrow-right ms-1"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STEP 4 — AI PERSONALIZATION
+═══════════════════════════════════════════ -->
+<div class="step-panel" id="step-4">
+  <div class="card-box">
+    <div class="section-label">AI Personalization Settings</div>
+
+    <div class="mb-4">
+      <label class="form-label">Personalization Depth</label>
+      <div class="d-flex gap-2">
+        <div class="depth-btn" onclick="selectDepth('minimal',this)">
+          Minimal<small>Generic + name</small>
+        </div>
+        <div class="depth-btn selected" onclick="selectDepth('balanced',this)">
+          Balanced<small>Context-aware</small>
+        </div>
+        <div class="depth-btn" onclick="selectDepth('high',this)">
+          High<small>Full AI research</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label">Personalization Features</div>
+    {% for opt_id, label, checked in [
+      ('ai_context','Use AI-generated company context', true),
+      ('ai_openers','Generate personalized openers', true),
+      ('ai_pain','Mention detected pain points', false),
+      ('ai_signals','Use engagement signals (opens/clicks)', true),
+      ('ai_cta','Generate CTA variations', false)
+    ] %}
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:8px;">
+      <input type="checkbox" id="{{ opt_id }}" {{ 'checked' if checked }} style="width:15px;height:15px;accent-color:#6366f1;">
+      <label for="{{ opt_id }}" style="font-size:12.5px;font-weight:500;color:#374151;cursor:pointer;flex:1;margin:0;">{{ label }}</label>
+    </div>
+    {% endfor %}
+
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-top:12px;font-size:12px;color:#166534;">
+      <i class="fas fa-info-circle me-1"></i>
+      AI personalization uses Groq (primary) → Gemini (fallback). Estimated: ~2s per email.
+    </div>
+
+    <div class="nav-btns">
+      <button class="btn btn-outline-secondary" onclick="goStep(3)"><i class="fas fa-arrow-left me-1"></i>Back</button>
+      <button class="btn btn-primary px-4" onclick="goStep(5)">Next: Sending <i class="fas fa-arrow-right ms-1"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STEP 5 — SENDING SETTINGS
+═══════════════════════════════════════════ -->
+<div class="step-panel" id="step-5">
+  <div class="card-box">
+    <div class="section-label">Sending Configuration</div>
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <label class="form-label">Daily Sending Limit</label>
+        <div class="input-group">
+          <input type="number" class="form-control" id="dailyLimit" value="50" min="1" max="500">
+          <span class="input-group-text">emails/day</span>
+        </div>
+        <small class="text-muted">Respects SMTP warmup stages automatically.</small>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Sending Schedule</label>
+        <select class="form-select" id="sendSchedule">
+          <option value="business">Business Hours (9AM–5PM)</option>
+          <option value="anytime">Anytime</option>
+          <option value="morning">Morning Only (8AM–12PM)</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Timezone</label>
+        <select class="form-select" id="sendTimezone">
+          <option value="IST">IST — India Standard Time</option>
+          <option value="EST">EST — Eastern US</option>
+          <option value="PST">PST — Pacific US</option>
+          <option value="GMT">GMT — London</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">SMTP Pool</label>
+        <select class="form-select" id="smtpPool">
+          <option value="rotation">All Active Inboxes (Rotation)</option>
+          <option value="primary">Primary Inbox Only</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section-label">Sending Rules</div>
+    {% for opt_id, label in [
+      ('no_weekends','Skip weekends'),
+      ('warmup_mode','Use warmup-safe sending mode'),
+      ('stop_on_reply','Stop sequence on reply'),
+      ('stop_on_unsubscribe','Stop on unsubscribe')
+    ] %}
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:8px;">
+      <input type="checkbox" id="{{ opt_id }}" checked style="width:15px;height:15px;accent-color:#6366f1;">
+      <label for="{{ opt_id }}" style="font-size:12.5px;font-weight:500;color:#374151;cursor:pointer;flex:1;margin:0;">{{ label }}</label>
+    </div>
+    {% endfor %}
+
+    <div class="nav-btns">
+      <button class="btn btn-outline-secondary" onclick="goStep(4)"><i class="fas fa-arrow-left me-1"></i>Back</button>
+      <button class="btn btn-primary px-4" onclick="goStep(6)">Review &amp; Launch <i class="fas fa-arrow-right ms-1"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STEP 6 — REVIEW & LAUNCH
+═══════════════════════════════════════════ -->
+<div class="step-panel" id="step-6">
+
+  <!-- LAUNCH HERO -->
+  <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:14px;padding:28px 32px;color:#fff;margin-bottom:20px;display:flex;align-items:center;gap:20px;">
+    <div style="width:56px;height:56px;background:rgba(255,255,255,0.15);border-radius:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-rocket" style="font-size:1.5rem;"></i>
+    </div>
+    <div style="flex:1;">
+      <div style="font-size:1.1rem;font-weight:800;margin-bottom:4px;" id="rev-hero-name">Campaign Ready</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.7);">Review your configuration and launch when ready.</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0;">
+      <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:2px;">Deliverability Risk</div>
+      <div style="font-size:14px;font-weight:700;color:#34d399;">Low ✓</div>
+    </div>
+  </div>
+
+  <!-- SUMMARY GRID -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:1.6rem;font-weight:800;color:#6366f1;" id="rev-audience">—</div>
+        <div style="font-size:11px;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Leads</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:1.6rem;font-weight:800;color:#8b5cf6;" id="rev-steps">—</div>
+        <div style="font-size:11px;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Sequence Steps</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:1.6rem;font-weight:800;color:#f59e0b;" id="rev-limit">50/day</div>
+        <div style="font-size:11px;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Daily Limit</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:1.6rem;font-weight:800;color:#10b981;" id="rev-duration">—</div>
+        <div style="font-size:11px;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Est. Duration</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETAIL ROWS -->
+  <div class="card-box mb-4">
+    <div class="section-label">Configuration Details</div>
+    <div class="row">
+      <div class="col-md-6">
+        <div class="review-row"><span class="review-label">Campaign Name</span><span class="review-value" id="rev-name">—</span></div>
+        <div class="review-row"><span class="review-label">Objective</span><span class="review-value" id="rev-objective">—</span></div>
+        <div class="review-row"><span class="review-label">AI Personalization</span><span class="review-value" id="rev-ai" style="color:#6366f1;">Enabled</span></div>
+      </div>
+      <div class="col-md-6">
+        <div class="review-row"><span class="review-label">Sending Schedule</span><span class="review-value">Business Hours</span></div>
+        <div class="review-row"><span class="review-label">SMTP Pool</span><span class="review-value">All Active Inboxes</span></div>
+        <div class="review-row"><span class="review-label">Deliverability Risk</span><span class="review-value risk-low">Low ✓</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LAUNCH FORM -->
+  <form method="POST" id="launchForm">
+    <input type="hidden" name="campaign_name" id="hidden_name">
+    <input type="hidden" name="description" id="hidden_desc">
+    <div class="d-flex gap-3 align-items-center">
+      <button type="button" class="btn btn-outline-secondary px-4" onclick="goStep(5)"><i class="fas fa-arrow-left me-1"></i>Back</button>
+      <button type="submit" class="btn btn-lg px-5" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;font-weight:700;font-size:15px;" onclick="prepareLaunch()">
+        <i class="fas fa-rocket me-2"></i>Launch Campaign
+      </button>
+      <small class="text-muted ms-2">Campaign will be created and ready to send.</small>
+    </div>
+  </form>
+</div>
+
+</div><!-- col-lg-8 -->
+
+<!-- ═══════════════════════════════════════════
+     RIGHT: LIVE PREVIEW PANEL
+═══════════════════════════════════════════ -->
+<div class="col-lg-4" id="rightCol">
+  <div class="preview-panel">
+    <div class="card-box mb-3">
+      <div class="section-label"><i class="fas fa-chart-line me-1"></i>Live Preview</div>
+      <div class="preview-metric">
+        <span class="pm-label">Estimated Reach</span>
+        <span class="pm-val" id="prev-reach">— leads</span>
+      </div>
+      <div class="preview-metric">
+        <span class="pm-label">Sequence Steps</span>
+        <span class="pm-val" id="prev-steps">3 emails</span>
+      </div>
+      <div class="preview-metric">
+        <span class="pm-label">AI Coverage</span>
+        <span class="pm-val" id="prev-ai" style="color:#6366f1;">Enabled</span>
+      </div>
+      <div class="preview-metric">
+        <span class="pm-label">SMTP Accounts</span>
+        <span class="pm-val" id="prev-smtp">Loading...</span>
+      </div>
+      <div class="preview-metric">
+        <span class="pm-label">Est. Duration</span>
+        <span class="pm-val" id="prev-duration">—</span>
+      </div>
+      <div class="preview-metric">
+        <span class="pm-label">Deliverability Risk</span>
+        <span class="pm-val risk-low" id="prev-risk">Low ✓</span>
+      </div>
+    </div>
+
+    <div class="card-box">
+      <div class="section-label"><i class="fas fa-envelope me-1"></i>Sample Email Preview</div>
+      <div style="background:#f8fafc;border-radius:8px;padding:12px;font-size:12px;color:#374151;line-height:1.6;" id="emailPreview">
+        <div style="font-weight:600;margin-bottom:4px;color:#111827;">Subject: Helping {Company} scale engineering faster</div>
+        <hr style="margin:8px 0;border-color:#e2e8f0;">
+        <div>Hi {Name},</div>
+        <div style="margin-top:6px;color:#6B7280;font-style:italic;">AI will personalize this opener based on company context...</div>
+        <div style="margin-top:8px;">We place pre-vetted AI/ML engineers at $30–55/hr, onboarded in 2–3 weeks.</div>
+        <div style="margin-top:8px;">Open to a quick 15-min chat?</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- row -->
+</div><!-- main -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── WIZARD STATE ──
+let currentStep = 1;
+const TOTAL_STEPS = 6;
+
+// Sequence data
+let seqSteps = [
+  { day: 1,  type: 'intro',    label: 'Intro Email',    subject: 'Helping {company} scale engineering faster', ai: true },
+  { day: 3,  type: 'followup', label: 'Follow-up #1',   subject: 'Re: Helping {company}', ai: true },
+  { day: 7,  type: 'followup', label: 'Case Study',     subject: 'How we helped similar companies', ai: false },
+  { day: 14, type: 'final',    label: 'Final Check-in', subject: 'Last note from Anshul', ai: false },
+];
+
+let selectedTemplate = 'saas';
+let selectedDepth = 'balanced';
+let audienceCount = 0;
+
+// ── STEP NAVIGATION ──
+function goStep(n) {
+  // Only validate name when moving FORWARD past step 1
+  if(n > currentStep && currentStep === 1 && !document.getElementById('campName').value.trim()) {
+    document.getElementById('campName').focus();
+    document.getElementById('campName').style.borderColor = '#ef4444';
+    return;
+  }
+  document.getElementById('campName').style.borderColor = '';
+
+  document.getElementById('step-'+currentStep).classList.remove('active');
+  for(let i=1;i<=TOTAL_STEPS;i++) {
+    const el = document.getElementById('wp-'+i);
+    const dot = el.querySelector('.wp-dot');
+    if(i < n) {
+      el.className='wp-step done';
+      dot.innerHTML = '<i class="fas fa-check"></i>';
+    } else if(i === n) {
+      el.className='wp-step active';
+      dot.innerHTML = i < 6 ? String(i) : '<i class="fas fa-rocket" style="font-size:9px;"></i>';
+    } else {
+      el.className='wp-step';
+      dot.innerHTML = i < 6 ? String(i) : '<i class="fas fa-rocket" style="font-size:9px;"></i>';
+    }
+  }
+  currentStep = n;
+  document.getElementById('step-'+n).classList.add('active');
+
+  if(n === 3) renderSeqTimeline();
+  if(n === 6) {
+    populateReview();
+    document.getElementById('leftCol').className = 'col-lg-12';
+    document.getElementById('rightCol').style.display = 'none';
+  } else {
+    document.getElementById('leftCol').className = 'col-lg-8';
+    document.getElementById('rightCol').style.display = '';
+  }
+  updatePreview();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+// ── TEMPLATE SELECTION ──
+const TEMPLATES = {
+  saas: [
+    { day:1, type:'intro',    label:'Intro Email',    subject:'Helping {company} scale engineering faster', ai:true },
+    { day:3, type:'followup', label:'Follow-up #1',   subject:'Re: Helping {company}', ai:true },
+    { day:7, type:'final',    label:'Final Check-in', subject:'Last note from Anshul', ai:false },
+  ],
+  agency: [
+    { day:1, type:'intro',    label:'Value Email',    subject:'Quick question about {company}', ai:true },
+    { day:4, type:'followup', label:'Case Study',     subject:'How we helped [similar company]', ai:false },
+    { day:9, type:'final',    label:'Final Touch',    subject:'One last thought', ai:false },
+  ],
+  founder: [
+    { day:1, type:'intro',    label:'Peer Outreach',  subject:'Founder to founder — {company}', ai:true },
+    { day:5, type:'followup', label:'Follow-up',      subject:'Following up on my last note', ai:true },
+  ],
+  reengagement: [
+    { day:1, type:'intro',    label:'Re-engage',      subject:'Checking back in — {company}', ai:true },
+    { day:3, type:'followup', label:'Value Add',      subject:'Something that might help {company}', ai:false },
+    { day:7, type:'final',    label:'Last Attempt',   subject:'Closing the loop', ai:false },
+  ],
+  followup: [
+    { day:1, type:'intro',    label:'Follow-up #1',   subject:'Following up — {company}', ai:true },
+    { day:3, type:'followup', label:'Follow-up #2',   subject:'Re: {company}', ai:false },
+  ],
+  custom: [
+    { day:1, type:'intro',    label:'Email 1',        subject:'Subject line here', ai:true },
+  ],
+};
+
+function selectTemplate(key, el) {
+  document.querySelectorAll('.tmpl-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedTemplate = key;
+  seqSteps = JSON.parse(JSON.stringify(TEMPLATES[key]));
+  updatePreview();
+}
+
+// ── SEQUENCE TIMELINE ──
+function renderSeqTimeline() {
+  const container = document.getElementById('seqTimeline');
+  container.innerHTML = '';
+  seqSteps.forEach((s, i) => {
+    const cls = s.type === 'intro' ? '' : s.type === 'final' ? 'final' : 'followup';
+    container.innerHTML += `
+    <div class="seq-step ${cls}" id="seq-${i}">
+      <div class="d-flex align-items-start justify-content-between">
+        <div style="flex:1;">
+          <span class="seq-day-badge">Day ${s.day}</span>
+          <div class="seq-step-title">${s.label}</div>
+          <div class="seq-step-sub">${s.subject}</div>
+        </div>
+        <div class="d-flex gap-1 ms-2">
+          ${s.ai ? '<span style="background:#eef2ff;color:#4338ca;font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;">AI</span>' : ''}
+          <button class="act-btn" onclick="editSeqStep(${i})" style="background:#f8fafc;border:1px solid #e2e8f0;color:#64748b;padding:3px 7px;border-radius:6px;font-size:11px;cursor:pointer;">Edit</button>
+          ${seqSteps.length > 1 ? `<button class="act-btn" onclick="removeSeqStep(${i})" style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:3px 7px;border-radius:6px;font-size:11px;cursor:pointer;"><i class="fas fa-times"></i></button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('seqStepCount').textContent = seqSteps.length + ' steps';
+  updatePreview();
+}
+
+function addSeqStep() {
+  const lastDay = seqSteps.length ? seqSteps[seqSteps.length-1].day : 0;
+  seqSteps.push({ day: lastDay+3, type:'followup', label:'Follow-up #'+seqSteps.length, subject:'Following up — {company}', ai:false });
+  renderSeqTimeline();
+}
+
+function removeSeqStep(i) {
+  seqSteps.splice(i, 1);
+  renderSeqTimeline();
+}
+
+function editSeqStep(i) {
+  const s = seqSteps[i];
+  const newDay = prompt('Day number:', s.day);
+  if(newDay === null) return;
+  const newLabel = prompt('Step label:', s.label);
+  if(newLabel === null) return;
+  const newSubject = prompt('Subject line:', s.subject);
+  if(newSubject === null) return;
+  seqSteps[i].day = parseInt(newDay) || s.day;
+  seqSteps[i].label = newLabel || s.label;
+  seqSteps[i].subject = newSubject || s.subject;
+  renderSeqTimeline();
+}
+
+// ── AUDIENCE COUNT ──
+function updateAudienceCount() {
+  fetch('/api/audience_count?' + new URLSearchParams({
+    min_score: document.getElementById('filterScore').value || 0,
+    valid_only: document.getElementById('filterValid').value === 'valid_only' ? '1' : '0',
+    company: document.getElementById('filterCompany').value || ''
+  }))
+  .then(r=>r.json())
+  .then(d => {
+    audienceCount = d.count || 0;
+    document.getElementById('audienceCount').textContent = audienceCount.toLocaleString();
+    updatePreview();
+  })
+  .catch(()=>{ document.getElementById('audienceCount').textContent = '—'; });
+}
+
+// ── DEPTH SELECTOR ──
+function selectDepth(val, el) {
+  document.querySelectorAll('.depth-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedDepth = val;
+}
+
+// ── LIVE PREVIEW ──
+function updatePreview() {
+  const reach = audienceCount || '—';
+  document.getElementById('prev-reach').textContent = reach + (audienceCount ? ' leads' : '');
+  document.getElementById('prev-steps').textContent = seqSteps.length + ' emails';
+  const lastDay = seqSteps.length ? seqSteps[seqSteps.length-1].day : 0;
+  const limit = parseInt(document.getElementById('dailyLimit')?.value) || 50;
+  const duration = audienceCount && limit ? Math.ceil(audienceCount/limit) + ' days' : '—';
+  document.getElementById('prev-duration').textContent = duration;
+  if(document.getElementById('rev-duration')) document.getElementById('rev-duration').textContent = duration;
+}
+
+// ── LOAD SMTP COUNT ──
+fetch('/api/smtp_accounts').then(r=>r.json()).then(d=>{
+  const active = (d.accounts||[]).filter(a=>a.active).length;
+  document.getElementById('prev-smtp').textContent = active + ' active';
+}).catch(()=>{ document.getElementById('prev-smtp').textContent = '—'; });
+
+// ── POPULATE REVIEW ──
+function populateReview() {
+  const objMap = {
+    book_meetings:'📅 Book Meetings', generate_replies:'💬 Generate Replies',
+    outbound_prospecting:'🎯 Outbound Prospecting', re_engage:'🔄 Re-engage Leads',
+    webinar:'📢 Webinar Promotion', partnership:'🤝 Partnership Outreach'
+  };
+  const name = document.getElementById('campName').value || 'Untitled Campaign';
+  document.getElementById('rev-name').textContent = name;
+  document.getElementById('rev-hero-name').textContent = name;
+  document.getElementById('rev-objective').textContent = objMap[document.getElementById('campObjective').value] || '—';
+  document.getElementById('rev-audience').textContent = audienceCount || '—';
+  document.getElementById('rev-steps').textContent = seqSteps.length;
+  document.getElementById('rev-limit').textContent = (document.getElementById('dailyLimit')?.value || 50) + '/day';
+  document.getElementById('rev-ai').textContent = 'Enabled';
+  updatePreview();
+}
+
+// ── AI CAMPAIGN GENERATOR ──
+function generateWithAI(btn) {
+  const goal = document.getElementById('aiGoalInput').value.trim();
+  if(!goal) { document.getElementById('aiGoalInput').focus(); return; }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Generating...';
+  fetch('/api/automations/followup_draft', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({contact_name:'Prospect', company:'their company', context: goal, previous_subject: goal})
+  }).then(r=>r.json()).then(d=>{
+    btn.disabled=false; btn.innerHTML='<i class="fas fa-bolt me-1"></i>Generate Campaign';
+    if(d.success) {
+      // Auto-fill name from goal
+      if(!document.getElementById('campName').value) {
+        const words = goal.split(' ').slice(0,4).join(' ');
+        document.getElementById('campName').value = words + ' — Campaign';
+      }
+      alert('✅ AI generated a campaign draft! Sequence and settings have been pre-configured. Review each step.');
+      seqSteps = JSON.parse(JSON.stringify(TEMPLATES['saas']));
+      updatePreview();
+    }
+  }).catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="fas fa-bolt me-1"></i>Generate Campaign'; });
+}
+
+// ── LAUNCH ──
+function prepareLaunch() {
+  document.getElementById('hidden_name').value = document.getElementById('campName').value;
+  const desc = [
+    'Objective: ' + document.getElementById('campObjective').value,
+    'Type: ' + document.getElementById('campType').value,
+    document.getElementById('campDesc').value
+  ].filter(Boolean).join(' | ');
+  document.getElementById('hidden_desc').value = desc;
+}
+
+// ── INIT ──
+updateAudienceCount();
+renderSeqTimeline();
+</script>
 </body>
 </html>

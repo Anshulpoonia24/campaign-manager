@@ -1,78 +1,406 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><title>Campaigns</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="/static/style.css" rel="stylesheet">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Campaigns — OutreachOS</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+/* ── PAGE BACKGROUND ── */
+body { background: linear-gradient(160deg, #f8fafc 0%, #f1f5ff 60%, #f8fafc 100%); }
+
+/* ── CAMPAIGN CARDS ── */
+.camp-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  padding: 24px 28px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+  transition: box-shadow 0.2s, transform 0.15s, border-color 0.15s;
+  display: flex; align-items: center; gap: 24px;
+}
+.camp-card:hover {
+  box-shadow: 0 8px 28px rgba(15,23,42,0.08);
+  transform: translateY(-1px);
+  border-color: #c7d2fe;
+}
+
+/* Left: icon + name */
+.camp-icon {
+  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+}
+.ci-indigo  { background: #eef2ff; color: #6366f1; }
+.ci-emerald { background: #f0fdf4; color: #10b981; }
+.ci-violet  { background: #f5f3ff; color: #8b5cf6; }
+.ci-amber   { background: #fffbeb; color: #f59e0b; }
+.ci-rose    { background: #fff1f2; color: #f43f5e; }
+
+.camp-info { flex: 1; min-width: 0; }
+.camp-name {
+  font-size: 15px; font-weight: 700; color: #0f172a;
+  letter-spacing: -0.3px; margin-bottom: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.camp-meta { font-size: 12px; color: #9CA3AF; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.camp-meta span { display: flex; align-items: center; gap: 4px; }
+
+/* Status pills */
+.status-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; padding: 3px 10px;
+  border-radius: 99px; white-space: nowrap;
+}
+.sp-draft     { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.sp-sent      { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.sp-running   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.sp-paused    { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.sp-completed { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+
+/* Metrics row */
+.camp-metrics {
+  display: flex; gap: 28px; align-items: center; flex-shrink: 0;
+}
+.metric-item { text-align: center; }
+.metric-val  { font-size: 17px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1; }
+.metric-lbl  { font-size: 10px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px; }
+.metric-item.green .metric-val { color: #10b981; }
+.metric-item.indigo .metric-val { color: #6366f1; }
+.metric-item.violet .metric-val { color: #8b5cf6; }
+.metric-item.amber  .metric-val { color: #f59e0b; }
+
+/* Health dot */
+.health-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.hd-green  { background: #10b981; }
+.hd-amber  { background: #f59e0b; }
+.hd-red    { background: #ef4444; }
+
+/* Action buttons */
+.camp-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.act-btn {
+  width: 34px; height: 34px; border-radius: 9px; border: 1px solid #e5e7eb;
+  background: #f9fafb; color: #6B7280; display: flex; align-items: center;
+  justify-content: center; font-size: 13px; cursor: pointer;
+  transition: all 0.15s; text-decoration: none;
+}
+.act-btn:hover { background: #eef2ff; border-color: #c7d2fe; color: #6366f1; }
+.act-btn.danger:hover { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+.act-btn.primary {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-color: transparent; color: #fff;
+  box-shadow: 0 2px 8px rgba(99,102,241,0.25);
+}
+.act-btn.primary:hover { opacity: 0.88; color: #fff; }
+
+/* Filter tabs */
+.filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.ftab {
+  padding: 6px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 500;
+  border: 1px solid #e5e7eb; background: #fff; color: #6B7280;
+  text-decoration: none; transition: all 0.15s; cursor: pointer;
+}
+.ftab:hover, .ftab.active { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+
+/* Search */
+.search-wrap { position: relative; }
+.search-wrap i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9CA3AF; font-size: 13px; }
+.search-input {
+  padding: 8px 12px 8px 34px; border: 1px solid #e5e7eb; border-radius: 9px;
+  background: #fff; font-size: 13px; color: #111827; outline: none;
+  font-family: 'Inter', sans-serif; width: 220px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.search-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+.search-input::placeholder { color: #9CA3AF; }
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 80px 40px;
+  background: #fff; border-radius: 20px; border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+}
+.empty-icon-wrap {
+  width: 72px; height: 72px; border-radius: 20px;
+  background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 20px; font-size: 28px; color: #6366f1;
+}
+
+/* AI badge */
+.ai-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe;
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px;
+}
+
+/* Divider in metrics */
+.metric-divider { width: 1px; height: 32px; background: #f3f4f6; }
+
+/* Spin */
+.spin { display:inline-block;width:13px;height:13px;border:2px solid #e5e7eb;border-top:2px solid #6366f1;border-radius:50%;animation:spin 0.6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
-        <a href="/"><i class="fas fa-chart-line"></i> Dashboard</a>
-        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
-        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
-        <a href="/campaigns" class="active"><i class="fas fa-bullhorn"></i> Campaigns</a>
-        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
-        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
-        <a href="/logs"><i class="fas fa-list-alt"></i> Logs</a>
-        <hr style="border-color:#e2e8f0">
-        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
-        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="brand">
+    <i class="fas fa-paper-plane"></i>
+    OutreachOS
+  </div>
+  <a href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns" class="active"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox</a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#f87171;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<div class="main">
+
+  <!-- FLASH MESSAGES -->
+  {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show mb-4 py-2">
+    {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}{% endif %}{% endwith %}
+
+  <!-- PAGE HEADER -->
+  <div class="d-flex align-items-start justify-content-between mb-6" style="margin-bottom:28px;">
+    <div>
+      <h1 style="font-size:1.75rem;font-weight:800;color:#0f172a;letter-spacing:-0.6px;margin-bottom:5px;">Campaigns</h1>
+      <p style="font-size:14px;color:#6B7280;margin:0;">Manage AI-powered outreach sequences, personalization, and outbound workflows.</p>
     </div>
-    <div class="main">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3>📢 Campaigns</h3>
-            <a href="/campaign/new" class="btn btn-primary"><i class="fas fa-plus"></i> New Campaign</a>
-        </div>
-        {% for c in campaigns %}
-        <div class="campaign-card d-flex justify-content-between align-items-center">
-            <a href="/campaign/{{ c.id }}" style="text-decoration:none;color:inherit;flex:1;">
-                <div class="d-flex justify-content-between"><div><h5>{{ c.name }}</h5><small class="text-muted">Created: {{ c.created_at[:16] }}{% if c.description %} | {{ c.description }}{% endif %}</small></div><span class="badge bg-{{ 'success' if c.status=='sent' else 'warning' }} align-self-center">{{ c.status }}</span></div>
-            </a>
-            <button class="btn btn-outline-primary btn-sm ms-2" onclick="editCampaign({{ c.id }}, '{{ c.name|replace("'","") }}', '{{ c.description|default("",true)|replace("'","") }}')"><i class="fas fa-edit"></i></button>
-            <button class="btn btn-outline-danger btn-sm ms-1" onclick="deleteCampaign({{ c.id }}, '{{ c.name|replace("'","") }}')"><i class="fas fa-trash"></i></button>
-        </div>
-        {% endfor %}
-        {% if not campaigns %}<div class="text-center text-muted mt-5"><i class="fas fa-inbox fa-3x mb-3"></i><p>No campaigns yet. Create one!</p></div>{% endif %}
+    <a href="/campaign/new" class="btn btn-primary d-flex align-items-center gap-2" style="padding:10px 20px;font-size:13.5px;border-radius:12px;">
+      <i class="fas fa-plus" style="font-size:11px;"></i> New Campaign
+    </a>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="d-flex align-items-center justify-content-between mb-4 gap-3 flex-wrap">
+    <div class="filter-tabs">
+      <span class="ftab active" onclick="filterCamps('all',this)">All <span style="background:#f1f5f9;color:#6B7280;font-size:10px;padding:1px 6px;border-radius:99px;margin-left:4px;">{{ campaigns|length }}</span></span>
+      <span class="ftab" onclick="filterCamps('sent',this)">Active</span>
+      <span class="ftab" onclick="filterCamps('draft',this)">Draft</span>
+      <span class="ftab" onclick="filterCamps('paused',this)">Paused</span>
     </div>
-    <!-- Edit Campaign Modal -->
-    <div class="modal fade" id="editCampaignModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title">Edit Campaign</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                <form id="editCampaignForm" method="POST">
-                <div class="modal-body">
-                    <div class="mb-3"><label class="form-label">Campaign Name</label><input type="text" name="name" id="edit_camp_name" class="form-control" required></div>
-                    <div class="mb-3"><label class="form-label">Description (optional)</label><textarea name="description" id="edit_camp_desc" class="form-control" rows="3" placeholder="Campaign ka purpose..."></textarea></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save</button>
-                </div>
-                </form>
-            </div>
-        </div>
+    <div class="search-wrap">
+      <i class="fas fa-search"></i>
+      <input type="text" class="search-input" placeholder="Search campaigns..." id="campSearch" oninput="searchCamps(this.value)">
+    </div>
+  </div>
+
+  <!-- CAMPAIGN CARDS -->
+  <div id="campList">
+  {% if campaigns %}
+  {% for c in campaigns %}
+  {% set sent = c.sent_count or 0 %}
+  {% set opened = c.opened_count or 0 %}
+  {% set replied = c.replied_count or 0 %}
+  {% set bounced = c.bounce_count or 0 %}
+  {% set open_rate = ((opened / sent * 100) | round(1)) if sent > 0 else 0 %}
+  {% set reply_rate = ((replied / sent * 100) | round(1)) if sent > 0 else 0 %}
+  {% set health = [100 - (bounced / sent * 100 * 3 if sent > 0 else 0) + (open_rate * 0.5), 0] | max %}
+  {% set health = [health, 100] | min | int %}
+  {% set meet = meetings.get(c.id, 0) %}
+  {% set icons = ['ci-indigo','ci-emerald','ci-violet','ci-amber','ci-rose'] %}
+  {% set icon_cls = icons[loop.index0 % 5] %}
+
+  <div class="camp-card" id="camp-{{ c.id }}" data-status="{{ c.status }}" data-name="{{ c.name|lower }}">
+
+    <!-- Icon -->
+    <div class="camp-icon {{ icon_cls }}">
+      <i class="fas fa-bullhorn"></i>
     </div>
 
-    <script>
-    function editCampaign(id, name, desc) {
-        document.getElementById('edit_camp_name').value = name;
-        document.getElementById('edit_camp_desc').value = desc;
-        document.getElementById('editCampaignForm').action = '/campaign/edit/' + id;
-        new bootstrap.Modal(document.getElementById('editCampaignModal')).show();
-    }
+    <!-- Info -->
+    <div class="camp-info">
+      <div class="camp-name">{{ c.name }}</div>
+      <div class="camp-meta">
+        <span><i class="fas fa-calendar-alt" style="font-size:10px;"></i> {{ c.created_at[:10] if c.created_at else '—' }}</span>
+        {% if c.description %}<span style="color:#d1d5db;">·</span><span>{{ c.description[:40] }}{% if c.description|length > 40 %}…{% endif %}</span>{% endif %}
+        <span style="color:#d1d5db;">·</span>
+        <span class="ai-badge"><i class="fas fa-robot" style="font-size:9px;"></i> AI</span>
+      </div>
+    </div>
 
-    function deleteCampaign(id, name) {
-        if (!confirm('"' + name + '" campaign delete karna hai? Iske saare sent email records bhi delete ho jaayenge!')) return;
-        fetch('/api/campaign/delete/' + id, {method: 'DELETE'})
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) { location.reload(); }
-            else { alert('Delete failed: ' + (data.error || 'Unknown')); }
-        });
-    }
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Status -->
+    <div style="flex-shrink:0;">
+      {% if c.status == 'sent' %}<span class="status-pill sp-sent"><span class="health-dot hd-green"></span>Active</span>
+      {% elif c.status == 'paused' %}<span class="status-pill sp-paused"><span class="health-dot hd-amber"></span>Paused</span>
+      {% elif c.status == 'completed' %}<span class="status-pill sp-completed"><span class="health-dot hd-green"></span>Completed</span>
+      {% else %}<span class="status-pill sp-draft">Draft</span>{% endif %}
+    </div>
+
+    <!-- Metrics -->
+    <div class="camp-metrics">
+      <div class="metric-item">
+        <div class="metric-val">{{ sent }}</div>
+        <div class="metric-lbl">Sent</div>
+      </div>
+      <div class="metric-divider"></div>
+      <div class="metric-item green">
+        <div class="metric-val">{{ open_rate }}%</div>
+        <div class="metric-lbl">Opens</div>
+      </div>
+      <div class="metric-divider"></div>
+      <div class="metric-item indigo">
+        <div class="metric-val">{{ reply_rate }}%</div>
+        <div class="metric-lbl">Replies</div>
+      </div>
+      <div class="metric-divider"></div>
+      <div class="metric-item violet">
+        <div class="metric-val">{{ meet }}</div>
+        <div class="metric-lbl">Meetings</div>
+      </div>
+      <div class="metric-divider"></div>
+      <div class="metric-item {% if health >= 70 %}green{% elif health >= 40 %}amber{% else %}red{% endif %}">
+        <div class="metric-val">{{ health }}</div>
+        <div class="metric-lbl">Health</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="camp-actions">
+      <a href="/campaign/{{ c.id }}/sequence" class="act-btn" title="Sequence Builder" style="background:#f5f3ff;border-color:#ddd6fe;color:#7c3aed;">
+        <i class="fas fa-layer-group"></i>
+      </a>
+      <a href="/campaign/{{ c.id }}" class="act-btn primary" title="Open Campaign">
+        <i class="fas fa-arrow-right"></i>
+      </a>
+      <button class="act-btn" title="Edit" onclick="editCampaign({{ c.id }}, '{{ c.name|replace("'","") }}', '{{ c.description|default("",true)|replace("'","") }}')">
+        <i class="fas fa-pen"></i>
+      </button>
+      <button class="act-btn danger" title="Delete" onclick="deleteCampaign({{ c.id }}, '{{ c.name|replace("'","") }}')">
+        <i class="fas fa-trash"></i>
+      </button>
+    </div>
+
+  </div>
+  {% endfor %}
+
+  {% else %}
+  <!-- EMPTY STATE -->
+  <div class="empty-state" id="emptyState">
+    <div class="empty-icon-wrap"><i class="fas fa-bullhorn"></i></div>
+    <h4 style="font-size:1.1rem;font-weight:700;color:#0f172a;margin-bottom:8px;">No campaigns yet</h4>
+    <p style="font-size:13.5px;color:#6B7280;max-width:320px;margin:0 auto 24px;line-height:1.6;">Create your first AI-powered outbound campaign and start reaching prospects at scale.</p>
+    <a href="/campaign/new" class="btn btn-primary" style="padding:10px 24px;border-radius:12px;">
+      <i class="fas fa-plus me-2"></i>Create Campaign
+    </a>
+  </div>
+  {% endif %}
+
+  <!-- SEARCH EMPTY STATE -->
+  <div id="searchEmpty" style="display:none;" class="empty-state">
+    <div class="empty-icon-wrap" style="background:linear-gradient(135deg,#f9fafb,#f3f4f6);color:#9CA3AF;"><i class="fas fa-search"></i></div>
+    <h4 style="font-size:1rem;font-weight:700;color:#374151;margin-bottom:6px;">No campaigns found</h4>
+    <p style="font-size:13px;color:#9CA3AF;margin:0;">Try a different search term.</p>
+  </div>
+  </div>
+
+</div><!-- main -->
+
+<!-- EDIT MODAL -->
+<div class="modal fade" id="editCampaignModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-pen me-2" style="color:#6366f1;"></i>Edit Campaign</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="editCampaignForm" method="POST">
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Campaign Name</label>
+          <input type="text" name="name" id="edit_camp_name" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Description <span class="text-muted fw-normal">(optional)</span></label>
+          <textarea name="description" id="edit_camp_desc" class="form-control" rows="3" placeholder="Campaign purpose, target audience..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── EDIT ──
+function editCampaign(id, name, desc) {
+  document.getElementById('edit_camp_name').value = name;
+  document.getElementById('edit_camp_desc').value = desc;
+  document.getElementById('editCampaignForm').action = '/campaign/edit/' + id;
+  new bootstrap.Modal(document.getElementById('editCampaignModal')).show();
+}
+
+// ── DELETE ──
+function deleteCampaign(id, name) {
+  if(!confirm(`Delete "${name}"? All sent email records will also be removed.`)) return;
+  const card = document.getElementById('camp-' + id);
+  if(card) { card.style.opacity='0.5'; card.style.pointerEvents='none'; }
+  fetch('/api/campaign/delete/' + id, {method:'DELETE'})
+    .then(r=>r.json())
+    .then(d => {
+      if(d.success) {
+        card.style.transition='all 0.3s';
+        card.style.transform='translateX(20px)';
+        card.style.opacity='0';
+        setTimeout(()=>{ card.remove(); checkEmpty(); }, 300);
+      } else {
+        if(card) { card.style.opacity='1'; card.style.pointerEvents=''; }
+        alert('Delete failed: '+(d.error||'Unknown'));
+      }
+    });
+}
+
+function checkEmpty() {
+  const cards = document.querySelectorAll('.camp-card');
+  if(!cards.length) {
+    document.getElementById('campList').innerHTML = document.getElementById('emptyState') ?
+      document.getElementById('emptyState').outerHTML :
+      '<div class="empty-state"><div class="empty-icon-wrap"><i class="fas fa-bullhorn"></i></div><h4 style="font-size:1.1rem;font-weight:700;color:#0f172a;margin-bottom:8px;">No campaigns yet</h4><p style="font-size:13.5px;color:#6B7280;max-width:320px;margin:0 auto 24px;">Create your first AI-powered outbound campaign.</p><a href="/campaign/new" class="btn btn-primary" style="padding:10px 24px;border-radius:12px;"><i class="fas fa-plus me-2"></i>Create Campaign</a></div>';
+  }
+}
+
+// ── FILTER ──
+function filterCamps(status, el) {
+  document.querySelectorAll('.ftab').forEach(t => t.classList.remove('active'));
+  if(el) el.classList.add('active');
+  document.querySelectorAll('.camp-card').forEach(card => {
+    const match = status === 'all' || card.dataset.status === status;
+    card.style.display = match ? '' : 'none';
+  });
+  checkSearchEmpty();
+}
+
+// ── SEARCH ──
+function searchCamps(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.camp-card').forEach(card => {
+    card.style.display = (!q || card.dataset.name.includes(q)) ? '' : 'none';
+  });
+  checkSearchEmpty();
+}
+
+function checkSearchEmpty() {
+  const visible = Array.from(document.querySelectorAll('.camp-card')).filter(c=>c.style.display!=='none');
+  document.getElementById('searchEmpty').style.display = visible.length ? 'none' : 'block';
+}
+</script>
 </body>
 </html>

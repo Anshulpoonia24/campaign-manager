@@ -1,117 +1,566 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="/static/style.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Command Center — OutreachOS</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+/* ── COMMAND CENTER STYLES ── */
+.page-header { margin-bottom: 24px; }
+.page-header h3 { font-size: 1.15rem; font-weight: 700; color: #111827; margin: 0; }
+.page-header small { color: #6B7280; font-size: 12px; }
+
+/* KPI Cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 16px; }
+@media(max-width:1200px){ .kpi-grid { grid-template-columns: repeat(3,1fr); } }
+@media(max-width:768px){ .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+
+.kpi-card {
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow 0.2s, transform 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+.kpi-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); transform: translateY(-1px); }
+.kpi-card .kpi-label { font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.kpi-card .kpi-value { font-size: 1.9rem; font-weight: 800; letter-spacing: -1px; line-height: 1; margin-bottom: 6px; }
+.kpi-card .kpi-trend { font-size: 11.5px; font-weight: 500; }
+.kpi-card .kpi-icon { position: absolute; right: 16px; top: 16px; font-size: 1.1rem; opacity: 0.15; }
+.kpi-card.kpi-blue   .kpi-value { color: #3b82f6; }
+.kpi-card.kpi-green  .kpi-value { color: #10b981; }
+.kpi-card.kpi-purple .kpi-value { color: #8b5cf6; }
+.kpi-card.kpi-orange .kpi-value { color: #f97316; }
+.kpi-card.kpi-red    .kpi-value { color: #ef4444; }
+.kpi-card.kpi-teal   .kpi-value { color: #0ea5e9; }
+.trend-up   { color: #10b981; }
+.trend-down { color: #ef4444; }
+.trend-neu  { color: #9CA3AF; }
+
+/* Alert Strip */
+.alert-strip {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  background: #fff; border: 1px solid #E5E7EB;
+  border-radius: 12px; padding: 12px 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.alert-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 99px;
+  font-size: 12.5px; font-weight: 600;
+  text-decoration: none; transition: opacity 0.15s;
+  cursor: pointer;
+}
+.alert-chip:hover { opacity: 0.8; }
+.chip-red    { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.chip-amber  { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+.chip-blue   { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+.chip-green  { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+.chip-gray   { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+
+/* Section headers */
+.section-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.section-hdr h5 { font-size: 0.88rem; font-weight: 700; color: #111827; margin: 0; text-transform: uppercase; letter-spacing: 0.4px; }
+.section-hdr a  { font-size: 12px; color: #6B7280; text-decoration: none; }
+.section-hdr a:hover { color: #1DBF73; }
+
+/* Priority badges */
+.badge-hot  { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:2px 8px; border-radius:99px; font-size:10.5px; font-weight:700; }
+.badge-warm { background:#fffbeb; color:#d97706; border:1px solid #fde68a; padding:2px 8px; border-radius:99px; font-size:10.5px; font-weight:700; }
+.badge-cold { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; padding:2px 8px; border-radius:99px; font-size:10.5px; font-weight:700; }
+
+/* AI category badges */
+.cat-interested { background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; padding:2px 8px; border-radius:99px; font-size:10.5px; font-weight:600; }
+.cat-meeting    { background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; padding:2px 8px; border-radius:99px; font-size:10.5px; font-weight:600; }
+.cat-ooo        { background:#fefce8; color:#ca8a04; border:1px solid #fef08a; padding:2px 8px; border-radius:99px; font-size:10.5px; font-weight:600; }
+.cat-bounce     { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:2px 8px; border-radius:99px; font-size:10.5px; font-weight:600; }
+.cat-default    { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; padding:2px 8px; border-radius:99px; font-size:10.5px; font-weight:600; }
+
+/* Health dots */
+.health-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:5px; }
+.health-green  { background:#10b981; }
+.health-yellow { background:#f59e0b; }
+.health-red    { background:#ef4444; }
+
+/* Activity feed */
+.activity-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid #F3F4F6;
+}
+.activity-item:last-child { border-bottom: none; }
+.activity-icon {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; flex-shrink: 0; margin-top: 1px;
+}
+.ai-reply   { background:#f0fdf4; color:#16a34a; }
+.ai-send    { background:#eff6ff; color:#2563eb; }
+.ai-click   { background:#fff7ed; color:#ea580c; }
+.ai-bounce  { background:#fef2f2; color:#dc2626; }
+.ai-meeting { background:#f5f3ff; color:#7c3aed; }
+.activity-text { font-size: 12.5px; color: #111827; font-weight: 500; line-height: 1.4; }
+.activity-sub  { font-size: 11px; color: #9CA3AF; }
+.activity-time { font-size: 10.5px; color: #9CA3AF; margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+
+/* Campaign table health bar */
+.health-bar { height: 4px; border-radius: 99px; background: #F3F4F6; overflow: hidden; margin-top: 3px; }
+.health-bar-fill { height: 100%; border-radius: 99px; }
+
+/* SMTP health cards */
+.smtp-card {
+  background: #F8FAFC; border: 1px solid #E5E7EB;
+  border-radius: 10px; padding: 12px 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.smtp-score {
+  font-size: 1.3rem; font-weight: 800; letter-spacing: -0.5px;
+  min-width: 42px; text-align: center;
+}
+
+/* Empty state */
+.empty-state { text-align: center; padding: 40px 20px; }
+.empty-state .empty-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.3; }
+.empty-state p { color: #9CA3AF; font-size: 13px; margin-bottom: 16px; }
+
+/* Setup checklist */
+.setup-step {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 8px;
+  background: #F8FAFC; border: 1px solid #E5E7EB;
+  margin-bottom: 8px; text-decoration: none; color: #111827;
+  font-size: 13px; font-weight: 500; transition: border-color 0.15s;
+}
+.setup-step:hover { border-color: #1DBF73; color: #111827; }
+.setup-step .step-check { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
+.step-done { background: #10b981; color: #fff; }
+.step-todo { background: #E5E7EB; color: #9CA3AF; }
+
+/* Responsive tables */
+@media(max-width:768px){
+  .main { padding: 16px; }
+  .kpi-grid { grid-template-columns: repeat(2,1fr); gap: 10px; }
+  .hide-mobile { display: none !important; }
+}
+</style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="brand"><i class="fas fa-paper-plane"></i> Campaign Manager</div>
-        <a href="/" class="active"><i class="fas fa-chart-line"></i> Dashboard</a>
-        <a href="/upload"><i class="fas fa-upload"></i> Upload Contacts</a>
-        <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
-        <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
-        <a href="/follow_ups"><i class="fas fa-reply"></i> Follow-ups</a>
-        <a href="/bounced"><i class="fas fa-exclamation-triangle"></i> Bounced</a>
-        <a href="/logs"><i class="fas fa-list-alt"></i> Logs</a>
-        <hr style="border-color:#e2e8f0">
-        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
-        <a href="/export/all"><i class="fas fa-download"></i> Export All</a>
-        <a href="/export/sent"><i class="fas fa-download"></i> Export Sent</a>
-        <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
-    </div>
-    <div class="main">
-        {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="flash-msg">{% for cat, msg in messages %}<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}</div>{% endif %}{% endwith %}
-        <h3 class="mb-4">📊 Dashboard</h3>
-        <div class="row g-3 mb-4">
-            <div class="col-md-2"><div class="stat-card blue"><i class="fas fa-users fa-2x" style="color:#3b82f6"></i><h2>{{ total_contacts }}</h2><small>Total Contacts</small></div></div>
-            <div class="col-md-2"><div class="stat-card green"><i class="fas fa-check-circle fa-2x" style="color:#22c55e"></i><h2>{{ valid_emails }}</h2><small>Valid Emails</small></div></div>
-            <div class="col-md-2"><div class="stat-card red"><i class="fas fa-times-circle fa-2x" style="color:#ef4444"></i><h2>{{ invalid_emails }}</h2><small>Invalid Emails</small></div></div>
-            <div class="col-md-2"><div class="stat-card purple"><i class="fas fa-paper-plane fa-2x" style="color:#8b5cf6"></i><h2>{{ total_sent }}</h2><small>Emails Sent</small></div></div>
-            <div class="col-md-2"><div class="stat-card orange"><i class="fas fa-exclamation fa-2x" style="color:#f97316"></i><h2>{{ total_bounced }}</h2><small>Bounced</small></div></div>
-            <div class="col-md-2"><div class="stat-card yellow"><i class="fas fa-reply fa-2x" style="color:#f59e0b"></i><h2>{{ total_replied }}</h2><small>Replies</small></div></div>
-        </div>
-        <div class="row g-3">
-            <div class="col-md-5">
-                <div class="card-box">
-                    <h5 class="mb-3">🤖 AI Provider Usage</h5>
-                    <canvas id="aiPieChart" height="200"></canvas>
-                    <div id="aiNoData" class="text-center text-muted py-3" style="display:none">No AI usage yet</div>
-                </div>
-            </div>
-            <div class="col-md-7">
-                <div class="card-box">
-                    <h5 class="mb-3">📈 AI Usage Over Time</h5>
-                    <canvas id="aiLineChart" height="200"></canvas>
-                </div>
-            </div>
-        </div>
 
-        <div class="row g-3 mt-1">
-            <div class="col-md-8">
-                <div class="card-box">
-                    <h5 class="mb-3">Recent Emails</h5>
-                    <table class="table table-hover mb-0">
-                        <thead><tr><th>Name</th><th>Company</th><th>Email</th><th>Status</th><th>Sent</th></tr></thead>
-                        <tbody>
-                        {% for e in recent_sent %}<tr><td>{{ e.name }}</td><td>{{ e.company }}</td><td>{{ e.email }}</td><td><span class="badge bg-{{ 'success' if e.status=='sent' else 'danger' }}">{{ e.status }}</span></td><td>{{ e.sent_at[:16] if e.sent_at else '-' }}</td></tr>{% endfor %}
-                        {% if not recent_sent %}<tr><td colspan="5" class="text-center text-muted">No emails sent yet</td></tr>{% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card-box">
-                    <h5 class="mb-3">Campaigns</h5>
-                    {% for c in campaigns %}<a href="/campaign/{{ c.id }}" class="d-block p-2 mb-2" style="background:#f8fafc;border-radius:8px;color:#1e293b;text-decoration:none;border:1px solid #e2e8f0;"><strong>{{ c.name }}</strong><br><small class="text-muted">{{ c.created_at[:10] }} | {{ c.status }}</small></a>{% endfor %}
-                    {% if not campaigns %}<p class="text-muted text-center">No campaigns yet</p>{% endif %}
-                    <a href="/campaign/new" class="btn btn-primary btn-sm w-100 mt-2">+ New Campaign</a>
-                </div>
-            </div>
-        </div>
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="brand"><i class="fas fa-paper-plane"></i> OutreachOS</div>
+  <a href="/" class="active"><i class="fas fa-th-large"></i> Dashboard</a>
+  <a href="/contacts"><i class="fas fa-users"></i> Contacts</a>
+  <a href="/campaigns"><i class="fas fa-bullhorn"></i> Campaigns</a>
+  <a href="/inbox"><i class="fas fa-inbox"></i> Inbox
+    {% set total_unread = namespace(n=0) %}
+    {% for t in attention_threads %}{% if t.unread_count > 0 %}{% set total_unread.n = total_unread.n + 1 %}{% endif %}{% endfor %}
+    {% if total_unread.n > 0 %}<span class="badge bg-danger ms-auto" style="font-size:10px;">{{ total_unread.n }}</span>{% endif %}
+  </a>
+  <a href="/automations"><i class="fas fa-robot"></i> Automations</a>
+  <a href="/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+  <a href="/deliverability"><i class="fas fa-shield-alt"></i> Deliverability</a>
+  <hr>
+  <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+  <a href="/logout" style="color:#ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+
+<div class="main">
+{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="mb-3">{% for cat, msg in messages %}<div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show py-2">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}</div>{% endif %}{% endwith %}
+
+<!-- PAGE HEADER -->
+<div class="page-header d-flex align-items-center justify-content-between">
+  <div>
+    <h3>Command Center</h3>
+    <small>Real-time operational overview</small>
+  </div>
+  <div class="d-flex gap-2">
+    <button class="btn btn-sm btn-outline-secondary" onclick="checkReplies()"><i class="fas fa-sync-alt me-1"></i>Check Replies</button>
+    <a href="/campaign/new" class="btn btn-sm btn-primary"><i class="fas fa-plus me-1"></i>New Campaign</a>
+  </div>
+</div>
+
+<!-- KPI CARDS -->
+<div class="kpi-grid">
+  <div class="kpi-card kpi-blue">
+    <i class="fas fa-paper-plane kpi-icon"></i>
+    <div class="kpi-label">Emails Sent</div>
+    <div class="kpi-value">{{ total_sent }}</div>
+    <div class="kpi-trend trend-neu"><i class="fas fa-minus"></i> all time</div>
+  </div>
+  <div class="kpi-card kpi-green">
+    <i class="fas fa-eye kpi-icon"></i>
+    <div class="kpi-label">Open Rate</div>
+    <div class="kpi-value">{{ open_rate }}<span style="font-size:1rem;font-weight:600;">%</span></div>
+    <div class="kpi-trend {% if open_rate >= 20 %}trend-up{% elif open_rate >= 10 %}trend-neu{% else %}trend-down{% endif %}">
+      {{ total_opened }} opens
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-    const colors = {ollama:'#22c55e', groq:'#3b82f6', gemini:'#8b5cf6'};
-    fetch('/api/ai_usage').then(r=>r.json()).then(data => {
-        // Pie Chart
-        if (data.by_provider.length > 0) {
-            new Chart(document.getElementById('aiPieChart'), {
-                type: 'doughnut',
-                data: {
-                    labels: data.by_provider.map(p => p.provider.charAt(0).toUpperCase()+p.provider.slice(1) + ' ('+p.total+')'),
-                    datasets: [{
-                        data: data.by_provider.map(p => p.total),
-                        backgroundColor: data.by_provider.map(p => colors[p.provider]||'#94a3b8'),
-                        borderWidth: 2, borderColor: '#fff'
-                    }]
-                },
-                options: { responsive:true, plugins:{ legend:{ position:'bottom' } } }
-            });
+  </div>
+  <div class="kpi-card kpi-purple">
+    <i class="fas fa-reply kpi-icon"></i>
+    <div class="kpi-label">Reply Rate</div>
+    <div class="kpi-value">{{ reply_rate }}<span style="font-size:1rem;font-weight:600;">%</span></div>
+    <div class="kpi-trend {% if reply_rate >= 5 %}trend-up{% elif reply_rate >= 2 %}trend-neu{% else %}trend-down{% endif %}">
+      {{ total_replied }} replies
+    </div>
+  </div>
+  <div class="kpi-card kpi-orange">
+    <i class="fas fa-mouse-pointer kpi-icon"></i>
+    <div class="kpi-label">Click Rate</div>
+    <div class="kpi-value">{{ click_rate }}<span style="font-size:1rem;font-weight:600;">%</span></div>
+    <div class="kpi-trend {% if click_rate >= 3 %}trend-up{% else %}trend-neu{% endif %}">
+      {{ total_clicks }} clicks
+    </div>
+  </div>
+  <div class="kpi-card kpi-teal">
+    <i class="fas fa-calendar-check kpi-icon"></i>
+    <div class="kpi-label">Meetings</div>
+    <div class="kpi-value">{{ meetings_detected }}</div>
+    <div class="kpi-trend trend-up">detected</div>
+  </div>
+  <div class="kpi-card kpi-red">
+    <i class="fas fa-fire kpi-icon"></i>
+    <div class="kpi-label">Hot Leads</div>
+    <div class="kpi-value">{{ hot_leads_count }}</div>
+    <div class="kpi-trend trend-up">score ≥ 50</div>
+  </div>
+</div>
+
+<!-- ALERT STRIP -->
+{% set has_alerts = hot_leads_count > 0 or unread_count > 0 or smtp_at_risk > 0 or meetings_detected > 0 %}
+{% if has_alerts %}
+<div class="alert-strip">
+  <span style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;align-self:center;">Attention</span>
+  {% if hot_leads_count > 0 %}
+  <a href="#hot-leads" class="alert-chip chip-red">🔥 {{ hot_leads_count }} Hot Leads</a>
+  {% endif %}
+  {% if unread_count > 0 %}
+  <a href="/inbox" class="alert-chip chip-amber">📨 {{ unread_count }} Replies Need Attention</a>
+  {% endif %}
+  {% if smtp_at_risk > 0 %}
+  <a href="/deliverability" class="alert-chip chip-red">⚠️ {{ smtp_at_risk }} SMTP Account{% if smtp_at_risk > 1 %}s{% endif %} At Risk</a>
+  {% endif %}
+  {% if meetings_detected > 0 %}
+  <a href="/inbox?status=meeting" class="alert-chip chip-blue">📅 {{ meetings_detected }} Meeting{% if meetings_detected > 1 %}s{% endif %} Detected</a>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- HOT LEADS + INBOX ATTENTION -->
+<div class="row g-3 mb-3">
+
+  <!-- HOT LEADS -->
+  <div class="col-lg-7" id="hot-leads">
+    <div class="card-box h-100">
+      <div class="section-hdr">
+        <h5><i class="fas fa-fire me-2" style="color:#ef4444;"></i>Hot Leads</h5>
+        <a href="/contacts?filter=all">View All Contacts →</a>
+      </div>
+      {% if hot_leads %}
+      <div class="table-responsive">
+      <table class="table table-hover mb-0" style="font-size:12.5px;">
+        <thead><tr>
+          <th>Contact</th>
+          <th>Score</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th class="hide-mobile">Last Activity</th>
+          <th></th>
+        </tr></thead>
+        <tbody>
+        {% for lead in hot_leads %}
+        {% set p = calculate_priority(lead.lead_score) %}
+        <tr>
+          <td>
+            <div style="font-weight:600;color:#111827;">{{ lead.name }}</div>
+            <div style="font-size:11px;color:#9CA3AF;">{{ lead.company or '—' }}</div>
+          </td>
+          <td>
+            <span style="font-weight:800;font-size:1rem;color:{% if lead.lead_score >= 50 %}#dc2626{% elif lead.lead_score >= 20 %}#d97706{% else %}#64748b{% endif %};">{{ lead.lead_score }}</span>
+          </td>
+          <td><span class="badge-{{ p }}">{{ p.upper() }}</span></td>
+          <td>
+            {% if lead.thread_status == 'interested' %}<span class="cat-interested">Interested</span>
+            {% elif lead.thread_status == 'meeting' %}<span class="cat-meeting">Meeting</span>
+            {% elif lead.thread_status == 'booked' %}<span class="cat-meeting">Booked</span>
+            {% else %}<span class="cat-default">{{ lead.thread_status or lead.status or 'Active' }}</span>{% endif %}
+          </td>
+          <td class="hide-mobile"><small class="text-muted">{{ lead.last_activity[:10] if lead.last_activity else '—' }}</small></td>
+          <td>
+            {% if lead.thread_id %}
+            <a href="/inbox/{{ lead.thread_id }}" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:11px;">Open</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">🎯</div>
+        <p>No scored leads yet. Leads appear here as contacts open, click, and reply to emails.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- INBOX ATTENTION QUEUE -->
+  <div class="col-lg-5">
+    <div class="card-box h-100">
+      <div class="section-hdr">
+        <h5><i class="fas fa-inbox me-2" style="color:#f59e0b;"></i>Replies Needing Attention</h5>
+        <a href="/inbox">View Inbox →</a>
+      </div>
+      {% if attention_threads %}
+      {% for t in attention_threads %}
+      <a href="/inbox/{{ t.id }}" style="text-decoration:none;color:inherit;">
+      <div style="padding:10px 0;border-bottom:1px solid #F3F4F6;display:flex;align-items:flex-start;gap:10px;" class="hover-row">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+            <span style="font-weight:600;font-size:12.5px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;">{{ t.contact_name or t.contact_email or 'Unknown' }}</span>
+            {% if t.unread_count > 0 %}<span class="badge bg-danger" style="font-size:9px;padding:2px 5px;">{{ t.unread_count }}</span>{% endif %}
+          </div>
+          <div style="font-size:11px;color:#9CA3AF;">{{ t.contact_company or '—' }}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          {% if t.status == 'interested' %}<span class="cat-interested">Interested</span>
+          {% elif t.status == 'meeting' %}<span class="cat-meeting">Meeting</span>
+          {% elif t.ai_category %}<span class="cat-default">{{ t.ai_category }}</span>
+          {% else %}<span class="cat-default">Unread</span>{% endif %}
+          <div style="font-size:10.5px;color:#9CA3AF;margin-top:3px;">{{ t.last_message_at[:10] if t.last_message_at else '' }}</div>
+        </div>
+      </div>
+      </a>
+      {% endfor %}
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <p>No replies needing attention. All caught up!</p>
+        <a href="/inbox" class="btn btn-sm btn-outline-secondary">View Inbox</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- CAMPAIGN PERFORMANCE -->
+<div class="card-box mb-3">
+  <div class="section-hdr">
+    <h5><i class="fas fa-bullhorn me-2" style="color:#8b5cf6;"></i>Campaign Performance</h5>
+    <a href="/campaigns">All Campaigns →</a>
+  </div>
+  {% if campaigns %}
+  <div class="table-responsive">
+  <table class="table table-hover mb-0" style="font-size:12.5px;">
+    <thead><tr>
+      <th>Campaign</th>
+      <th>Status</th>
+      <th>Sent</th>
+      <th>Open Rate</th>
+      <th>Reply Rate</th>
+      <th class="hide-mobile">Bounces</th>
+      <th>Health</th>
+      <th></th>
+    </tr></thead>
+    <tbody>
+    {% for c in campaigns %}
+    {% set c_open_rate = (c.opened_count / c.sent_count * 100) | round(1) if c.sent_count > 0 else 0 %}
+    {% set c_reply_rate = (c.replied_count / c.sent_count * 100) | round(1) if c.sent_count > 0 else 0 %}
+    {% set c_bounce_rate = (c.bounce_count / c.sent_count * 100) | round(1) if c.sent_count > 0 else 0 %}
+    {% set health = 100 - (c_bounce_rate * 3) + (c_open_rate * 0.5) %}
+    {% set health = [health, 0] | max %}
+    {% set health = [health, 100] | min %}
+    <tr>
+      <td>
+        <a href="/campaign/{{ c.id }}" style="font-weight:600;color:#111827;text-decoration:none;">{{ c.name }}</a>
+        <div style="font-size:10.5px;color:#9CA3AF;">{{ c.created_at[:10] if c.created_at else '' }}</div>
+      </td>
+      <td>
+        {% if c.status == 'sent' %}<span class="badge bg-success" style="font-size:10px;">Active</span>
+        {% elif c.status == 'draft' %}<span class="badge bg-secondary" style="font-size:10px;">Draft</span>
+        {% else %}<span class="badge bg-warning text-dark" style="font-size:10px;">{{ c.status }}</span>{% endif %}
+      </td>
+      <td><strong>{{ c.sent_count }}</strong></td>
+      <td>
+        <div style="font-weight:600;color:{% if c_open_rate >= 20 %}#10b981{% elif c_open_rate >= 10 %}#f59e0b{% else %}#ef4444{% endif %};">{{ c_open_rate }}%</div>
+        <div class="health-bar" style="width:60px;"><div class="health-bar-fill" style="width:{% if c_open_rate > 100 %}100{% else %}{{ c_open_rate | int }}{% endif %}%;background:{% if c_open_rate >= 20 %}#10b981{% elif c_open_rate >= 10 %}#f59e0b{% else %}#ef4444{% endif %};"></div></div>
+      </td>
+      <td>
+        <div style="font-weight:600;color:{% if c_reply_rate >= 5 %}#10b981{% elif c_reply_rate >= 2 %}#f59e0b{% else %}#6B7280{% endif %};">{{ c_reply_rate }}%</div>
+        <div class="health-bar" style="width:60px;"><div class="health-bar-fill" style="width:{% if (c_reply_rate * 5) > 100 %}100{% else %}{{ (c_reply_rate * 5) | int }}{% endif %}%;background:{% if c_reply_rate >= 5 %}#10b981{% elif c_reply_rate >= 2 %}#f59e0b{% else %}#6B7280{% endif %};"></div></div>
+      </td>
+      <td class="hide-mobile">
+        <span style="color:{% if c_bounce_rate > 5 %}#ef4444{% elif c_bounce_rate > 2 %}#f59e0b{% else %}#10b981{% endif %};font-weight:600;">{{ c_bounce_rate }}%</span>
+      </td>
+      <td>
+        <span class="health-dot {% if health >= 70 %}health-green{% elif health >= 40 %}health-yellow{% else %}health-red{% endif %}"></span>
+        <span style="font-size:11.5px;font-weight:600;">{{ health | int }}</span>
+      </td>
+      <td><a href="/campaign/{{ c.id }}" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:11px;">View</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">📣</div>
+    <p>No campaigns yet. Create your first campaign to start sending.</p>
+    <a href="/campaign/new" class="btn btn-sm btn-primary">+ New Campaign</a>
+  </div>
+  {% endif %}
+</div>
+
+<!-- SMTP HEALTH + ACTIVITY FEED -->
+<div class="row g-3 mb-3">
+
+  <!-- SMTP HEALTH -->
+  <div class="col-lg-5">
+    <div class="card-box h-100">
+      <div class="section-hdr">
+        <h5><i class="fas fa-shield-alt me-2" style="color:#0ea5e9;"></i>Inbox Health</h5>
+        <a href="/deliverability">Full Report →</a>
+      </div>
+
+      {% if smtp_accounts %}
+      <!-- Summary row -->
+      <div class="row g-2 mb-3">
+        <div class="col-4 text-center">
+          <div style="font-size:1.4rem;font-weight:800;color:#10b981;">{{ smtp_active }}</div>
+          <div style="font-size:10.5px;color:#9CA3AF;font-weight:600;">Active</div>
+        </div>
+        <div class="col-4 text-center">
+          <div style="font-size:1.4rem;font-weight:800;color:{% if avg_health >= 70 %}#10b981{% elif avg_health >= 40 %}#f59e0b{% else %}#ef4444{% endif %};">{{ avg_health | int }}</div>
+          <div style="font-size:10.5px;color:#9CA3AF;font-weight:600;">Avg Score</div>
+        </div>
+        <div class="col-4 text-center">
+          <div style="font-size:1.4rem;font-weight:800;color:{% if smtp_at_risk > 0 %}#ef4444{% else %}#10b981{% endif %};">{{ smtp_at_risk }}</div>
+          <div style="font-size:10.5px;color:#9CA3AF;font-weight:600;">At Risk</div>
+        </div>
+      </div>
+
+      {% for acc in smtp_accounts[:4] %}
+      <div class="smtp-card mb-2">
+        <div class="smtp-score" style="color:{% if acc.health_score >= 70 %}#10b981{% elif acc.health_score >= 40 %}#f59e0b{% else %}#ef4444{% endif %};">{{ acc.health_score }}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ acc.email }}</div>
+          <div style="font-size:10.5px;color:#9CA3AF;">Stage {{ acc.warmup_stage }} warmup · {{ acc.sent_today }}/{{ acc.daily_limit }} today</div>
+          <div class="health-bar mt-1"><div class="health-bar-fill" style="width:{{ acc.health_score }}%;background:{% if acc.health_score >= 70 %}#10b981{% elif acc.health_score >= 40 %}#f59e0b{% else %}#ef4444{% endif %};"></div></div>
+        </div>
+        <div>
+          {% if acc.active %}<span class="health-dot health-green"></span>
+          {% else %}<span class="health-dot health-red"></span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+
+      {% if smtp_accounts | length > 4 %}
+      <div style="text-align:center;margin-top:8px;"><a href="/deliverability" style="font-size:12px;color:#6B7280;">+{{ smtp_accounts|length - 4 }} more accounts</a></div>
+      {% endif %}
+
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">📮</div>
+        <p>No SMTP accounts configured.</p>
+        <a href="/settings" class="btn btn-sm btn-primary">Add SMTP Account</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ACTIVITY FEED -->
+  <div class="col-lg-7">
+    <div class="card-box h-100">
+      <div class="section-hdr">
+        <h5><i class="fas fa-stream me-2" style="color:#6B7280;"></i>Recent Activity</h5>
+      </div>
+      {% if activity_feed %}
+      {% for item in activity_feed %}
+      <div class="activity-item">
+        <div class="activity-icon {% if item.type == 'reply' %}ai-reply{% elif item.type == 'click' %}ai-click{% elif item.type == 'bounce' %}ai-bounce{% elif item.type == 'meeting' %}ai-meeting{% else %}ai-send{% endif %}">
+          <i class="fas {% if item.type == 'reply' %}fa-reply{% elif item.type == 'click' %}fa-mouse-pointer{% elif item.type == 'bounce' %}fa-exclamation{% elif item.type == 'meeting' %}fa-calendar-check{% else %}fa-paper-plane{% endif %}"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <a href="{{ item.link }}" style="text-decoration:none;">
+            <div class="activity-text">{{ item.text }}</div>
+          </a>
+          {% if item.sub %}<div class="activity-sub">{{ item.sub }}</div>{% endif %}
+        </div>
+        <div class="activity-time">{{ item.time[:16] if item.time else '' }}</div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">📡</div>
+        <p>No activity yet. Send your first campaign to see live updates here.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- SETUP CHECKLIST (shown when platform is new) -->
+{% set all_done = setup_steps | selectattr('done') | list | length == setup_steps | length %}
+{% if not all_done %}
+<div class="card-box mb-3">
+  <div class="section-hdr">
+    <h5><i class="fas fa-rocket me-2" style="color:#1DBF73;"></i>Getting Started</h5>
+    <span style="font-size:12px;color:#9CA3AF;">{{ setup_steps | selectattr('done') | list | length }}/{{ setup_steps | length }} complete</span>
+  </div>
+  <div class="row g-2">
+    {% for step in setup_steps %}
+    <div class="col-md-4">
+      <a href="{{ step.link }}" class="setup-step">
+        <div class="step-check {% if step.done %}step-done{% else %}step-todo{% endif %}">
+          <i class="fas {% if step.done %}fa-check{% else %}fa-circle{% endif %}"></i>
+        </div>
+        {{ step.label }}
+        {% if step.done %}<i class="fas fa-check-circle ms-auto" style="color:#10b981;font-size:13px;"></i>{% endif %}
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+</div><!-- end .main -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function checkReplies() {
+  const btn = event.target.closest('button');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Checking...';
+  fetch('/api/check_replies', {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-sync-alt me-1"></i>Check Replies';
+      if (d.success) {
+        if (d.logged > 0) {
+          location.reload();
         } else {
-            document.getElementById('aiNoData').style.display = 'block';
-            document.getElementById('aiPieChart').style.display = 'none';
+          btn.innerHTML = '<i class="fas fa-check me-1"></i>No New Replies';
+          setTimeout(() => { btn.innerHTML = '<i class="fas fa-sync-alt me-1"></i>Check Replies'; }, 2000);
         }
-        // Line Chart
-        if (data.by_date.length > 0) {
-            const days = [...new Set(data.by_date.map(d=>d.day))];
-            const providers = [...new Set(data.by_date.map(d=>d.provider))];
-            const datasets = providers.map(p => ({
-                label: p.charAt(0).toUpperCase()+p.slice(1),
-                data: days.map(d => { const r=data.by_date.find(x=>x.day===d&&x.provider===p); return r?r.total:0; }),
-                borderColor: colors[p]||'#94a3b8', backgroundColor: (colors[p]||'#94a3b8')+'33',
-                fill: true, tension: 0.3
-            }));
-            new Chart(document.getElementById('aiLineChart'), {
-                type: 'line',
-                data: { labels: days, datasets: datasets },
-                options: { responsive:true, scales:{ y:{ beginAtZero:true } }, plugins:{ legend:{ position:'bottom' } } }
-            });
-        }
+      }
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-sync-alt me-1"></i>Check Replies';
     });
-    </script>
+}
+</script>
 </body>
 </html>
