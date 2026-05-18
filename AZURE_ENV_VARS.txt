@@ -1,0 +1,27 @@
+AZURE APP SERVICE — REQUIRED ENVIRONMENT VARIABLES
+===================================================
+Set these in Azure Portal → App Service → Configuration → Application Settings
+
+REQUIRED:
+  SECRET_KEY          = <generate: python -c "import secrets; print(secrets.token_hex(32))">
+  TRACKING_HOST       = https://ertyui.online
+  IMAP_SERVER         = imap.hostinger.com
+  IMAP_PORT           = 993
+  IMAP_USERNAME       = replies@apnagang.com
+  IMAP_PASSWORD       = <your replies@apnagang.com password>
+  IMAP_CHECK_INTERVAL = 180
+  REPLY_TO            = replies@apnagang.com
+  GROQ_API_KEYS       = <your groq key(s)>
+  AI_PRIORITY         = groq,gemini
+
+OPTIONAL (if not set in DB via Settings UI):
+  SMTP_SERVER         = smtp.hostinger.com
+  SMTP_PORT           = 587
+  SMTP_USERNAME       = outreach@apnagang.com
+  SMTP_PASSWORD       = <your smtp password>
+  FROM_EMAIL          = outreach@apnagang.com
+  FROM_NAME           = Shiksha Talent
+
+ADMIN:
+  ADMIN_USERNAME      = superadmin
+  ADMIN_PASSWORD      = OutreachOS@2025

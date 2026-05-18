@@ -447,9 +447,10 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
         bcc      = account.get('bcc_emails') or get_setting('bcc_emails')
 
         msg = EmailMessage()
-        msg['Subject'] = subject
-        msg['From']    = formataddr((account.get('from_name', ''), account['email']))
-        msg['To']      = contact['email']
+        msg['Subject']    = subject
+        msg['From']       = formataddr((account.get('from_name', ''), account['email']))
+        msg['To']         = contact['email']
+        msg['Message-ID'] = f'<{tracking_id}@outreachos>'
         if reply_to and reply_to.strip():
             msg['Reply-To'] = reply_to
         if bcc and bcc.strip():

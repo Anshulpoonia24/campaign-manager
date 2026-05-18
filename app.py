@@ -729,7 +729,9 @@ TRACKING_PIXEL = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x
 def inject_tracking_pixel(body, tracking_id, contact_id=None, campaign_id=None, workspace_id=1):
     """Inject tracking pixel + rewrite links. Uses signed tokens when contact/campaign known."""
     from services.tracking import generate_token
-    host = get_setting('tracking_host') or 'http://localhost:5000'
+    host = get_setting('tracking_host') or 'https://ertyui.online'
+    # Strip trailing slash
+    host = host.rstrip('/')
 
     # Use signed token if we have full context, else legacy UUID
     if contact_id and campaign_id:
@@ -2225,9 +2227,10 @@ def send_campaign(campaign_id):
                 tracked_body = inject_tracking_pixel(body_with_sig, tracking_id)
 
                 msg = EmailMessage()
-                msg['Subject'] = subject
-                msg['From'] = formataddr((from_name, from_email))
-                msg['To'] = contact['email']
+                msg['Subject']    = subject
+                msg['From']       = formataddr((from_name, from_email))
+                msg['To']         = contact['email']
+                msg['Message-ID'] = f'<{tracking_id}@outreachos>'
                 if reply_to and reply_to.strip():
                     msg['Reply-To'] = reply_to
                 if bcc and bcc.strip():
@@ -2811,6 +2814,83 @@ def api_celery_status():
     })
 
 
+@app.route('/api/diagnostics')
+@login_required
+def api_diagnostics():
+    """System diagnostics — tracking, IMAP, queue status."""
+    from services.workspace_service import get_wid
+    wid = get_wid()
+    conn = get_db()
+
+    # IMAP status
+    imap_server   = get_setting('imap_server')
+    imap_username = get_setting('imap_username')
+    imap_password = get_setting('imap_password')
+    tracking_host = get_setting('tracking_host')
+    reply_to      = get_setting('reply_to')
+
+    imap_ok = False
+    imap_msg = 'Not configured'
+    if imap_server and imap_username and imap_password:
+        try:
+            import imaplib
+            mail = imaplib.IMAP4_SSL(imap_server.strip(), int(get_setting('imap_port') or 993))
+            mail.login(imap_username.strip(), imap_password.strip())
+            mail.select('INBOX')
+            _, unseen = mail.search(None, 'UNSEEN')
+            unseen_count = len(unseen[0].split()) if unseen[0] else 0
+            mail.logout()
+            imap_ok = True
+            imap_msg = f'Connected — {unseen_count} unseen emails'
+        except Exception as e:
+            imap_msg = f'Failed: {str(e)[:100]}'
+
+    # Tracking stats
+    total_sent    = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
+    with_tracking = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent' AND tracking_id IS NOT NULL AND tracking_id != ''").fetchone()[0]
+    total_opens   = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE opened=1").fetchone()[0]
+    total_replies = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE replied=1").fetchone()[0]
+    total_clicks  = conn.execute("SELECT COUNT(DISTINCT contact_id) FROM email_clicks WHERE contact_id IS NOT NULL").fetchone()[0]
+    te_opens      = conn.execute("SELECT COUNT(*) FROM tracking_events WHERE event_type='email_open'").fetchone()[0]
+    te_clicks     = conn.execute("SELECT COUNT(*) FROM tracking_events WHERE event_type='link_click'").fetchone()[0]
+
+    # Recent logs
+    recent_logs = conn.execute("""
+        SELECT level, message, created_at FROM campaign_logs
+        ORDER BY created_at DESC LIMIT 10
+    """).fetchall() if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='campaign_logs'").fetchone() else []
+
+    conn.close()
+
+    return jsonify({
+        'imap': {
+            'configured': bool(imap_server and imap_username),
+            'connected': imap_ok,
+            'message': imap_msg,
+            'server': imap_server or 'Not set',
+            'username': imap_username or 'Not set',
+            'reply_to': reply_to or 'Not set',
+        },
+        'tracking': {
+            'host': tracking_host or 'Not set',
+            'host_ok': bool(tracking_host and 'localhost' not in tracking_host),
+            'total_sent': total_sent,
+            'with_tracking_id': with_tracking,
+            'opens': total_opens,
+            'replies': total_replies,
+            'clicks': total_clicks,
+            'tracking_events_opens': te_opens,
+            'tracking_events_clicks': te_clicks,
+        },
+        'workers': {
+            'celery_available': CELERY_AVAILABLE,
+            'mode': 'celery' if CELERY_AVAILABLE else 'threading',
+            'imap_checker_running': imap_checker_running,
+        },
+        'recent_logs': [dict(l) for l in recent_logs],
+    })
+
+
 @app.route('/api/fix_tracking_host')
 @login_required
 def fix_tracking_host():
@@ -3324,13 +3404,22 @@ def add_follow_up():
 @app.route('/api/settings/save', methods=['POST'])
 @login_required
 def api_save_setting():
-    """Save one or more settings without wiping unrelated keys."""
+    """Save one or more settings without wiping unrelated keys.
+    Skips empty values for password/credential fields to prevent accidental wipe.
+    """
     from services.workspace_service import get_wid
     data = request.json or {}
     wid = get_wid()
+    # Fields that should never be overwritten with empty string
+    PROTECTED_FIELDS = {'imap_password', 'smtp_password', 'groq_api_keys',
+                        'gemini_api_key', 'imap_username', 'imap_server'}
     conn = get_db()
+    saved = []
     for key, val in data.items():
         if key not in DEFAULT_SETTINGS:
+            continue
+        # Skip empty values for protected fields
+        if key in PROTECTED_FIELDS and not str(val).strip():
             continue
         existing = conn.execute(
             "SELECT key FROM settings WHERE key=? AND workspace_id=?", (key, wid)
@@ -3345,9 +3434,10 @@ def api_save_setting():
                 "INSERT INTO settings (key, value, workspace_id) VALUES (?,?,?)",
                 (key, val, wid)
             )
+        saved.append(key)
     conn.commit()
     conn.close()
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'saved': saved})
 
 
 @app.route('/settings', methods=['GET', 'POST'])
@@ -4010,5 +4100,11 @@ if __name__ == '__main__':
     app.run(debug=debug, host='0.0.0.0', port=port)
 else:
     # Gunicorn / production WSGI entry
-    # Don't start IMAP checker in production (can cause issues with fresh DB)
-    pass
+    # Start background workers for production
+    try:
+        start_imap_checker()
+        start_daily_reset()
+        start_automation_worker()
+        print('[STARTUP] Background workers started (gunicorn mode)')
+    except Exception as _e:
+        print(f'[STARTUP] Background worker start failed: {_e}')
