@@ -730,8 +730,45 @@ def inject_tracking_pixel(body, tracking_id, contact_id=None, campaign_id=None, 
     """Inject tracking pixel + rewrite links. Uses signed tokens when contact/campaign known."""
     from services.tracking import generate_token
     host = get_setting('tracking_host') or 'https://ertyui.online'
-    # Strip trailing slash
     host = host.rstrip('/')
+
+    # Use signed token if we have full context, else legacy UUID
+    if contact_id and campaign_id:
+        token = generate_token(workspace_id, contact_id, campaign_id, 0, 0)
+        pixel_url = f'{host}/track/{token}.png'
+    else:
+        pixel_url = f'{host}/track/{tracking_id}.png'
+
+    pixel_tag = f'<img src="{pixel_url}" width="1" height="1" style="display:none" alt="">'
+    unsub_url = f'{host}/unsubscribe/{tracking_id}'
+    unsub_tag = (
+        f'<p style="font-size:11px;color:#94a3b8;margin-top:30px;'
+        f'border-top:1px solid #e2e8f0;padding-top:10px;">'
+        f'If you no longer wish to receive these emails, '
+        f'<a href="{unsub_url}" style="color:#64748b;">unsubscribe here</a>.</p>'
+    )
+
+    import re
+    def rewrite_link(match):
+        original_url = match.group(1)
+        # Skip internal tracking/unsubscribe links and non-http links
+        if any(skip in original_url for skip in [
+            '/track/', '/unsubscribe/', '/click/', 'mailto:', '#', 'javascript:'
+        ]):
+            return match.group(0)
+        click_token = str(uuid.uuid4())
+        import urllib.parse
+        encoded_url = urllib.parse.quote(original_url, safe='')
+        tracked_url = f'{host}/click/{click_token}?url={encoded_url}&tid={tracking_id}'
+        return f'href="{tracked_url}"'
+
+    body = re.sub(r'href="(https?://[^"]+)"', rewrite_link, body)
+
+    if '</body>' in body.lower():
+        body = body.replace('</body>', f'{unsub_tag}{pixel_tag}</body>')
+    else:
+        body += unsub_tag + pixel_tag
+    return body
 
     # Use signed token if we have full context, else legacy UUID
     if contact_id and campaign_id:
