@@ -81,10 +81,11 @@ def send_single_email(self, campaign_id, contact_id, subject, body, smtp_creds):
         tracked_body = _inject_tracking(resolved_body, tracking_id, host)
 
         msg = EmailMessage()
-        msg['Subject'] = resolved_subject
-        msg['From']    = formataddr((smtp_creds.get('from_name', ''), smtp_creds['from_email']))
-        msg['To']      = contact['email']
-        reply_to = get_setting('reply_to') or smtp_creds.get('from_email', '')
+        msg['Subject']    = resolved_subject
+        msg['From']       = formataddr((smtp_creds.get('from_name', ''), smtp_creds['from_email']))
+        msg['To']         = contact['email']
+        msg['Message-ID'] = f'<{tracking_id}@outreachos>'
+        reply_to = get_setting('reply_to') or get_setting('imap_username') or smtp_creds.get('from_email', '')
         if reply_to:
             msg['Reply-To'] = reply_to
         bcc = get_setting('bcc_emails')

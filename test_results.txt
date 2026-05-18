@@ -47,7 +47,7 @@ OK   200 Run automations [success=True]
 OK   200 Followup draft [success=False]
 
 === SMTP ===
-OK   200 SMTP accounts list [accounts=[{'active': 1, 'bcc_emails': '', 'daily_limit': 20, 'email': 'anshul.shiksha@apnagang.com', 'from_name': 'Shiksha', 'health_score': 100, 'id': 8, 'last_used': '2026-05-14 15:27:11.007019', 'reply_to': 'replies@apnagang.com', 'sent_today': 0, 'signature': '', 'smtp_port': 587, 'smtp_server': 'smtp.hostinger.com', 'warmup_stage': 2}, {'active': 1, 'bcc_emails': '', 'daily_limit': 20, 'email': 'outreach@apnagang.com', 'from_name': 'Shiksha Talent', 'health_score': 100, 'id': 9, 'last_used': '2026-05-14 15:25:36.882733', 'reply_to': 'replies@apnagang.com', 'sent_today': 0, 'signature': '', 'smtp_port': 587, 'smtp_server': 'smtp.hostinger.com', 'warmup_stage': 2}]]
+OK   200 SMTP accounts list [accounts=[{'active': 1, 'bcc_emails': '', 'daily_limit': 35, 'email': 'anshul.shiksha@apnagang.com', 'from_name': 'Shiksha', 'health_score': 100, 'id': 8, 'last_used': '2026-05-14 15:27:11.007019', 'reply_to': 'replies@apnagang.com', 'sent_today': 0, 'signature': '', 'smtp_port': 587, 'smtp_server': 'smtp.hostinger.com', 'warmup_stage': 3}, {'active': 1, 'bcc_emails': '', 'daily_limit': 35, 'email': 'outreach@apnagang.com', 'from_name': 'Shiksha Talent', 'health_score': 100, 'id': 9, 'last_used': '2026-05-14 15:25:36.882733', 'reply_to': 'replies@apnagang.com', 'sent_today': 0, 'signature': '', 'smtp_port': 587, 'smtp_server': 'smtp.hostinger.com', 'warmup_stage': 3}]]
 OK   200 Add SMTP account [success=True]
 OK   200 SMTP test [smtp_server=smtp.hostinger.com]
 OK   200 Reset SMTP today [success=True]

@@ -58,12 +58,14 @@ def find_thread_by_email(sender_email, subject, in_reply_to=None):
             conn.close()
             return msg['thread_id']
         # Also try matching tracking_id in emails_sent (our sent emails use tracking_id as message_id)
+        clean_reply_to = in_reply_to.strip('<>').replace('@outreachos', '')
         sent = conn.execute("""
             SELECT es.contact_id, es.campaign_id, es.subject
             FROM emails_sent es
-            WHERE es.tracking_id = ? AND es.status = 'sent'
+            WHERE (es.tracking_id = ? OR es.tracking_id = ?)
+            AND es.status = 'sent'
             LIMIT 1
-        """, (in_reply_to.strip('<>'),)).fetchone()
+        """, (clean_reply_to, in_reply_to.strip('<>'))).fetchone()
         if sent:
             thread = conn.execute("""
                 SELECT id FROM threads
