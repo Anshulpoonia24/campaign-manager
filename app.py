@@ -2603,7 +2603,17 @@ def send_campaign_ai(campaign_id):
 
             try:
                 tracking_id = str(uuid.uuid4())
-                tracked_body = inject_tracking_pixel(body, tracking_id)
+                # Append SMTP account signature
+                from services.smtp_rotation import append_signature
+                _sig = ''
+                try:
+                    _sig_conn = get_db()
+                    _sig_row = _sig_conn.execute("SELECT signature FROM smtp_accounts WHERE email=?", (from_email,)).fetchone()
+                    if _sig_row: _sig = _sig_row['signature'] or ''
+                    _sig_conn.close()
+                except Exception: pass
+                body_with_sig = append_signature(body, _sig)
+                tracked_body = inject_tracking_pixel(body_with_sig, tracking_id)
 
                 msg = EmailMessage()
                 msg['Subject'] = subject
