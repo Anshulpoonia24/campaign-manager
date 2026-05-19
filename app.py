@@ -3071,7 +3071,7 @@ def inbox_thread(thread_id):
 def api_update_thread_status(thread_id):
     from services.inbox_service import update_thread_status
     status = request.json.get('status')
-    if status not in ['active', 'interested', 'closed', 'booked', 'ignored']:
+    if status not in ['active', 'interested', 'meeting', 'closed', 'booked', 'ignored']:
         return jsonify({'success': False, 'error': 'Invalid status'})
     update_thread_status(thread_id, status)
     return jsonify({'success': True})

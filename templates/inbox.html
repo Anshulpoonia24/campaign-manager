@@ -747,6 +747,11 @@ function filterThreads(q) {
 function checkReplies(btn) {
   if(btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
   fetch('/api/check_replies',{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(d.queued && d.task_id) {
+      // Poll task until done then reload
+      pollTask(d.task_id, btn);
+      return;
+    }
     if(btn) { btn.disabled=false; btn.innerHTML='<i class="fas fa-sync-alt" style="font-size:10px;"></i>'; }
     if(d.logged>0) location.reload();
     else {
@@ -755,6 +760,28 @@ function checkReplies(btn) {
     }
   }).catch(()=>{ if(btn){btn.disabled=false;btn.innerHTML='<i class="fas fa-sync-alt" style="font-size:10px;"></i>';} });
 }
+
+function pollTask(taskId, btn, attempts) {
+  attempts = attempts || 0;
+  if(attempts > 15) { if(btn){btn.disabled=false;btn.innerHTML='<i class="fas fa-sync-alt" style="font-size:10px;"></i>';} return; }
+  setTimeout(()=>{
+    fetch('/api/task_status/'+taskId).then(r=>r.json()).then(d=>{
+      if(d.state==='SUCCESS') { location.reload(); }
+      else if(d.state==='FAILURE') { if(btn){btn.disabled=false;btn.innerHTML='<i class="fas fa-sync-alt" style="font-size:10px;"></i>';} }
+      else { pollTask(taskId, btn, attempts+1); }
+    }).catch(()=>{ if(btn){btn.disabled=false;btn.innerHTML='<i class="fas fa-sync-alt" style="font-size:10px;"></i>';} });
+  }, 2000);
+}
+
+// Auto-poll for new messages every 30s
+setInterval(()=>{
+  fetch('/api/inbox/stats').then(r=>r.json()).then(d=>{
+    const badge = document.getElementById('threadCountBadge');
+    const currentCount = parseInt(badge.textContent)||0;
+    if(d.total > currentCount || d.unread > 0) location.reload();
+    document.title = (d.unread>0?`(${d.unread}) `:'') + 'Inbox — AI Sales Command Center';
+  }).catch(()=>{});
+}, 30000);
 
 // ── LOAD INBOX STATS ──
 fetch('/api/inbox/stats').then(r=>r.json()).then(d=>{
