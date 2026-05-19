@@ -3186,27 +3186,29 @@ def api_send_reply(thread_id):
         return jsonify({'success': False, 'error': 'No active SMTP account'})
     # Append signature if available
     full_body = body
-    smtp = dict(smtp_row)
-    sig = smtp.get('signature', '') or ''
+    smtp_keys = smtp_row.keys()
+    sig = smtp_row['signature'] if 'signature' in smtp_keys else ''
     if sig:
         full_body += '\n\n' + sig
+    from_name = smtp_row['from_name'] if 'from_name' in smtp_keys else ''
+    smtp_email = smtp_row['email']
     try:
         msg = MIMEMultipart('alternative')
-        msg['From'] = f"{smtp['from_name']} <{smtp['email']}>" if smtp.get('from_name') else smtp['email']
+        msg['From'] = f"{from_name} <{smtp_email}>" if from_name else smtp_email
         msg['To'] = to_email
         msg['Subject'] = subject
         html_body = full_body.replace('\n', '<br>')
         msg.attach(MIMEText(html_body, 'html'))
         server = smtplib.SMTP(smtp_row['host'], int(smtp_row['port']))
         server.starttls()
-        server.login(smtp_row['email'], smtp_row['password'])
-        server.sendmail(smtp_row['email'], to_email, msg.as_string())
+        server.login(smtp_email, smtp_row['password'])
+        server.sendmail(smtp_email, to_email, msg.as_string())
         server.quit()
         # Log message in thread
         conn.execute("""
             INSERT INTO messages (thread_id, direction, body, sender_email, created_at)
             VALUES (?, 'outgoing', ?, ?, datetime('now'))
-        """, (thread_id, full_body, smtp_row['email']))
+        """, (thread_id, full_body, smtp_email))
         conn.execute("UPDATE threads SET last_message_at=datetime('now') WHERE id=?", (thread_id,))
         conn.commit()
         conn.close()
