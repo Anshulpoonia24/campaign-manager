@@ -544,6 +544,7 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_contacts_lead_score ON contacts(lead_score)",
         "CREATE INDEX IF NOT EXISTS idx_contacts_workspace_industry ON contacts(workspace_id, industry)",
         # Campaign execution columns
+        "ALTER TABLE campaigns ADD COLUMN last_heartbeat TIMESTAMP",
         "ALTER TABLE campaigns ADD COLUMN job_status TEXT DEFAULT 'draft'",
         "ALTER TABLE campaigns ADD COLUMN started_at TIMESTAMP",
         "ALTER TABLE campaigns ADD COLUMN completed_at TIMESTAMP",
@@ -2734,6 +2735,19 @@ def send_progress_page(campaign_id):
     campaign = conn.execute('SELECT * FROM campaigns WHERE id=?', (campaign_id,)).fetchone()
     conn.close()
     return render_template('send_progress.html', campaign_id=campaign_id, campaign=campaign)
+
+
+@app.route('/campaign/<int:campaign_id>/status')
+@login_required
+def campaign_status_page(campaign_id):
+    """Dedicated live campaign execution status page."""
+    conn = get_db()
+    campaign = conn.execute('SELECT * FROM campaigns WHERE id=?', (campaign_id,)).fetchone()
+    conn.close()
+    if not campaign:
+        flash('Campaign not found', 'error')
+        return redirect(url_for('campaigns_list'))
+    return render_template('campaign_status.html', campaign_id=campaign_id, campaign=campaign)
 
 
 # ==============================

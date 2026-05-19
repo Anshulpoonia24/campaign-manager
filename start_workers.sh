@@ -55,7 +55,7 @@ start_imap_worker() {
 start_email_worker() {
     echo "[WORKER] Starting send_email_queue worker (concurrency=2, priority=9)..."
     celery -A celery_app worker \
-        --queues=send_email_queue \
+        --queues=send_email_queue,celery \
         --concurrency=2 \
         --loglevel=info \
         --logfile="$LOG_DIR/worker_email.log" \

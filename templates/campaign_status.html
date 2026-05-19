@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Status — {{ campaign.name }} — OutreachOS</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+:root {
+  --cs-bg:#f8f9ff;--cs-card:#ffffff;--cs-border:#e5e7eb;
+  --cs-indigo:#6366f1;--cs-violet:#8b5cf6;--cs-green:#10b981;
+  --cs-amber:#f59e0b;--cs-red:#ef4444;--cs-blue:#3b82f6;
+  --cs-gray:#6b7280;--cs-text:#0f172a;--cs-muted:#9ca3af;
+  --cs-radius:12px;--cs-shadow:0 1px 4px rgba(15,23,42,0.06);
+  --cs-shadow-lg:0 4px 16px rgba(15,23,42,0.10);
+}
+body{background:var(--cs-bg);font-family:'Inter',sans-serif;color:var(--cs-text);}
+.cs-main{padding:24px 28px;min-height:100vh;}
+.cs-card{background:var(--cs-card);border:1px solid var(--cs-border);border-radius:var(--cs-radius);box-shadow:var(--cs-shadow);}
+.cs-grid{display:grid;grid-template-columns:1fr 310px;gap:20px;align-items:start;}
+@media(max-width:1100px){.cs-grid{grid-template-columns:1fr;}}
+.cs-section-label{font-size:10.5px;font-weight:700;color:var(--cs-muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:12px;}
+.cs-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;background:var(--cs-card);border:1px solid var(--cs-border);border-radius:var(--cs-radius);padding:16px 22px;margin-bottom:20px;box-shadow:var(--cs-shadow);}
+.cs-header-left{display:flex;align-items:center;gap:14px;min-width:0;}
+.cs-header-icon{width:42px;height:42px;border-radius:10px;flex-shrink:0;background:linear-gradient(135deg,#eef2ff,#f5f3ff);display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--cs-indigo);}
+.cs-header-title{font-size:16px;font-weight:800;color:var(--cs-text);letter-spacing:-0.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px;}
+.cs-header-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:3px;}
+.cs-meta-chip{font-size:11px;color:var(--cs-muted);font-weight:500;display:flex;align-items:center;gap:4px;}
+.cs-header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.cs-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;white-space:nowrap;}
+.cs-badge-running{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;}
+.cs-badge-queued{background:#fefce8;color:#854d0e;border:1px solid #fde68a;}
+.cs-badge-paused{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}
+.cs-badge-completed{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;}
+.cs-badge-failed{background:#fef2f2;color:#dc2626;border:1px solid #fecaca;}
+.cs-badge-cancelled{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;}
+.cs-badge-stalled{background:#fef2f2;color:#dc2626;border:1px solid #fecaca;}
+.cs-badge-draft{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;}
+.cs-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:600;border:1px solid var(--cs-border);background:var(--cs-card);color:var(--cs-gray);cursor:pointer;transition:all 0.15s;text-decoration:none;}
+.cs-btn:hover{background:#f8fafc;color:var(--cs-text);}
+.cs-btn-primary{background:linear-gradient(135deg,var(--cs-indigo),var(--cs-violet));color:#fff;border-color:transparent;box-shadow:0 2px 8px rgba(99,102,241,0.25);}
+.cs-btn-primary:hover{opacity:0.88;color:#fff;}
+.cs-btn-danger{color:var(--cs-red);border-color:#fecaca;}.cs-btn-danger:hover{background:#fef2f2;}
+.cs-btn-amber{color:var(--cs-amber);border-color:#fde68a;}.cs-btn-amber:hover{background:#fffbeb;}
+.cs-btn-green{color:var(--cs-green);border-color:#bbf7d0;}.cs-btn-green:hover{background:#f0fdf4;}
+.cs-progress-wrap{background:var(--cs-card);border:1px solid var(--cs-border);border-radius:var(--cs-radius);padding:20px 22px;margin-bottom:16px;box-shadow:var(--cs-shadow);}
+.cs-progress-track{height:10px;background:#f1f5f9;border-radius:99px;overflow:hidden;margin-bottom:12px;}
+.cs-progress-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--cs-indigo),var(--cs-violet));transition:width 0.6s ease;position:relative;overflow:hidden;}
+.cs-progress-fill::after{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.3),transparent);animation:cs-shimmer 1.8s infinite;}
+@keyframes cs-shimmer{to{left:100%;}}
+.cs-progress-fill.done{background:linear-gradient(90deg,var(--cs-green),#34d399);}
+.cs-progress-fill.done::after{display:none;}
+.cs-progress-meta{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.cs-progress-pct{font-size:22px;font-weight:800;color:var(--cs-indigo);letter-spacing:-0.5px;}
+.cs-progress-eta{font-size:12px;color:var(--cs-muted);font-weight:500;}
+.cs-stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;}
+@media(max-width:900px){.cs-stats-grid{grid-template-columns:repeat(3,1fr);}}
+.cs-stat-card{background:var(--cs-card);border:1px solid var(--cs-border);border-radius:var(--cs-radius);padding:16px 14px;text-align:center;box-shadow:var(--cs-shadow);}
+.cs-stat-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;margin:0 auto 10px;}
+.cs-stat-val{font-size:26px;font-weight:800;letter-spacing:-0.8px;line-height:1;margin-bottom:4px;}
+.cs-stat-lbl{font-size:10.5px;font-weight:600;color:var(--cs-muted);text-transform:uppercase;letter-spacing:0.4px;}
+.cs-feed-wrap{background:#0f172a;border:1px solid #1e293b;border-radius:var(--cs-radius);margin-bottom:20px;overflow:hidden;box-shadow:var(--cs-shadow-lg);}
+.cs-feed-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#1e293b;border-bottom:1px solid #334155;}
+.cs-feed-title{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;display:flex;align-items:center;gap:7px;}
+.cs-feed-live{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;color:#34d399;}
+.cs-feed-body{height:280px;overflow-y:auto;padding:10px 0;font-family:'Courier New','Consolas',monospace;font-size:12px;line-height:1.7;scroll-behavior:smooth;}
+.cs-feed-body::-webkit-scrollbar{width:4px;}.cs-feed-body::-webkit-scrollbar-track{background:#0f172a;}.cs-feed-body::-webkit-scrollbar-thumb{background:#334155;border-radius:2px;}
+.cs-log-row{display:flex;align-items:baseline;gap:10px;padding:2px 16px;transition:background 0.1s;}
+.cs-log-row:hover{background:rgba(255,255,255,0.03);}
+.cs-log-ts{color:#475569;font-size:11px;flex-shrink:0;min-width:68px;}
+.cs-log-icon{flex-shrink:0;font-size:10px;width:14px;text-align:center;}
+.cs-log-msg{color:#e2e8f0;flex:1;word-break:break-word;}
+.cs-log-smtp{color:#475569;font-size:10.5px;flex-shrink:0;}
+.cs-log-success .cs-log-icon{color:#34d399;}.cs-log-success .cs-log-msg{color:#86efac;}
+.cs-log-error .cs-log-icon{color:#f87171;}.cs-log-error .cs-log-msg{color:#fca5a5;}
+.cs-log-warning .cs-log-icon{color:#fbbf24;}.cs-log-warning .cs-log-msg{color:#fde68a;}
+.cs-log-info .cs-log-icon{color:#60a5fa;}.cs-log-info .cs-log-msg{color:#bfdbfe;}
+.cs-feed-empty{text-align:center;padding:40px 20px;color:#475569;font-size:12px;}
+.cs-table-wrap{background:var(--cs-card);border:1px solid var(--cs-border);border-radius:var(--cs-radius);overflow:hidden;box-shadow:var(--cs-shadow);margin-bottom:20px;}
+.cs-table-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--cs-border);background:#fafafa;}
+.cs-table-scroll{overflow-x:auto;max-height:340px;overflow-y:auto;}
+.cs-table-scroll::-webkit-scrollbar{height:4px;width:4px;}.cs-table-scroll::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:2px;}
+table.cs-tbl{width:100%;border-collapse:collapse;font-size:12.5px;}
+table.cs-tbl th{padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--cs-muted);text-transform:uppercase;letter-spacing:0.5px;background:#f8fafc;border-bottom:1px solid var(--cs-border);white-space:nowrap;position:sticky;top:0;z-index:1;}
+table.cs-tbl td{padding:9px 12px;border-bottom:1px solid #f8fafc;vertical-align:middle;}
+table.cs-tbl tr:hover td{background:#fafbff;}
+.cs-pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap;}
+.cs-pill-sent{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;}
+.cs-pill-failed{background:#fef2f2;color:#dc2626;border:1px solid #fecaca;}
+.cs-pill-pending{background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;}
+.cs-smtp-chip{font-size:10.5px;background:#f1f5f9;color:#475569;padding:2px 7px;border-radius:99px;white-space:nowrap;}
+.cs-right-card{background:var(--cs-card);border:1px solid var(--cs-border);border-radius:var(--cs-radius);padding:16px;box-shadow:var(--cs-shadow);margin-bottom:16px;}
+.cs-right-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f8fafc;font-size:12.5px;}
+.cs-right-row:last-child{border-bottom:none;}
+.cs-right-label{color:var(--cs-gray);font-weight:500;}
+.cs-right-val{font-weight:700;color:var(--cs-text);}
+.cs-right-val.green{color:var(--cs-green);}.cs-right-val.amber{color:var(--cs-amber);}.cs-right-val.red{color:var(--cs-red);}.cs-right-val.indigo{color:var(--cs-indigo);}
+.cs-mini-bar{height:5px;background:#f1f5f9;border-radius:99px;overflow:hidden;margin-top:4px;}
+.cs-mini-fill{height:100%;border-radius:99px;transition:width 0.5s ease;}
+.cs-inbox-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#f8fafc;margin-bottom:6px;border:1px solid var(--cs-border);}
+.cs-inbox-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.cs-inbox-email{font-size:11.5px;font-weight:600;color:var(--cs-text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cs-inbox-usage{font-size:10.5px;color:var(--cs-muted);white-space:nowrap;}
+.cs-complete-wrap{background:var(--cs-card);border:1px solid var(--cs-border);border-radius:var(--cs-radius);padding:40px 32px;text-align:center;box-shadow:var(--cs-shadow-lg);margin-top:20px;}
+.cs-complete-icon{width:72px;height:72px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 20px;}
+.cs-complete-title{font-size:22px;font-weight:800;letter-spacing:-0.5px;margin-bottom:6px;}
+.cs-complete-sub{font-size:14px;color:var(--cs-muted);margin-bottom:28px;}
+.cs-complete-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px;}
+@media(max-width:700px){.cs-complete-grid{grid-template-columns:repeat(2,1fr);}}
+.cs-complete-metric{background:#f8fafc;border:1px solid var(--cs-border);border-radius:10px;padding:14px 10px;text-align:center;}
+.cs-complete-metric .val{font-size:24px;font-weight:800;letter-spacing:-0.5px;}
+.cs-complete-metric .lbl{font-size:10.5px;font-weight:600;color:var(--cs-muted);text-transform:uppercase;letter-spacing:0.4px;margin-top:3px;}
+.cs-complete-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+.cs-pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--cs-green);animation:cs-pulse 1.5s ease-in-out infinite;}
+@keyframes cs-pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.5;transform:scale(0.8);}}
+.cs-pulse.amber{background:var(--cs-amber);}.cs-pulse.red{background:var(--cs-red);}.cs-pulse.gray{background:var(--cs-muted);animation:none;}
+.cs-spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(99,102,241,0.2);border-top:2px solid var(--cs-indigo);border-radius:50%;animation:cs-spin 0.7s linear infinite;}
+@keyframes cs-spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+<div class="cs-main">
+  <!-- HEADER -->
+  <div class="cs-header">
+    <div class="cs-header-left">
+      <div class="cs-header-icon"><i class="fas fa-satellite-dish"></i></div>
+      <div>
+        <div class="cs-header-title" id="hdrTitle">{{ campaign.name }}</div>
+        <div class="cs-header-meta">
+          <span class="cs-meta-chip"><i class="fas fa-clock"></i> <span id="hdrElapsed">0s</span></span>
+          <span class="cs-meta-chip"><i class="fas fa-bolt"></i> <span id="hdrMode">{{ campaign.send_mode or 'template' }}</span></span>
+          <span class="cs-meta-chip"><i class="fas fa-users"></i> <span id="hdrTotal">{{ campaign.total_contacts or 0 }}</span> contacts</span>
+        </div>
+      </div>
+    </div>
+    <div class="cs-header-actions">
+      <span class="cs-badge cs-badge-{{ campaign.job_status or 'draft' }}" id="hdrBadge">
+        <span class="cs-pulse" id="hdrPulse"></span>
+        <span id="hdrStatus">{{ campaign.job_status or 'draft' }}</span>
+      </span>
+      <button class="cs-btn cs-btn-amber" id="btnPause" onclick="controlAction('pause')" style="display:none;"><i class="fas fa-pause"></i> Pause</button>
+      <button class="cs-btn cs-btn-green" id="btnResume" onclick="controlAction('resume')" style="display:none;"><i class="fas fa-play"></i> Resume</button>
+      <button class="cs-btn cs-btn-danger" id="btnCancel" onclick="controlAction('cancel')" style="display:none;"><i class="fas fa-stop"></i> Cancel</button>
+      <a class="cs-btn" href="/campaigns"><i class="fas fa-arrow-left"></i> Back</a>
+    </div>
+  </div>
+
+  <!-- PROGRESS BAR -->
+  <div class="cs-progress-wrap">
+    <div class="cs-progress-track"><div class="cs-progress-fill" id="progFill" style="width:0%"></div></div>
+    <div class="cs-progress-meta">
+      <span class="cs-progress-pct" id="progPct">0%</span>
+      <span class="cs-progress-eta" id="progEta">ETA: calculating…</span>
+    </div>
+  </div>
+
+  <!-- STAT CARDS -->
+  <div class="cs-stats-grid">
+    <div class="cs-stat-card"><div class="cs-stat-icon" style="background:#eff6ff;color:#3b82f6;"><i class="fas fa-paper-plane"></i></div><div class="cs-stat-val" id="statSent" style="color:var(--cs-blue)">0</div><div class="cs-stat-lbl">Sent</div></div>
+    <div class="cs-stat-card"><div class="cs-stat-icon" style="background:#fef2f2;color:#ef4444;"><i class="fas fa-exclamation-triangle"></i></div><div class="cs-stat-val" id="statFailed" style="color:var(--cs-red)">0</div><div class="cs-stat-lbl">Failed</div></div>
+    <div class="cs-stat-card"><div class="cs-stat-icon" style="background:#f0fdf4;color:#10b981;"><i class="fas fa-envelope-open"></i></div><div class="cs-stat-val" id="statOpened" style="color:var(--cs-green)">0</div><div class="cs-stat-lbl">Opened</div></div>
+    <div class="cs-stat-card"><div class="cs-stat-icon" style="background:#faf5ff;color:#8b5cf6;"><i class="fas fa-reply"></i></div><div class="cs-stat-val" id="statReplied" style="color:var(--cs-violet)">0</div><div class="cs-stat-lbl">Replied</div></div>
+    <div class="cs-stat-card"><div class="cs-stat-icon" style="background:#f8fafc;color:#64748b;"><i class="fas fa-hourglass-half"></i></div><div class="cs-stat-val" id="statPending" style="color:var(--cs-gray)">0</div><div class="cs-stat-lbl">Pending</div></div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="cs-grid">
+    <div>
+      <!-- ACTIVITY FEED -->
+      <div class="cs-feed-wrap">
+        <div class="cs-feed-header">
+          <span class="cs-feed-title"><i class="fas fa-terminal"></i> Activity Feed</span>
+          <span class="cs-feed-live" id="feedLive"><span class="cs-pulse"></span> Live</span>
+        </div>
+        <div class="cs-feed-body" id="feedBody">
+          <div class="cs-feed-empty"><i class="fas fa-satellite-dish"></i><br>Waiting for activity…</div>
+        </div>
+      </div>
+
+      <!-- CONTACT TABLE -->
+      <div class="cs-table-wrap">
+        <div class="cs-table-header">
+          <span class="cs-section-label" style="margin:0">Contact Execution Log</span>
+          <span style="font-size:11px;color:var(--cs-muted)" id="tblCount">0 records</span>
+        </div>
+        <div class="cs-table-scroll">
+          <table class="cs-tbl">
+            <thead><tr><th>Contact</th><th>Email</th><th>Status</th><th>SMTP</th><th>Time</th></tr></thead>
+            <tbody id="tblBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div>
+      <div class="cs-right-card">
+        <div class="cs-section-label">SMTP Inboxes</div>
+        <div id="smtpPanel"><span style="font-size:12px;color:var(--cs-muted)">Loading…</span></div>
+      </div>
+      <div class="cs-right-card">
+        <div class="cs-section-label">Execution Info</div>
+        <div class="cs-right-row"><span class="cs-right-label">Started</span><span class="cs-right-val" id="infoStarted">—</span></div>
+        <div class="cs-right-row"><span class="cs-right-label">Last Heartbeat</span><span class="cs-right-val" id="infoHB">—</span></div>
+        <div class="cs-right-row"><span class="cs-right-label">Send Mode</span><span class="cs-right-val" id="infoMode">—</span></div>
+        <div class="cs-right-row"><span class="cs-right-label">Completion</span><span class="cs-right-val indigo" id="infoComp">0%</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPLETION SCREEN (hidden) -->
+  <div id="completeWrap" style="display:none">
+    <div class="cs-complete-wrap">
+      <div class="cs-complete-icon" id="compIcon" style="background:#f0fdf4;color:#10b981;"><i class="fas fa-check-circle"></i></div>
+      <div class="cs-complete-title" id="compTitle">Campaign Completed</div>
+      <div class="cs-complete-sub" id="compSub">All contacts have been processed.</div>
+      <div class="cs-complete-grid">
+        <div class="cs-complete-metric"><div class="val" id="compSent" style="color:var(--cs-blue)">0</div><div class="lbl">Sent</div></div>
+        <div class="cs-complete-metric"><div class="val" id="compFailed" style="color:var(--cs-red)">0</div><div class="lbl">Failed</div></div>
+        <div class="cs-complete-metric"><div class="val" id="compOpened" style="color:var(--cs-green)">0</div><div class="lbl">Opened</div></div>
+        <div class="cs-complete-metric"><div class="val" id="compReplied" style="color:var(--cs-violet)">0</div><div class="lbl">Replied</div></div>
+      </div>
+      <div class="cs-complete-actions">
+        <a class="cs-btn cs-btn-primary" href="/campaigns"><i class="fas fa-arrow-left"></i> All Campaigns</a>
+        <a class="cs-btn" href="/campaign/{{ campaign.id }}/analytics"><i class="fas fa-chart-bar"></i> Analytics</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CID = {{ campaign.id }};
+let polling = null;
+let startedAt = null;
+let elapsedTimer = null;
+let lastLogCount = 0;
+
+function init() {
+  poll();
+  polling = setInterval(poll, 3000);
+  elapsedTimer = setInterval(updateElapsed, 1000);
+}
+
+async function poll() {
+  try {
+    const r = await fetch(`/api/campaign/${CID}/status`);
+    if (!r.ok) return;
+    const d = await r.json();
+    render(d);
+  } catch(e) {}
+}
+
+function render(d) {
+  // Status badge
+  const badge = document.getElementById('hdrBadge');
+  badge.className = `cs-badge cs-badge-${d.job_status}`;
+  document.getElementById('hdrStatus').textContent = d.job_status;
+  const pulse = document.getElementById('hdrPulse');
+  pulse.className = 'cs-pulse' + (d.job_status==='running'?'':d.job_status==='queued'?' amber':' gray');
+
+  // Controls
+  document.getElementById('btnPause').style.display = d.job_status==='running'?'':'none';
+  document.getElementById('btnResume').style.display = d.job_status==='paused'?'':'none';
+  document.getElementById('btnCancel').style.display = ['running','paused','queued'].includes(d.job_status)?'':'none';
+
+  // Progress
+  const pct = d.pct || 0;
+  const fill = document.getElementById('progFill');
+  fill.style.width = pct + '%';
+  fill.className = 'cs-progress-fill' + (d.completed?' done':'');
+  document.getElementById('progPct').textContent = pct + '%';
+  document.getElementById('progEta').textContent = d.completed ? 'Completed' : `ETA: ${d.eta}`;
+
+  // Stats
+  document.getElementById('statSent').textContent = d.sent;
+  document.getElementById('statFailed').textContent = d.failed;
+  document.getElementById('statOpened').textContent = d.opened;
+  document.getElementById('statReplied').textContent = d.replied;
+  document.getElementById('statPending').textContent = d.pending;
+
+  // Started time
+  if (d.started_at && !startedAt) {
+    startedAt = new Date(d.started_at);
+  }
+
+  // Right panel info
+  document.getElementById('infoStarted').textContent = d.started_at ? new Date(d.started_at).toLocaleTimeString() : '—';
+  document.getElementById('infoHB').textContent = d.last_heartbeat ? new Date(d.last_heartbeat).toLocaleTimeString() : '—';
+  document.getElementById('infoMode').textContent = d.send_mode || '—';
+  document.getElementById('infoComp').textContent = pct + '%';
+
+  // Feed
+  renderFeed(d.logs || []);
+
+  // Table
+  renderTable(d.contacts || []);
+
+  // SMTP panel
+  renderSMTP(d.smtp_accounts || []);
+
+  // Completion
+  if (d.completed) {
+    showCompletion(d);
+    clearInterval(polling);
+    document.getElementById('feedLive').innerHTML = '<span style="color:#64748b">● Ended</span>';
+  }
+}
+
+function renderFeed(logs) {
+  if (!logs.length) return;
+  const body = document.getElementById('feedBody');
+  if (logs.length !== lastLogCount) {
+    lastLogCount = logs.length;
+    const reversed = [...logs].reverse();
+    body.innerHTML = reversed.map(l => {
+      const cls = l.level==='success'?'cs-log-success':l.level==='error'?'cs-log-error':l.level==='warning'?'cs-log-warning':'cs-log-info';
+      const icon = l.level==='success'?'fa-check-circle':l.level==='error'?'fa-times-circle':l.level==='warning'?'fa-exclamation-circle':'fa-info-circle';
+      const ts = l.created_at ? new Date(l.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+      return `<div class="cs-log-row ${cls}"><span class="cs-log-ts">${ts}</span><i class="fas ${icon} cs-log-icon"></i><span class="cs-log-msg">${esc(l.message)}</span>${l.smtp_email?`<span class="cs-log-smtp">${l.smtp_email.split('@')[0]}</span>`:''}</div>`;
+    }).join('');
+    body.scrollTop = body.scrollHeight;
+  }
+}
+
+function renderTable(contacts) {
+  const tbody = document.getElementById('tblBody');
+  document.getElementById('tblCount').textContent = contacts.length + ' records';
+  tbody.innerHTML = contacts.map(c => {
+    const pill = c.status==='sent'?'cs-pill-sent':c.status==='failed'||c.status==='bounced'?'cs-pill-failed':'cs-pill-pending';
+    const time = c.sent_at ? new Date(c.sent_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '—';
+    return `<tr><td style="font-weight:600">${esc(c.name||'—')}</td><td>${esc(c.email)}</td><td><span class="cs-pill ${pill}"><i class="fas fa-circle" style="font-size:5px"></i> ${c.status}</span></td><td><span class="cs-smtp-chip">${c.smtp_used?c.smtp_used.split('@')[0]:'—'}</span></td><td style="color:var(--cs-muted);font-size:11.5px">${time}</td></tr>`;
+  }).join('');
+}
+
+function renderSMTP(accounts) {
+  const panel = document.getElementById('smtpPanel');
+  if (!accounts.length) { panel.innerHTML = '<span style="font-size:12px;color:var(--cs-muted)">No active inboxes</span>'; return; }
+  panel.innerHTML = accounts.map(a => {
+    const pct = a.daily_limit ? Math.round(a.sent_today/a.daily_limit*100) : 0;
+    const color = pct > 80 ? 'var(--cs-red)' : pct > 50 ? 'var(--cs-amber)' : 'var(--cs-green)';
+    return `<div class="cs-inbox-row"><span class="cs-inbox-dot" style="background:${color}"></span><span class="cs-inbox-email">${a.email.split('@')[0]}</span><span class="cs-inbox-usage">${a.sent_today}/${a.daily_limit}</span></div>`;
+  }).join('');
+}
+
+function showCompletion(d) {
+  document.getElementById('completeWrap').style.display = 'block';
+  document.getElementById('compSent').textContent = d.sent;
+  document.getElementById('compFailed').textContent = d.failed;
+  document.getElementById('compOpened').textContent = d.opened;
+  document.getElementById('compReplied').textContent = d.replied;
+  if (d.job_status === 'failed' || d.job_status === 'stalled') {
+    document.getElementById('compIcon').style.background = '#fef2f2';
+    document.getElementById('compIcon').style.color = '#ef4444';
+    document.getElementById('compIcon').innerHTML = '<i class="fas fa-exclamation-circle"></i>';
+    document.getElementById('compTitle').textContent = d.job_status === 'stalled' ? 'Campaign Stalled' : 'Campaign Failed';
+    document.getElementById('compSub').textContent = 'Check the activity feed for details.';
+  } else if (d.job_status === 'cancelled') {
+    document.getElementById('compIcon').style.background = '#f1f5f9';
+    document.getElementById('compIcon').style.color = '#475569';
+    document.getElementById('compIcon').innerHTML = '<i class="fas fa-ban"></i>';
+    document.getElementById('compTitle').textContent = 'Campaign Cancelled';
+    document.getElementById('compSub').textContent = `Stopped after sending ${d.sent} emails.`;
+  }
+}
+
+function updateElapsed() {
+  if (!startedAt) return;
+  const s = Math.floor((Date.now() - startedAt.getTime()) / 1000);
+  const m = Math.floor(s/60), h = Math.floor(m/60);
+  document.getElementById('hdrElapsed').textContent = h ? `${h}h ${m%60}m` : m ? `${m}m ${s%60}s` : `${s}s`;
+}
+
+async function controlAction(action) {
+  try {
+    await fetch(`/api/campaign/${CID}/${action}`, {method:'POST'});
+    setTimeout(poll, 500);
+  } catch(e) {}
+}
+
+function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+init();
+</script>
+</body>
+</html>

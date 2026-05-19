@@ -4,7 +4,7 @@ services/campaign_executor.py — Backend Campaign Execution Engine
 Fully browser-independent. Survives logout, refresh, restart.
 All state persisted in DB. Workers pick up from where they left off.
 
-Job statuses: draft → queued → running → paused → completed → failed → cancelled
+Job statuses: draft → queued → running → paused → completed → failed → cancelled → stalled
 """
 import uuid
 import smtplib
@@ -24,6 +24,7 @@ class JobStatus:
     COMPLETED = 'completed'
     FAILED    = 'failed'
     CANCELLED = 'cancelled'
+    STALLED   = 'stalled'
 
 class ContactStatus:
     PENDING      = 'pending'
@@ -36,11 +37,15 @@ class ContactStatus:
     UNSUBSCRIBED = 'unsubscribed'
 
 
+# ── STALL DETECTION ───────────────────────────────────────────
+STALL_TIMEOUT_SECONDS = 60
+
+
 # ── LOGGING ───────────────────────────────────────────────────
 
 def log(campaign_id: int, message: str, level: str = 'info',
         contact_id: int = None, smtp_email: str = '', workspace_id: int = 1):
-    """Persist a log entry to campaign_logs table."""
+    """Persist a log entry to campaign_logs table + emit to stdout."""
     try:
         conn = get_db()
         conn.execute("""
@@ -52,30 +57,86 @@ def log(campaign_id: int, message: str, level: str = 'info',
         conn.close()
     except Exception as e:
         error_logger.error(f'[EXEC] log write failed: {e}')
+    # Also emit to app_logger so worker stdout shows progress
+    app_logger.info(f'[CAMPAIGN {campaign_id}] [{level}] {message}')
+
+
+# ── HEARTBEAT ─────────────────────────────────────────────────
+
+def _update_heartbeat(campaign_id: int):
+    """Update heartbeat timestamp to prove execution is alive."""
+    try:
+        conn = get_db()
+        conn.execute(
+            "UPDATE campaigns SET last_heartbeat=? WHERE id=?",
+            (datetime.now(), campaign_id)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 # ── CAMPAIGN STATE ────────────────────────────────────────────
 
 def set_campaign_status(campaign_id: int, status: str,
                         started_at: datetime = None, completed_at: datetime = None):
+    app_logger.info(f'[CAMPAIGN {campaign_id}] Status -> {status}')
     conn = get_db()
+    now = datetime.now()
     if started_at:
         conn.execute(
-            "UPDATE campaigns SET job_status=?, started_at=? WHERE id=?",
-            (status, started_at, campaign_id)
+            "UPDATE campaigns SET job_status=?, started_at=?, last_heartbeat=? WHERE id=?",
+            (status, started_at, now, campaign_id)
         )
     elif completed_at:
         conn.execute(
-            "UPDATE campaigns SET job_status=?, completed_at=? WHERE id=?",
-            (status, completed_at, campaign_id)
+            "UPDATE campaigns SET job_status=?, completed_at=?, last_heartbeat=? WHERE id=?",
+            (status, completed_at, now, campaign_id)
         )
     else:
         conn.execute(
-            "UPDATE campaigns SET job_status=? WHERE id=?",
-            (status, campaign_id)
+            "UPDATE campaigns SET job_status=?, last_heartbeat=? WHERE id=?",
+            (status, now, campaign_id)
         )
     conn.commit()
     conn.close()
+
+
+def check_stalled_campaigns():
+    """
+    Detect campaigns stuck in 'queued' or 'running' with no heartbeat update
+    for STALL_TIMEOUT_SECONDS. Mark them as 'stalled'.
+    Called as side-effect from the polling endpoint.
+    """
+    try:
+        conn = get_db()
+        stalled = conn.execute("""
+            SELECT id, job_status, last_heartbeat FROM campaigns
+            WHERE job_status IN ('queued', 'running')
+              AND last_heartbeat IS NOT NULL
+              AND (strftime('%s','now') - strftime('%s', last_heartbeat)) > ?
+        """, (STALL_TIMEOUT_SECONDS,)).fetchall()
+        for camp in stalled:
+            try:
+                hb = datetime.fromisoformat(str(camp['last_heartbeat'])[:19])
+                elapsed = int((datetime.now() - hb).total_seconds())
+            except Exception:
+                elapsed = STALL_TIMEOUT_SECONDS
+            conn.execute(
+                "UPDATE campaigns SET job_status='stalled' WHERE id=?",
+                (camp['id'],)
+            )
+            conn.execute("""
+                INSERT INTO campaign_logs (campaign_id, workspace_id, level, message)
+                VALUES (?, 1, 'error', ?)
+            """, (camp['id'], f'Campaign stalled — no progress for {elapsed}s. Worker may have died.'))
+            app_logger.warning(f'[STALL] Campaign {camp["id"]} marked stalled after {elapsed}s')
+        if stalled:
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        error_logger.error(f'[STALL] check_stalled_campaigns error: {e}')
 
 
 def update_campaign_counts(campaign_id: int):
@@ -99,6 +160,9 @@ def update_campaign_counts(campaign_id: int):
 
 def get_campaign_status(campaign_id: int) -> dict:
     """Get full campaign execution status for UI polling."""
+    # Side-effect: check for stalled campaigns
+    check_stalled_campaigns()
+
     conn = get_db()
     camp = conn.execute("SELECT * FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
     if not camp:
@@ -174,6 +238,14 @@ def get_campaign_status(campaign_id: int) -> dict:
         FROM smtp_accounts WHERE active=1
     """).fetchall()
 
+    # Heartbeat info
+    last_hb = None
+    try:
+        if camp['last_heartbeat']:
+            last_hb = str(camp['last_heartbeat'])
+    except Exception:
+        pass
+
     conn.close()
 
     return {
@@ -192,11 +264,12 @@ def get_campaign_status(campaign_id: int) -> dict:
         'eta':          eta_str,
         'started_at':   str(camp['started_at']) if camp['started_at'] else None,
         'completed_at': str(camp['completed_at']) if camp['completed_at'] else None,
+        'last_heartbeat': last_hb,
         'logs':         [dict(l) for l in logs],
         'contacts':     [dict(c) for c in contacts],
         'smtp_accounts':[dict(s) for s in smtp_accounts],
         'running':      camp['job_status'] == JobStatus.RUNNING,
-        'completed':    camp['job_status'] in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED),
+        'completed':    camp['job_status'] in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.STALLED),
     }
 
 
@@ -210,15 +283,15 @@ def launch_campaign(campaign_id: int, contact_ids: list, subject_template: str,
     Returns immediately — worker handles everything.
     """
     conn = get_db()
-    # Store execution params on campaign
+    now = datetime.now()
     conn.execute("""
         UPDATE campaigns
         SET job_status=?, total_contacts=?, send_mode=?,
             subject_template=?, body_template=?, attachment_path=?, started_at=?,
-            sent_count=0, failed_count=0
+            sent_count=0, failed_count=0, last_heartbeat=?
         WHERE id=?
     """, (JobStatus.QUEUED, len(contact_ids), send_mode,
-          subject_template, body_template, attachment_path, datetime.now(), campaign_id))
+          subject_template, body_template, attachment_path, now, now, campaign_id))
     conn.commit()
     conn.close()
 
@@ -236,19 +309,22 @@ def launch_campaign(campaign_id: int, contact_ids: list, subject_template: str,
                 queue='send_email_queue',
                 priority=9,
             )
-            log(campaign_id, f'Queued to Celery worker (task_id={result.id})',
+            log(campaign_id, f'Task dispatched to Celery (task_id={result.id})',
                 'info', workspace_id=workspace_id)
+            app_logger.info(f'[EXEC] Task queued to send_email_queue | campaign={campaign_id} task_id={result.id}')
             return {'success': True, 'mode': 'celery', 'task_id': result.id}
     except Exception as e:
         error_logger.warning(f'[EXEC] Celery unavailable: {e}')
+        log(campaign_id, f'Celery unavailable ({e}), falling back to thread',
+            'warning', workspace_id=workspace_id)
 
-    # Fallback: threading (still browser-independent — daemon=False keeps it alive)
+    # Fallback: threading (still browser-independent)
     import threading
     t = threading.Thread(
         target=_run_campaign_sync,
         args=(campaign_id, contact_ids, subject_template,
               body_template, send_mode, workspace_id, attachment_path),
-        daemon=False,  # CRITICAL: daemon=False survives even if main thread exits
+        daemon=False,
         name=f'campaign-{campaign_id}'
     )
     t.start()
@@ -257,14 +333,14 @@ def launch_campaign(campaign_id: int, contact_ids: list, subject_template: str,
     return {'success': True, 'mode': 'thread'}
 
 
-# ── SYNC EXECUTION (threading fallback) ──────────────────────
+# ── SYNC EXECUTION (threading fallback + celery worker) ──────
 
 def _run_campaign_sync(campaign_id: int, contact_ids: list,
                        subject_template: str, body_template: str,
                        send_mode: str, workspace_id: int,
                        attachment_path: str = ''):
     """
-    Execute campaign synchronously in a background thread.
+    Execute campaign synchronously.
     Fully resumable — checks DB status before each send.
     """
     from services.smtp_rotation import (
@@ -276,10 +352,14 @@ def _run_campaign_sync(campaign_id: int, contact_ids: list,
     set_campaign_status(campaign_id, JobStatus.RUNNING, started_at=datetime.now())
     log(campaign_id, f'Execution started — {len(contact_ids)} contacts',
         'success', workspace_id=workspace_id)
+    app_logger.info(f'[EXEC] _run_campaign_sync START | campaign={campaign_id} contacts={len(contact_ids)}')
 
     sent = failed = skipped = 0
 
     for i, contact_id in enumerate(contact_ids):
+        # Heartbeat every iteration
+        _update_heartbeat(campaign_id)
+
         # Check if paused/cancelled before each send
         conn = get_db()
         camp = conn.execute(
@@ -328,15 +408,22 @@ def _run_campaign_sync(campaign_id: int, contact_ids: list,
             return
 
         smtp_email = account['email']
+        log(campaign_id, f'Inbox selected: {smtp_email} for contact {i+1}/{len(contact_ids)}',
+            'info', contact_id=contact_id, smtp_email=smtp_email, workspace_id=workspace_id)
 
         # Build email content
         subject = subject_template.replace('{company}', contact['company'] or '').replace('{name}', contact['name'] or '')
 
         if send_mode == 'ai':
-            log(campaign_id, f'Generating AI email for {contact["name"]}',
+            log(campaign_id, f'AI generation started for {contact["name"]}',
                 'info', contact_id=contact_id, smtp_email=smtp_email, workspace_id=workspace_id)
             body = _generate_ai_body(contact, body_template, workspace_id)
-            if not body:
+            if body:
+                log(campaign_id, f'AI generation completed for {contact["name"]}',
+                    'info', contact_id=contact_id, workspace_id=workspace_id)
+            else:
+                log(campaign_id, f'AI fallback to template for {contact["name"]}',
+                    'warning', contact_id=contact_id, workspace_id=workspace_id)
                 body = body_template  # fallback to template
         else:
             body = body_template.replace('{company}', contact['company'] or '').replace('{name}', contact['name'] or '')
@@ -345,7 +432,7 @@ def _run_campaign_sync(campaign_id: int, contact_ids: list,
         body = append_signature(body, account.get('signature', ''))
 
         # Send
-        log(campaign_id, f'Sending to {contact["email"]} via {smtp_email}',
+        log(campaign_id, f'SMTP send started → {contact["email"]} via {smtp_email}',
             'info', contact_id=contact_id, smtp_email=smtp_email, workspace_id=workspace_id)
 
         success, error_msg = _send_one(
@@ -356,22 +443,22 @@ def _run_campaign_sync(campaign_id: int, contact_ids: list,
         if success:
             sent += 1
             mark_send_success(account['id'])
-            log(campaign_id, f'Delivered to {contact["email"]}',
+            log(campaign_id, f'SMTP send completed — delivered to {contact["email"]}',
                 'success', contact_id=contact_id, smtp_email=smtp_email, workspace_id=workspace_id)
         else:
             failed += 1
             mark_send_failure(account['id'])
-            log(campaign_id, f'Failed {contact["email"]}: {error_msg}',
+            log(campaign_id, f'SMTP send failed {contact["email"]}: {error_msg}',
                 'error', contact_id=contact_id, smtp_email=smtp_email, workspace_id=workspace_id)
 
-        # Update counts
+        # Update counts + heartbeat
         update_campaign_counts(campaign_id)
+        _update_heartbeat(campaign_id)
+        app_logger.info(f'[EXEC] campaign={campaign_id} progress {i+1}/{len(contact_ids)} sent={sent} failed={failed}')
 
         # Warmup delay (randomized 5–15s)
         import random
         delay = random.randint(5, 15)
-        log(campaign_id, f'Warmup delay {delay}s',
-            'info', workspace_id=workspace_id)
         time.sleep(delay)
 
     # Done
@@ -379,10 +466,11 @@ def _run_campaign_sync(campaign_id: int, contact_ids: list,
     log(campaign_id,
         f'Campaign completed — Sent: {sent}, Failed: {failed}, Skipped: {skipped}',
         'success', workspace_id=workspace_id)
+    app_logger.info(f'[EXEC] _run_campaign_sync DONE | campaign={campaign_id} sent={sent} failed={failed} skipped={skipped}')
 
 
 def _generate_ai_body(contact, body_template: str, workspace_id: int) -> str:
-    """Generate AI-personalized body. Falls back to template on failure."""
+    """Generate AI-personalized body with timeout protection. Falls back to None on failure."""
     try:
         from utils.db import get_setting
         import requests as _req
@@ -390,6 +478,7 @@ def _generate_ai_body(contact, body_template: str, workspace_id: int) -> str:
         context     = contact['context']     if 'context'     in contact.keys() else ''
         designation = contact['designation'] if 'designation' in contact.keys() else 'founder/executive'
         if not context:
+            app_logger.info(f'[EXEC] AI skip — no context for contact {contact["id"]}')
             return None
 
         prompt = f"""Write a cold outreach email to {contact['name']}, {designation} at {contact['company']}.
@@ -413,12 +502,14 @@ Rules:
                 json={'model': 'llama-3.3-70b-versatile',
                       'messages': [{'role': 'user', 'content': prompt}],
                       'max_tokens': 500},
-                timeout=30
+                timeout=45  # Hard timeout — prevents infinite hang
             )
             if r.status_code == 200:
                 return r.json()['choices'][0]['message']['content'].strip()
+            else:
+                error_logger.warning(f'[EXEC] AI returned {r.status_code} for contact {contact["id"]}')
     except Exception as e:
-        error_logger.warning(f'[EXEC] AI generation failed: {e}')
+        error_logger.warning(f'[EXEC] AI generation failed for contact {contact.get("id","?")}: {e}')
     return None
 
 
@@ -483,6 +574,7 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
         conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (contact['id'],))
         conn.commit()
         conn.close()
+        app_logger.info(f'[EXEC] DB commit completed | campaign={campaign_id} contact={contact["id"]}')
 
         # Thread system
         try:

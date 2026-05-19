@@ -271,6 +271,11 @@ body { background: linear-gradient(160deg, #f8fafc 0%, #f1f5ff 60%, #f8fafc 100%
 
     <!-- Actions -->
     <div class="camp-actions">
+      {% if c.job_status in ('queued','running','paused','completed','failed','stalled') %}
+      <a href="/campaign/{{ c.id }}/status" class="act-btn" title="View Status" style="background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;">
+        <i class="fas fa-signal"></i>
+      </a>
+      {% endif %}
       <a href="/campaign/{{ c.id }}/sequence" class="act-btn" title="Sequence Builder" style="background:#f5f3ff;border-color:#ddd6fe;color:#7c3aed;">
         <i class="fas fa-layer-group"></i>
       </a>

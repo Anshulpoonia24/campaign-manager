@@ -23,8 +23,8 @@ start "IMAP Worker [P1]" cmd /k "celery -A celery_app worker --queues=imap_sync_
 
 timeout /t 2 /nobreak >nul
 
-REM 2. Email sending — high priority
-start "Email Worker [P2]" cmd /k "celery -A celery_app worker --queues=send_email_queue --concurrency=2 --loglevel=info --hostname=email@%%h --prefetch-multiplier=1"
+REM 2. Email sending — high priority (also listens to default 'celery' queue)
+start "Email Worker [P2]" cmd /k "celery -A celery_app worker --queues=send_email_queue,celery --concurrency=2 --loglevel=info --hostname=email@%%h --prefetch-multiplier=1"
 
 timeout /t 2 /nobreak >nul
 

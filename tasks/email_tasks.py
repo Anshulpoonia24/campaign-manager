@@ -189,18 +189,33 @@ def execute_campaign_task(self, campaign_id, contact_ids, subject_template,
     Browser-independent campaign executor.
     Runs entirely in Celery worker — survives logout/refresh/restart.
     """
+    logger.info(
+        f'[EXEC] Task RECEIVED | campaign={campaign_id} contacts={len(contact_ids)} '
+        f'mode={send_mode} task_id={self.request.id}'
+    )
+    # Immediately mark running so frontend sees progress
+    try:
+        from services.campaign_executor import set_campaign_status, log as camp_log, JobStatus, _update_heartbeat
+        set_campaign_status(campaign_id, JobStatus.RUNNING, started_at=datetime.now())
+        _update_heartbeat(campaign_id)
+        camp_log(campaign_id, f'Worker picked up task (id={self.request.id})', 'info', workspace_id=workspace_id)
+        logger.info(f'[EXEC] Status set to RUNNING | campaign={campaign_id}')
+    except Exception as e:
+        logger.error(f'[EXEC] Failed to set RUNNING status: {e}')
+
     try:
         from services.campaign_executor import _run_campaign_sync
         _run_campaign_sync(
             campaign_id, contact_ids, subject_template,
             body_template, send_mode, workspace_id, attachment_path
         )
+        logger.info(f'[EXEC] Task COMPLETED | campaign={campaign_id}')
         return {'success': True}
     except Exception as exc:
-        logger.error(f'execute_campaign_task error: {exc}')
-        from services.campaign_executor import set_campaign_status, log, JobStatus
+        logger.error(f'[EXEC] Task FAILED | campaign={campaign_id} error={exc}')
+        from services.campaign_executor import set_campaign_status, log as camp_log, JobStatus
         set_campaign_status(campaign_id, JobStatus.FAILED)
-        log(campaign_id, f'Worker error: {str(exc)[:200]}', 'error', workspace_id=workspace_id)
+        camp_log(campaign_id, f'Worker error: {str(exc)[:200]}', 'error', workspace_id=workspace_id)
         return {'success': False, 'error': str(exc)}
 
 

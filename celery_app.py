@@ -72,6 +72,8 @@ celery.conf.update(
 
     # ── Queue definitions ──────────────────────────────────────
     task_queues=(
+        # Default celery queue (catch-all for unrouted tasks)
+        Queue('celery', Exchange('celery', type='direct'), routing_key='celery'),
         # Priority 1 — IMAP sync (fastest, never blocked)
         Queue(
             'imap_sync_queue',
