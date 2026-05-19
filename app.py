@@ -3186,12 +3186,13 @@ def api_send_reply(thread_id):
         return jsonify({'success': False, 'error': 'No active SMTP account'})
     # Append signature if available
     full_body = body
-    sig = smtp_row.get('signature', '') if isinstance(smtp_row, dict) else (smtp_row['signature'] if 'signature' in smtp_row.keys() else '')
+    smtp = dict(smtp_row)
+    sig = smtp.get('signature', '') or ''
     if sig:
         full_body += '\n\n' + sig
     try:
         msg = MIMEMultipart('alternative')
-        msg['From'] = f"{smtp_row['from_name']} <{smtp_row['email']}>" if smtp_row.get('from_name') else smtp_row['email']
+        msg['From'] = f"{smtp['from_name']} <{smtp['email']}>" if smtp.get('from_name') else smtp['email']
         msg['To'] = to_email
         msg['Subject'] = subject
         html_body = full_body.replace('\n', '<br>')
