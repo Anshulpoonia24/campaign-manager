@@ -591,16 +591,29 @@ function enrichAll(force) {
   banner.style.display = 'flex';
   document.getElementById('enrichBannerText').textContent = 'AI enriching contacts...';
   fetch('/api/enrich_all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({force})})
-  .then(r=>r.json()).then(d=>{
+  .then(r=>{
+    if(!r.ok) throw new Error(`Server error ${r.status}`);
+    return r.json();
+  }).then(d=>{
     btn.disabled=false;
     btn.innerHTML = force ? '<i class="fas fa-sync-alt me-1"></i>Re-enrich All' : '<i class="fas fa-sparkles me-1"></i>Enrich New';
-    document.getElementById('enrichBannerText').textContent = `✅ Done — ${d.enriched} enriched, ${d.failed} failed`;
-    document.getElementById('enrichProgress').style.width='100%';
-    if(d.enriched>0) setTimeout(()=>location.reload(),1500);
-  }).catch(()=>{
+    if(d.queued) {
+      document.getElementById('enrichBannerText').textContent = `⚡ Queued ${d.total} contacts for enrichment — processing in background...`;
+      document.getElementById('enrichProgress').style.width='50%';
+      setTimeout(()=>location.reload(), 15000);
+    } else if(d.enriched > 0 || d.failed > 0) {
+      document.getElementById('enrichBannerText').textContent = `✅ Done — ${d.enriched} enriched, ${d.failed} failed`;
+      document.getElementById('enrichProgress').style.width='100%';
+      setTimeout(()=>location.reload(),1500);
+    } else {
+      document.getElementById('enrichBannerText').textContent = '✅ All contacts already enriched — nothing to do.';
+      document.getElementById('enrichProgress').style.width='100%';
+    }
+  }).catch(e=>{
     btn.disabled=false;
     btn.innerHTML = force ? '<i class="fas fa-sync-alt me-1"></i>Re-enrich All' : '<i class="fas fa-sparkles me-1"></i>Enrich New';
-    banner.style.display='none';
+    document.getElementById('enrichBannerText').textContent = `❌ Error: ${e.message}`;
+    document.getElementById('enrichProgress').style.width='0%';
   });
 }
 
@@ -743,16 +756,22 @@ function enrichIntelligence() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spin" style="border-top-color:#fff;"></span> Detecting...';
   fetch('/api/contacts/bulk_enrich_intelligence', {method:'POST'})
-    .then(r=>r.json())
+    .then(r=>{
+      if(!r.ok) throw new Error(`Server error ${r.status}`);
+      return r.json();
+    })
     .then(d=>{
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-brain me-1"></i>Detect Industries';
       if(d.success) {
-        alert(`✅ Queued ${d.queued} contacts for industry detection. Refresh in a moment.`);
+        const msg = d.queued ? `⚡ Queued ${d.queued} contacts for industry detection.` : `✅ Done! ${d.message || ''}`;
+        alert(msg + ' Page will refresh shortly.');
         setTimeout(()=>location.reload(), 3000);
+      } else {
+        alert('❌ ' + (d.error || d.message || 'Failed'));
       }
     })
-    .catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="fas fa-brain me-1"></i>Detect Industries'; });
+    .catch(e=>{ btn.disabled=false; btn.innerHTML='<i class="fas fa-brain me-1"></i>Detect Industries'; alert('❌ ' + e.message); });
 }
 
 // ── ADVANCED FILTERS ──
