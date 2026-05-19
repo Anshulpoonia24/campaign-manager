@@ -3199,7 +3199,7 @@ def api_send_reply(thread_id):
         msg['Subject'] = subject
         html_body = full_body.replace('\n', '<br>')
         msg.attach(MIMEText(html_body, 'html'))
-        server = smtplib.SMTP(smtp_row['host'], int(smtp_row['port']))
+        server = smtplib.SMTP(smtp_row['smtp_server'], int(smtp_row['smtp_port']))
         server.starttls()
         server.login(smtp_email, smtp_row['password'])
         server.sendmail(smtp_email, to_email, msg.as_string())
