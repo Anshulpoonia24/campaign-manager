@@ -1617,7 +1617,7 @@ def api_enrich_intelligence(contact_id):
     """Trigger full intelligence enrichment for one contact."""
     from services.workspace_service import get_wid
     wid = get_wid()
-    if CELERY_AVAILABLE:
+    if CELERY_AVAILABLE and has_active_workers():
         from tasks.enrichment_tasks import enrich_single_contact
         result = enrich_single_contact.apply_async(
             args=[contact_id, True], queue='enrichment_queue'
@@ -1693,7 +1693,7 @@ def api_bulk_enrich_intelligence():
     contact_ids = [c['id'] for c in contacts]
     if not contact_ids:
         return jsonify({'success': True, 'message': 'All contacts already enriched', 'queued': 0})
-    if CELERY_AVAILABLE:
+    if CELERY_AVAILABLE and has_active_workers():
         from tasks.enrichment_tasks import enrich_single_contact
         for cid in contact_ids:
             enrich_single_contact.apply_async(args=[cid, False], queue='enrichment_queue')
@@ -3532,7 +3532,7 @@ from services.smtp_rotation import get_next_smtp_account, mark_send_success, mar
 # CELERY INTEGRATION (graceful fallback)
 # ==============================
 try:
-    from celery_app import celery, is_redis_available
+    from celery_app import celery, is_redis_available, has_active_workers
     CELERY_AVAILABLE = is_redis_available()
     if CELERY_AVAILABLE:
         print('[CELERY] Redis connected — async task queue active')
@@ -3541,11 +3541,12 @@ try:
 except Exception as _ce:
     CELERY_AVAILABLE = False
     print(f'[CELERY] Not configured ({_ce}) — using threading fallback')
+    def has_active_workers(): return False
 
 
 def queue_send_campaign(campaign_id, contact_ids, subject_template, body_template):
     """Route campaign send to Celery or threading fallback."""
-    if CELERY_AVAILABLE:
+    if CELERY_AVAILABLE and has_active_workers():
         from tasks.email_tasks import send_campaign_async
         result = send_campaign_async.apply_async(
             args=[campaign_id, contact_ids, subject_template, body_template],
@@ -3558,7 +3559,7 @@ def queue_send_campaign(campaign_id, contact_ids, subject_template, body_templat
 
 def queue_send_campaign_ai(campaign_id, contact_ids, subject_template):
     """Route AI campaign send to Celery or threading fallback."""
-    if CELERY_AVAILABLE:
+    if CELERY_AVAILABLE and has_active_workers():
         from tasks.email_tasks import send_campaign_ai_async
         result = send_campaign_ai_async.apply_async(
             args=[campaign_id, contact_ids, subject_template],
@@ -3571,7 +3572,7 @@ def queue_send_campaign_ai(campaign_id, contact_ids, subject_template):
 
 def queue_enrich_all(force=False):
     """Route enrichment to Celery or threading fallback."""
-    if CELERY_AVAILABLE:
+    if CELERY_AVAILABLE and has_active_workers():
         from tasks.ai_tasks import enrich_all_contacts
         result = enrich_all_contacts.apply_async(args=[force], queue='ai')
         app_logger.info(f'[CELERY] Enrich all queued | task_id={result.id}')
@@ -3581,7 +3582,7 @@ def queue_enrich_all(force=False):
 
 def queue_check_replies():
     """Route IMAP check to Celery or direct call."""
-    if CELERY_AVAILABLE:
+    if CELERY_AVAILABLE and has_active_workers():
         from tasks.inbox_tasks import check_replies_task
         result = check_replies_task.apply_async(queue='inbox')
         return result.id
@@ -3590,7 +3591,7 @@ def queue_check_replies():
 
 def queue_verify_all(reverify=False):
     """Route email verification to Celery or threading fallback."""
-    if CELERY_AVAILABLE:
+    if CELERY_AVAILABLE and has_active_workers():
         from tasks.verification_tasks import verify_all_contacts
         result = verify_all_contacts.apply_async(args=[reverify], queue='default')
         app_logger.info(f'[CELERY] Verify all queued | task_id={result.id}')
@@ -3964,7 +3965,7 @@ def api_sequence_enroll(campaign_id):
         return jsonify({'success': False, 'error': 'No contacts provided'})
 
     # Try Celery async first
-    if CELERY_AVAILABLE:
+    if CELERY_AVAILABLE and has_active_workers():
         from tasks.sequence_tasks import enroll_contacts_task
         result = enroll_contacts_task.apply_async(
             args=[contact_ids, campaign_id, wid],
@@ -4045,7 +4046,7 @@ def api_sequence_trigger(campaign_id):
     from services.workspace_service import get_wid
     wid = get_wid()
 
-    if CELERY_AVAILABLE:
+    if CELERY_AVAILABLE and has_active_workers():
         from tasks.sequence_tasks import process_sequences_task
         result = process_sequences_task.apply_async(queue='automation_queue')
         return jsonify({'success': True, 'queued': True, 'task_id': result.id})

@@ -197,4 +197,23 @@ def is_redis_available():
         return False
 
 
+# Cache worker check for 60s to avoid hammering Redis on every request
+_worker_check_cache = {'available': None, 'ts': 0}
+
+def has_active_workers():
+    """Check if any Celery workers are online. Cached for 60s."""
+    import time as _t
+    now = _t.time()
+    if now - _worker_check_cache['ts'] < 60:
+        return _worker_check_cache['available']
+    try:
+        result = celery.control.ping(timeout=2)
+        available = len(result) > 0
+    except Exception:
+        available = False
+    _worker_check_cache['available'] = available
+    _worker_check_cache['ts'] = now
+    return available
+
+
 logger = get_task_logger(__name__)
