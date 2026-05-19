@@ -410,7 +410,7 @@ body { overflow: hidden; }
   </div>
 
   <!-- THREAD VIEW (hidden until thread selected) -->
-  <div id="threadView" style="display:none;flex:1;display:none;flex-direction:column;height:100%;">
+  <div id="threadView" style="display:none;flex-direction:column;height:100%;">
 
     <!-- THREAD HEADER -->
     <div class="convo-header" id="threadHeader">
@@ -464,11 +464,13 @@ body { overflow: hidden; }
       </div>
       <textarea class="reply-textarea" id="replyDraft" rows="3" placeholder="Write a reply or click 'AI Reply' to generate one..."></textarea>
       <div class="reply-actions">
+        <button class="btn btn-sm" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;font-weight:600;" onclick="sendReply()" id="sendReplyBtn">
+          <i class="fas fa-paper-plane me-1"></i>Send Reply
+        </button>
         <button class="btn btn-sm" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;font-weight:600;" onclick="generateReply(currentReplyStyle)" id="aiReplyBtn">
-          <i class="fas fa-magic me-1"></i>Generate AI Reply
+          <i class="fas fa-magic me-1"></i>AI Generate
         </button>
         <button class="btn btn-sm btn-outline-secondary" onclick="copyReply()"><i class="fas fa-copy me-1"></i>Copy</button>
-        <small class="text-muted ms-auto" style="font-size:11px;">Copy and send from your email client</small>
       </div>
     </div>
 
@@ -543,10 +545,8 @@ function openThread(id, cardEl) {
   document.getElementById('emptyState').style.display = 'none';
   const tv = document.getElementById('threadView');
   tv.style.display = 'flex';
-  tv.style.flexDirection = 'column';
-  tv.style.height = '100%';
-  document.getElementById('msgLoading').style.display = 'block';
-  document.getElementById('convoMessages').innerHTML = '<div class="text-center text-muted py-4" id="msgLoading"><div class="spin mx-auto mb-2"></div><div style="font-size:12px;">Loading conversation...</div></div>';
+  document.getElementById('convoMessages').innerHTML = '<div class="text-center text-muted py-4"><div class="spin mx-auto mb-2"></div><div style="font-size:12px;">Loading conversation...</div></div>';
+  document.getElementById('replyDraft').value = '';
   loadThreadMessages(id);
   loadInsights(id);
 }
@@ -688,6 +688,31 @@ function generateReply(style) {
       if(d.success) document.getElementById('replyDraft').value = d.draft;
       else alert('AI generation failed: '+(d.error||'Unknown'));
     }).catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="fas fa-magic me-1"></i>Generate AI Reply'; });
+}
+
+function sendReply() {
+  if(!activeThreadId) return;
+  const body = document.getElementById('replyDraft').value.trim();
+  if(!body) { alert('Write a reply first'); return; }
+  const btn = document.getElementById('sendReplyBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin" style="border-top-color:#fff;"></span> Sending...';
+  fetch(`/api/inbox/thread/${activeThreadId}/send`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({body: body})
+  }).then(r=>r.json()).then(d=>{
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Send Reply';
+    if(d.success) {
+      document.getElementById('replyDraft').value = '';
+      // Reload thread to show sent message
+      loadThreadMessages(activeThreadId);
+      btn.innerHTML = '<i class="fas fa-check me-1"></i>Sent!';
+      setTimeout(()=>{ btn.innerHTML='<i class="fas fa-paper-plane me-1"></i>Send Reply'; },2000);
+    } else {
+      alert('Send failed: '+(d.error||'Unknown error'));
+    }
+  }).catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="fas fa-paper-plane me-1"></i>Send Reply'; });
 }
 
 function copyReply() {

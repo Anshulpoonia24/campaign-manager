@@ -3157,6 +3157,64 @@ def api_mark_thread_read(thread_id):
     return jsonify({'success': True})
 
 
+@app.route('/api/inbox/thread/<int:thread_id>/send', methods=['POST'])
+@login_required
+def api_send_reply(thread_id):
+    """Send a reply email from inbox via SMTP."""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    body = request.json.get('body', '').strip()
+    if not body:
+        return jsonify({'success': False, 'error': 'Empty reply'})
+    conn = get_db()
+    thread = conn.execute("""
+        SELECT t.*, c.email as contact_email, c.name as contact_name
+        FROM threads t LEFT JOIN contacts c ON t.contact_id = c.id WHERE t.id=?
+    """, (thread_id,)).fetchone()
+    if not thread:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Thread not found'})
+    to_email = thread['contact_email']
+    subject = thread['subject'] or '(no subject)'
+    if not subject.lower().startswith('re:'):
+        subject = 'Re: ' + subject
+    # Get SMTP account
+    smtp_row = conn.execute("SELECT * FROM smtp_accounts WHERE active=1 ORDER BY id LIMIT 1").fetchone()
+    if not smtp_row:
+        conn.close()
+        return jsonify({'success': False, 'error': 'No active SMTP account'})
+    # Append signature if available
+    full_body = body
+    sig = smtp_row.get('signature', '') if isinstance(smtp_row, dict) else (smtp_row['signature'] if 'signature' in smtp_row.keys() else '')
+    if sig:
+        full_body += '\n\n' + sig
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['From'] = f"{smtp_row['from_name']} <{smtp_row['email']}>" if smtp_row.get('from_name') else smtp_row['email']
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        html_body = full_body.replace('\n', '<br>')
+        msg.attach(MIMEText(html_body, 'html'))
+        server = smtplib.SMTP(smtp_row['host'], int(smtp_row['port']))
+        server.starttls()
+        server.login(smtp_row['email'], smtp_row['password'])
+        server.sendmail(smtp_row['email'], to_email, msg.as_string())
+        server.quit()
+        # Log message in thread
+        conn.execute("""
+            INSERT INTO messages (thread_id, direction, body, sender_email, created_at)
+            VALUES (?, 'outgoing', ?, ?, datetime('now'))
+        """, (thread_id, full_body, smtp_row['email']))
+        conn.execute("UPDATE threads SET last_message_at=datetime('now') WHERE id=?", (thread_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        conn.close()
+        return jsonify({'success': False, 'error': str(e)[:150]})
+
+
 @app.route('/api/inbox/stats')
 @login_required
 def api_inbox_stats():
