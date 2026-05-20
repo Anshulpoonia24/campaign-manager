@@ -523,6 +523,7 @@ def init_db():
         "ALTER TABLE smtp_accounts ADD COLUMN reply_to TEXT DEFAULT ''",
         "ALTER TABLE smtp_accounts ADD COLUMN bcc_emails TEXT DEFAULT ''",
         "ALTER TABLE smtp_accounts ADD COLUMN signature TEXT DEFAULT ''",
+        "ALTER TABLE smtp_accounts ADD COLUMN login_username TEXT DEFAULT ''",
         # Contact intelligence columns
         "ALTER TABLE contacts ADD COLUMN industry TEXT DEFAULT ''",
         "ALTER TABLE contacts ADD COLUMN company_size TEXT DEFAULT ''",
@@ -3192,6 +3193,7 @@ def api_send_reply(thread_id):
         full_body += '\n\n' + sig
     from_name = smtp_row['from_name'] if 'from_name' in smtp_keys else ''
     smtp_email = smtp_row['email']
+    login_user = smtp_row['login_username'] if 'login_username' in smtp_keys and smtp_row['login_username'] else smtp_email
     try:
         msg = MIMEMultipart('alternative')
         msg['From'] = f"{from_name} <{smtp_email}>" if from_name else smtp_email
@@ -3201,7 +3203,7 @@ def api_send_reply(thread_id):
         msg.attach(MIMEText(html_body, 'html'))
         server = smtplib.SMTP(smtp_row['smtp_server'], int(smtp_row['smtp_port']))
         server.starttls()
-        server.login(smtp_email, smtp_row['password'])
+        server.login(login_user, smtp_row['password'])
         server.sendmail(smtp_email, to_email, msg.as_string())
         server.quit()
         # Log message in thread
@@ -3376,21 +3378,15 @@ def api_hot_leads():
 @login_required
 def api_get_smtp_accounts():
     conn = get_db()
-    accounts = conn.execute("""
-        SELECT id, email, smtp_server, smtp_port, from_name,
-               reply_to, bcc_emails, signature,
-               daily_limit, sent_today, health_score,
-               warmup_stage, active, last_used
-        FROM smtp_accounts ORDER BY active DESC, health_score DESC
-    """).fetchall()
+    accounts = conn.execute("SELECT * FROM smtp_accounts ORDER BY active DESC, health_score DESC").fetchall()
     conn.close()
     result = []
     for a in accounts:
         row = dict(a)
-        # Safe defaults for old rows missing new columns
         row.setdefault('reply_to', '')
         row.setdefault('bcc_emails', '')
         row.setdefault('signature', '')
+        row.setdefault('login_username', '')
         result.append(row)
     return jsonify({'accounts': result})
 
@@ -3448,7 +3444,7 @@ def api_update_smtp_account(account_id):
         return jsonify({'success': False, 'error': 'Not found'})
     fields = []
     params = []
-    for col in ('from_name', 'reply_to', 'bcc_emails', 'signature', 'daily_limit', 'smtp_server', 'smtp_port'):
+    for col in ('email', 'from_name', 'reply_to', 'bcc_emails', 'signature', 'daily_limit', 'smtp_server', 'smtp_port', 'login_username'):
         if col in data:
             fields.append(f'{col}=?')
             params.append(data[col])
