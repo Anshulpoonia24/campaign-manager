@@ -772,35 +772,6 @@ def inject_tracking_pixel(body, tracking_id, contact_id=None, campaign_id=None, 
         body += unsub_tag + pixel_tag
     return body
 
-    # Use signed token if we have full context, else legacy UUID
-    if contact_id and campaign_id:
-        token = generate_token(workspace_id, contact_id, campaign_id, 0, 0)
-        pixel_url = f'{host}/track/{token}.png'
-    else:
-        pixel_url = f'{host}/track/{tracking_id}.png'
-
-    pixel_tag = f'<img src="{pixel_url}" width="1" height="1" style="display:none" alt="">'
-    unsub_url = f'{host}/unsubscribe/{tracking_id}'
-    unsub_tag = f'<p style="font-size:11px;color:#94a3b8;margin-top:30px;border-top:1px solid #e2e8f0;padding-top:10px;">If you no longer wish to receive these emails, <a href="{unsub_url}" style="color:#64748b;">unsubscribe here</a>.</p>'
-
-    import re
-    def rewrite_link(match):
-        original_url = match.group(1)
-        if any(skip in original_url for skip in ['/track/', '/unsubscribe/', 'mailto:', '#', 'javascript:']):
-            return match.group(0)
-        click_token = str(uuid.uuid4())
-        import urllib.parse
-        encoded_url = urllib.parse.quote(original_url, safe='')
-        tracked_url = f'{host}/click/{click_token}?url={encoded_url}&tid={tracking_id}'
-        return f'href="{tracked_url}"'
-    body = re.sub(r'href="(https?://[^"]+)"', rewrite_link, body)
-
-    if '</body>' in body.lower():
-        body = body.replace('</body>', f'{unsub_tag}{pixel_tag}</body>')
-    else:
-        body += unsub_tag + pixel_tag
-    return body
-
 
 @app.route('/track/<tracking_id>.png')
 def track_open(tracking_id):
@@ -2224,7 +2195,8 @@ def send_campaign(campaign_id):
             creds = get_smtp_creds()
             smtp_server  = creds.get('smtp_server') or creds.get('server')
             smtp_port    = creds.get('smtp_port')   or creds.get('port')
-            smtp_username = creds.get('email')      or creds.get('username')
+            # Use login_username for Brevo/custom SMTP (may differ from from_email)
+            smtp_username = creds.get('login_username') or creds.get('email') or creds.get('username')
             smtp_password = creds['password']
             from_email   = creds.get('from_email')  or smtp_username
             from_name    = creds.get('from_name', '')
@@ -2376,10 +2348,11 @@ def retry_email(email_id):
         return redirect(url_for('campaign_detail', campaign_id=record['campaign_id']))
 
     smtp_server = get_setting('smtp_server')
-    smtp_port = int(get_setting('smtp_port'))
+    smtp_port = int(get_setting('smtp_port') or 587)
     smtp_username = get_setting('smtp_username')
     smtp_password = get_setting('smtp_password')
-    from_email = get_setting('from_email')
+    smtp_login = get_setting('smtp_login_username') or smtp_username
+    from_email = get_setting('from_email') or smtp_username
     from_name = get_setting('from_name')
     reply_to = get_setting('reply_to') or from_email
     bcc = get_setting('bcc_emails')
@@ -2387,7 +2360,7 @@ def retry_email(email_id):
     try:
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
-        server.login(smtp_username, smtp_password)
+        server.login(smtp_login, smtp_password)
 
         msg = EmailMessage()
         msg['Subject'] = record['subject']
@@ -2433,10 +2406,11 @@ def api_retry_email(email_id):
         return jsonify({'success': False, 'error': 'Already sent in this campaign'})
 
     smtp_server = get_setting('smtp_server')
-    smtp_port = int(get_setting('smtp_port'))
+    smtp_port = int(get_setting('smtp_port') or 587)
     smtp_username = get_setting('smtp_username')
     smtp_password = get_setting('smtp_password')
-    from_email = get_setting('from_email')
+    smtp_login = get_setting('smtp_login_username') or smtp_username
+    from_email = get_setting('from_email') or smtp_username
     from_name = get_setting('from_name')
     reply_to = get_setting('reply_to') or from_email
     bcc = get_setting('bcc_emails')
@@ -2444,7 +2418,7 @@ def api_retry_email(email_id):
     try:
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
-        server.login(smtp_username, smtp_password)
+        server.login(smtp_login, smtp_password)
 
         msg = EmailMessage()
         msg['Subject'] = record['subject']
@@ -2533,6 +2507,7 @@ def send_campaign_ai(campaign_id):
         smtp_port = int(get_setting('smtp_port') or 587)
         smtp_username = get_setting('smtp_username')
         smtp_password = get_setting('smtp_password')
+        smtp_login = get_setting('smtp_login_username') or smtp_username
         from_email = get_setting('from_email') or smtp_username
         from_name = get_setting('from_name')
         reply_to = get_setting('reply_to') or from_email
@@ -2545,7 +2520,7 @@ def send_campaign_ai(campaign_id):
         try:
             server = smtplib.SMTP(smtp_server, smtp_port)
             server.starttls()
-            server.login(smtp_username, smtp_password)
+            server.login(smtp_login, smtp_password)
         except Exception as e:
             prog['running'] = False
             _set_send_progress(uid, prog)
@@ -2558,7 +2533,7 @@ def send_campaign_ai(campaign_id):
                 try:
                     server = smtplib.SMTP(smtp_server, smtp_port)
                     server.starttls()
-                    server.login(smtp_username, smtp_password)
+                    server.login(smtp_login, smtp_password)
                 except Exception: pass
 
             contact = conn.execute("SELECT * FROM contacts WHERE id=?", (cid,)).fetchone()
@@ -2815,6 +2790,7 @@ def api_smtp_test():
     smtp_port = get_setting('smtp_port')
     smtp_username = get_setting('smtp_username')
     smtp_password = get_setting('smtp_password')
+    smtp_login = get_setting('smtp_login_username') or smtp_username
     from_email = get_setting('from_email')
     tracking_host = get_setting('tracking_host')
 
@@ -2836,7 +2812,7 @@ def api_smtp_test():
     try:
         server = smtplib.SMTP(smtp_server, int(smtp_port), timeout=10)
         server.starttls()
-        server.login(smtp_username, smtp_password)
+        server.login(smtp_login, smtp_password)
         server.quit()
         result['connection_test'] = 'SUCCESS - Connected and authenticated'
     except Exception as e:
@@ -3417,13 +3393,14 @@ def api_add_smtp_account():
         conn = get_db()
         from services.workspace_service import get_wid
         wid = get_wid()
+        login_username = data.get('login_username', '').strip()
         conn.execute("""
             INSERT INTO smtp_accounts
               (email, password, smtp_server, smtp_port, from_name,
-               daily_limit, reply_to, bcc_emails, signature, workspace_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
+               daily_limit, reply_to, bcc_emails, signature, login_username, workspace_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
         """, (email, password, smtp_server, smtp_port, from_name,
-              daily_limit, reply_to, bcc_emails, signature, wid))
+              daily_limit, reply_to, bcc_emails, signature, login_username, wid))
         conn.commit()
         conn.close()
         app_logger.info(f'SMTP account added: {email}')

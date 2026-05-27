@@ -93,9 +93,11 @@ def send_single_email(self, campaign_id, contact_id, subject, body, smtp_creds):
             msg['Bcc'] = bcc
         msg.add_alternative(tracked_body, subtype='html')
 
+        # Use login_username for Brevo/custom SMTP (may differ from from_email)
+        smtp_login = smtp_creds.get('login_username') or smtp_creds['username']
         server = smtplib.SMTP(smtp_creds['server'], smtp_creds['port'], timeout=30)
         server.starttls()
-        server.login(smtp_creds['username'], smtp_creds['password'])
+        server.login(smtp_login, smtp_creds['password'])
         server.send_message(msg)
         server.quit()
 
@@ -237,21 +239,25 @@ def send_campaign_async(campaign_id, contact_ids, subject_template, body_templat
         account = get_next_smtp_account()
         if account:
             creds = {
-                'server': account['smtp_server'], 'port': account['smtp_port'],
-                'username': account['email'],     'password': account['password'],
-                'from_email': account['email'],
-                'from_name': account['from_name'] or get_setting('from_name'),
-                'account_id': account['id'],
+                'server':         account['smtp_server'],
+                'port':           account['smtp_port'],
+                'username':       account['email'],
+                'login_username': account.get('login_username') or account['email'],
+                'password':       account['password'],
+                'from_email':     account['email'],
+                'from_name':      account.get('from_name') or get_setting('from_name'),
+                'account_id':     account['id'],
             }
         else:
             creds = {
-                'server': get_setting('smtp_server'),
-                'port': int(get_setting('smtp_port') or 587),
-                'username': get_setting('smtp_username'),
-                'password': get_setting('smtp_password'),
-                'from_email': get_setting('from_email') or get_setting('smtp_username'),
-                'from_name': get_setting('from_name'),
-                'account_id': None,
+                'server':         get_setting('smtp_server'),
+                'port':           int(get_setting('smtp_port') or 587),
+                'username':       get_setting('smtp_username'),
+                'login_username': get_setting('smtp_username'),
+                'password':       get_setting('smtp_password'),
+                'from_email':     get_setting('from_email') or get_setting('smtp_username'),
+                'from_name':      get_setting('from_name'),
+                'account_id':     None,
             }
 
         if not creds['server'] or not creds['username']:

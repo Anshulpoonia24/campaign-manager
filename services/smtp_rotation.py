@@ -60,25 +60,27 @@ def get_next_smtp_account():
     email = account['email']
     return {
         # SMTP credentials
-        'id':           account['id'],
-        'email':        email,
-        'password':     account['password'],
-        'smtp_server':  account['smtp_server'],
-        'smtp_port':    account['smtp_port'],
+        'id':             account['id'],
+        'email':          email,
+        'password':       account['password'],
+        'smtp_server':    account['smtp_server'],
+        'smtp_port':      account['smtp_port'],
+        # Brevo / custom login username (may differ from from_email)
+        'login_username': _col(account, 'login_username') or email,
         # Sender identity
-        'from_name':    _col(account, 'from_name') or email,
-        'reply_to':     _col(account, 'reply_to')  or '',
-        'bcc_emails':   _col(account, 'bcc_emails') or '',
-        'signature':    _col(account, 'signature')  or '',
+        'from_name':      _col(account, 'from_name') or email,
+        'reply_to':       _col(account, 'reply_to')  or '',
+        'bcc_emails':     _col(account, 'bcc_emails') or '',
+        'signature':      _col(account, 'signature')  or '',
         # Stats
-        'daily_limit':  account['daily_limit'],
-        'sent_today':   account['sent_today'],
-        'health_score': account['health_score'],
-        'warmup_stage': account['warmup_stage'],
-        'active':       account['active'],
+        'daily_limit':    account['daily_limit'],
+        'sent_today':     account['sent_today'],
+        'health_score':   account['health_score'],
+        'warmup_stage':   account['warmup_stage'],
+        'active':         account['active'],
         # Alias for backward compat
-        'account_id':   account['id'],
-        'from_email':   email,
+        'account_id':     account['id'],
+        'from_email':     email,
     }
 
 
