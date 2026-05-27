@@ -304,6 +304,10 @@ body { overflow: hidden; }
         <input type="number" id="acc_smtp_port" class="form-control form-control-sm" value="587">
       </div>
       <div class="col-md-4">
+        <label class="form-label" style="font-size:11px;font-weight:600;color:#6B7280;">SMTP Login Username <span style="color:#9CA3AF;font-weight:400;">(if different from email, e.g. Brevo)</span></label>
+        <input type="text" id="acc_login_username" class="form-control form-control-sm" placeholder="a9b037001@smtp-brevo.com">
+      </div>
+      <div class="col-md-4">
         <label class="form-label" style="font-size:11px;font-weight:600;color:#6B7280;">Reply-To <span style="color:#9CA3AF;font-weight:400;">(optional)</span></label>
         <input type="email" id="acc_reply_to" class="form-control form-control-sm" placeholder="replies@yourdomain.com">
       </div>
@@ -760,6 +764,7 @@ function showAddSmtp() {
   document.getElementById('acc_daily_limit').value = '50';
   document.getElementById('acc_smtp_server').value = 'smtp.hostinger.com';
   document.getElementById('acc_smtp_port').value = '587';
+  document.getElementById('acc_login_username').value = '';
   document.getElementById('acc_reply_to').value = '';
   document.getElementById('acc_bcc_emails').value = '';
   document.getElementById('acc_signature').value = '';
@@ -775,12 +780,13 @@ function editAccount(a) {
   document.getElementById('acc_edit_id').value = a.id;
   document.getElementById('addSmtpTitle').textContent = 'Edit Inbox: ' + a.email;
   document.getElementById('acc_email').value = a.email;
-  document.getElementById('acc_email').disabled = true;
+  document.getElementById('acc_email').disabled = false;
   document.getElementById('acc_password').value = '';
   document.getElementById('acc_from_name').value = a.from_name || '';
   document.getElementById('acc_daily_limit').value = a.daily_limit || 50;
   document.getElementById('acc_smtp_server').value = a.smtp_server || 'smtp.hostinger.com';
   document.getElementById('acc_smtp_port').value = a.smtp_port || 587;
+  document.getElementById('acc_login_username').value = a.login_username || '';
   document.getElementById('acc_reply_to').value = a.reply_to || '';
   document.getElementById('acc_bcc_emails').value = a.bcc_emails || '';
   document.getElementById('acc_signature').value = a.signature || '';
@@ -799,6 +805,7 @@ function saveAccount() {
   const reply_to = document.getElementById('acc_reply_to').value.trim();
   const bcc_emails = document.getElementById('acc_bcc_emails').value.trim();
   const signature = document.getElementById('acc_signature').value;
+  const login_username = document.getElementById('acc_login_username').value.trim();
 
   // Validation
   if (!editId && (!email || !password)) { showToast('Email and password required', 'error'); return; }
@@ -806,7 +813,7 @@ function saveAccount() {
   if (isNaN(smtp_port) || smtp_port <= 0) { showToast('SMTP port must be a positive number', 'error'); return; }
   if (daily_limit <= 0) { showToast('Daily limit must be > 0', 'error'); return; }
 
-  const data = { email, from_name, daily_limit, smtp_server, smtp_port, reply_to, bcc_emails, signature };
+  const data = { email, from_name, daily_limit, smtp_server, smtp_port, reply_to, bcc_emails, signature, login_username };
   if (password) data.password = password;
 
   const url = editId
