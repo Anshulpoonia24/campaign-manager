@@ -236,11 +236,10 @@ def get_setting(key):
 
 def set_setting(key, value):
     conn = get_db()
-    existing = conn.execute("SELECT key FROM settings WHERE key=?", (key,)).fetchone()
-    if existing:
-        conn.execute("UPDATE settings SET value=? WHERE key=?", (value, key))
-    else:
-        conn.execute("INSERT INTO settings (key, value) VALUES (?,?)", (key, value))
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, value)
+    )
     conn.commit()
     conn.close()
 
@@ -484,7 +483,7 @@ def init_db():
     for k, v in DEFAULT_SETTINGS.items():
         existing = conn.execute("SELECT key FROM settings WHERE key=?", (k,)).fetchone()
         if not existing:
-            conn.execute("INSERT INTO settings (key, value) VALUES (?,?)", (k, v))
+            conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (k, v))
     conn.commit()
 
     # Safe migrations: add missing columns if not exist
@@ -578,7 +577,7 @@ def init_db():
 
     # Ensure Default Workspace exists
     if not conn.execute("SELECT id FROM workspaces WHERE id=1").fetchone():
-        conn.execute("INSERT INTO workspaces (id, name, slug, plan) VALUES (1, 'Default Workspace', 'default', 'free')")
+        conn.execute("INSERT OR IGNORE INTO workspaces (id, name, slug, plan) VALUES (1, 'Default Workspace', 'default', 'free')")
         conn.commit()
 
     # Backfill workspace_id=1 for all existing rows
@@ -602,7 +601,7 @@ def init_db():
         existing = conn.execute("SELECT id FROM automation_settings WHERE rule_key=?", (rule_key,)).fetchone()
         if not existing:
             conn.execute("""
-                INSERT INTO automation_settings (rule_key, enabled, delay_days, max_followups)
+                INSERT OR IGNORE INTO automation_settings (rule_key, enabled, delay_days, max_followups)
                 VALUES (?,?,?,?)
             """, (rule_key, enabled, delay_days, max_followups))
     conn.commit()
@@ -1108,14 +1107,14 @@ def register():
         conn.commit()
         # Copy default settings for new workspace
         for k, v in DEFAULT_SETTINGS.items():
-            conn.execute("INSERT INTO settings (key, value, workspace_id) VALUES (?,?,?)", (k, v, wid))
+            conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)", (k, v, wid))
         # Copy default automation rules
         for rule_key, enabled, delay_days, max_followups in [
             ('no_reply_followup',1,2,3),('opened_multiple_times',1,1,2),
             ('interested_pause',1,0,0),('ooo_retry',1,7,1),('bounce_pause',1,0,0)
         ]:
             conn.execute(
-                "INSERT INTO automation_settings (rule_key,enabled,delay_days,max_followups,workspace_id) VALUES (?,?,?,?,?)",
+                "INSERT OR IGNORE INTO automation_settings (rule_key,enabled,delay_days,max_followups,workspace_id) VALUES (?,?,?,?,?)",
                 (rule_key, enabled, delay_days, max_followups, wid)
             )
         conn.commit()
@@ -1337,7 +1336,7 @@ def add_contact():
     else:
         from services.workspace_service import get_wid
         wid = get_wid()
-        conn.execute("INSERT INTO contacts (name, company, email, designation, website, workspace_id) VALUES (?,?,?,?,?,?)",
+        conn.execute("INSERT OR IGNORE INTO contacts (name, company, email, designation, website, workspace_id) VALUES (?,?,?,?,?,?)",
                      (name, company, email, designation, website, wid))
         conn.commit()
         flash(f'{name} ({email}) added!', 'success')
@@ -1470,7 +1469,7 @@ def upload_contacts():
                     continue
 
                 conn.execute(
-                    "INSERT INTO contacts (name, company, email, designation, priority, workspace_id) VALUES (?,?,?,?,?,?)",
+                    "INSERT OR IGNORE INTO contacts (name, company, email, designation, priority, workspace_id) VALUES (?,?,?,?,?,?)",
                     (contact_name, company, single_email, designation, priority, wid)
                 )
                 added += 1
@@ -3395,12 +3394,17 @@ def api_add_smtp_account():
         wid = get_wid()
         login_username = data.get('login_username', '').strip()
         conn.execute("""
-            INSERT INTO smtp_accounts
+            INSERT OR IGNORE INTO smtp_accounts
               (email, password, smtp_server, smtp_port, from_name,
                daily_limit, reply_to, bcc_emails, signature, login_username, workspace_id)
             VALUES (?,?,?,?,?,?,?,?,?,?,?)
         """, (email, password, smtp_server, smtp_port, from_name,
               daily_limit, reply_to, bcc_emails, signature, login_username, wid))
+        inserted = conn.execute("SELECT changes()").fetchone()[0]
+        conn.commit()
+        conn.close()
+        if inserted == 0:
+            return jsonify({'success': False, 'error': 'An inbox with this email already exists'})
         conn.commit()
         conn.close()
         app_logger.info(f'SMTP account added: {email}')
@@ -3526,7 +3530,7 @@ def api_save_setting():
             )
         else:
             conn.execute(
-                "INSERT INTO settings (key, value, workspace_id) VALUES (?,?,?)",
+                "INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)",
                 (key, val, wid)
             )
         saved.append(key)
@@ -3548,7 +3552,7 @@ def settings_page():
             if existing:
                 conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=?", (val, key, wid))
             else:
-                conn.execute("INSERT INTO settings (key, value, workspace_id) VALUES (?,?,?)", (key, val, wid))
+                conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)", (key, val, wid))
         conn.commit()
         conn.close()
         flash('Settings saved!', 'success')
