@@ -556,9 +556,11 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
                 msg.add_attachment(f.read(), maintype=maintype, subtype=subtype,
                                    filename=os.path.basename(attachment_path))
 
+        # Use login_username for Brevo/custom SMTP (may differ from from_email)
+        smtp_login = account.get('login_username') or account['email']
         server = smtplib.SMTP(account['smtp_server'], account['smtp_port'], timeout=30)
         server.starttls()
-        server.login(account['email'], account['password'])
+        server.login(smtp_login, account['password'])
         server.send_message(msg)
         server.quit()
 
