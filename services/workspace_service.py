@@ -153,7 +153,7 @@ def ws_set_setting(wid, key, value):
             conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=?",
                          (value, key, wid))
         else:
-            conn.execute("INSERT INTO settings (key, value, workspace_id) VALUES (?,?,?)",
+            conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)",
                          (key, value, wid))
         conn.commit()
     finally:

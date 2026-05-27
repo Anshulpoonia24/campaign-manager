@@ -235,10 +235,15 @@ def get_db():
             # Fall through to SQLite
 
     # SQLite fallback
-    conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, timeout=60, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # WAL mode: allows concurrent readers + 1 writer, eliminates most lock contention
     conn.execute('PRAGMA journal_mode=WAL')
-    conn.execute('PRAGMA busy_timeout=30000')
+    # busy_timeout: retry writes for up to 60s before raising OperationalError
+    conn.execute('PRAGMA busy_timeout=60000')
+    # Reduce fsync overhead while keeping crash safety
+    conn.execute('PRAGMA synchronous=NORMAL')
+    conn.execute('PRAGMA cache_size=-8000')  # 8MB page cache
     return conn
 
 
