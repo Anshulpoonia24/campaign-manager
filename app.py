@@ -1524,6 +1524,10 @@ def api_get_contact(contact_id):
 @app.route('/contact/edit/<int:contact_id>', methods=['POST'])
 @login_required
 def edit_contact(contact_id):
+    from utils.ownership import owns_contact
+    if not owns_contact(contact_id):
+        flash('Not found.', 'error')
+        return redirect(url_for('contacts'))
     name = request.form.get('name', '').strip().title()
     company = request.form.get('company', '').strip()
     email = request.form.get('email', '').strip().lower()
@@ -1542,6 +1546,9 @@ def edit_contact(contact_id):
 @app.route('/api/contact/delete/<int:contact_id>', methods=['DELETE'])
 @login_required
 def delete_contact(contact_id):
+    from utils.ownership import owns_contact
+    if not owns_contact(contact_id):
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     conn = get_db()
     conn.execute("DELETE FROM emails_sent WHERE contact_id=?", (contact_id,))
     conn.execute("DELETE FROM follow_ups WHERE contact_id=?", (contact_id,))
@@ -1554,6 +1561,9 @@ def delete_contact(contact_id):
 @app.route('/api/campaign/delete/<int:campaign_id>', methods=['DELETE'])
 @login_required
 def delete_campaign(campaign_id):
+    from utils.ownership import owns_campaign
+    if not owns_campaign(campaign_id):
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     conn = get_db()
     conn.execute("DELETE FROM emails_sent WHERE campaign_id=?", (campaign_id,))
     conn.execute("DELETE FROM campaigns WHERE id=?", (campaign_id,))
@@ -1787,11 +1797,36 @@ def api_verify_single(contact_id):
 @app.route('/api/fetch_context/<int:contact_id>')
 @login_required
 def api_fetch_context(contact_id):
+    from utils.ownership import owns_contact
     conn = get_db()
-    contact = conn.execute("SELECT id, name, company FROM contacts WHERE id=?", (contact_id,)).fetchone()
+    contact = owns_contact(contact_id)
     if not contact:
         conn.close()
         return jsonify({'success': False, 'error': 'Not found'})
+
+    # ── Company-level cache: reuse context from same domain/company ──
+    domain = contact['email'].split('@')[1] if contact['email'] and '@' in contact['email'] else ''
+    company = (contact['company'] or '').strip()
+    if domain or company:
+        existing = conn.execute("""
+            SELECT context FROM contacts
+            WHERE workspace_id=?
+            AND (context IS NOT NULL AND context != '')
+            AND (
+                (? != '' AND email LIKE ?)
+                OR (? != '' AND LOWER(company) = LOWER(?))
+            )
+            LIMIT 1
+        """, (
+            getattr(current_user, 'workspace_id', 1),
+            domain, f'%@{domain}',
+            company, company
+        )).fetchone()
+        if existing:
+            conn.execute("UPDATE contacts SET context=? WHERE id=?", (existing['context'], contact_id))
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True, 'context': existing['context'], 'cached': True})
 
     prompt = f"""In 1-2 short bullet points, tell me the latest publicly known context about {contact['company']}.
 Include: what they do, recent funding/news, tech stack, or growth stage.
@@ -1821,22 +1856,53 @@ Keep it under 50 words. No fluff. Plain text, no markdown."""
 @app.route('/api/fetch_all_context', methods=['POST'])
 @login_required
 def api_fetch_all_context():
+    from services.workspace_service import get_wid
     contact_ids = request.json.get('contact_ids', [])
+    wid = get_wid()
     results = []
+    # company_cache: domain/company -> context already fetched this run
+    company_cache = {}
     conn = get_db()
     for cid in contact_ids:
-        contact = conn.execute("SELECT name, company FROM contacts WHERE id=?", (cid,)).fetchone()
+        contact = conn.execute("SELECT id, name, company, email FROM contacts WHERE id=? AND workspace_id=?", (cid, wid)).fetchone()
         if not contact:
             continue
+        domain = contact['email'].split('@')[1] if contact['email'] and '@' in contact['email'] else ''
+        company = (contact['company'] or '').strip().lower()
+        cache_key = domain or company
+        # Reuse if already fetched this run
+        if cache_key and cache_key in company_cache:
+            conn.execute("UPDATE contacts SET context=? WHERE id=?", (company_cache[cache_key], cid))
+            conn.commit()
+            results.append({'id': cid, 'context': company_cache[cache_key]})
+            continue
+        # Reuse if another contact in same workspace already has context
+        if cache_key:
+            existing = conn.execute("""
+                SELECT context FROM contacts
+                WHERE workspace_id=? AND (context IS NOT NULL AND context != '')
+                AND (email LIKE ? OR LOWER(company)=?)
+                AND id != ?
+                LIMIT 1
+            """, (wid, f'%@{domain}' if domain else '%', company, cid)).fetchone()
+            if existing:
+                company_cache[cache_key] = existing['context']
+                conn.execute("UPDATE contacts SET context=? WHERE id=?", (existing['context'], cid))
+                conn.commit()
+                results.append({'id': cid, 'context': existing['context']})
+                continue
         prompt = f"In 1-2 short bullet points (under 50 words), what does {contact['company']} do? Any recent funding or news? Only well-known facts. Plain text."
         try:
             text, err = call_groq(prompt)
             if not text:
                 text, err = call_gemini(prompt)
             if text:
-                conn.execute("UPDATE contacts SET context=? WHERE id=?", (text.strip(), cid))
+                text = text.strip()
+                if cache_key:
+                    company_cache[cache_key] = text
+                conn.execute("UPDATE contacts SET context=? WHERE id=?", (text, cid))
                 conn.commit()
-                results.append({'id': cid, 'context': text.strip()})
+                results.append({'id': cid, 'context': text})
             time.sleep(0.5)
         except Exception:
             pass
@@ -2122,6 +2188,10 @@ def new_campaign():
 @app.route('/campaign/edit/<int:campaign_id>', methods=['POST'])
 @login_required
 def edit_campaign(campaign_id):
+    from utils.ownership import owns_campaign
+    if not owns_campaign(campaign_id):
+        flash('Not found.', 'error')
+        return redirect(url_for('campaigns_list'))
     name = request.form.get('name', '').strip()
     description = request.form.get('description', '').strip()
     conn = get_db()
@@ -2189,7 +2259,7 @@ def send_campaign(campaign_id):
     # Try rotation first, fallback to settings
     def get_smtp_creds():
         from services.smtp_rotation import get_next_smtp_account, append_signature
-        account = get_next_smtp_account()
+        account = get_next_smtp_account(workspace_id=wid)
         if account:
             return account  # Full identity object
         # Fallback — backup SMTP only, no identity override
@@ -2234,104 +2304,106 @@ def send_campaign(campaign_id):
             if is_unsubscribed(contact['email']):
                 continue
 
-            # Check duplicate in THIS campaign only
-            already = conn.execute(
-                "SELECT id FROM emails_sent WHERE contact_id=? AND campaign_id=? AND status='sent'", (cid, campaign_id)
-            ).fetchone()
-            if already:
-                continue
+            # Atomic duplicate check — lock per campaign to prevent race condition
+            with _get_campaign_lock(campaign_id):
+                already = conn.execute(
+                    "SELECT id FROM emails_sent WHERE contact_id=? AND campaign_id=? AND status='sent'",
+                    (cid, campaign_id)
+                ).fetchone()
+                if already:
+                    continue
 
-            subject = subject_template.replace('{company}', contact['company'] or '')
-            subject = subject.replace('{name}', contact['name'] or '')
-            body = body_template.replace('{company}', contact['company'] or '')
-            body = body.replace('{name}', contact['name'] or '')
+                subject = subject_template.replace('{company}', contact['company'] or '')
+                subject = subject.replace('{name}', contact['name'] or '')
+                body = body_template.replace('{company}', contact['company'] or '')
+                body = body.replace('{name}', contact['name'] or '')
 
-            try:
-                server = smtplib.SMTP(smtp_server, smtp_port)
-                server.starttls()
-                server.login(smtp_username, smtp_password)
-
-                tracking_id = str(uuid.uuid4())
-                # Append inbox signature before tracking pixel
-                from services.smtp_rotation import append_signature
-                body_with_sig = append_signature(body, signature)
-                tracked_body = inject_tracking_pixel(body_with_sig, tracking_id)
-
-                msg = EmailMessage()
-                msg['Subject']    = subject
-                msg['From']       = formataddr((from_name, from_email))
-                msg['To']         = contact['email']
-                msg['Message-ID'] = f'<{tracking_id}@outreachos>'
-                if reply_to and reply_to.strip():
-                    msg['Reply-To'] = reply_to
-                if bcc and bcc.strip():
-                    msg['Bcc'] = bcc
-                msg.add_alternative(tracked_body, subtype='html')
-
-                if attachment_filename and os.path.exists(os.path.join(ATTACHMENT_DIR, attachment_filename)):
-                    filepath = os.path.join(ATTACHMENT_DIR, attachment_filename)
-                    mime_type, _ = mimetypes.guess_type(filepath)
-                    if mime_type:
-                        maintype, subtype = mime_type.split('/', 1)
-                    else:
-                        maintype, subtype = 'application', 'octet-stream'
-                    with open(filepath, 'rb') as f:
-                        msg.add_attachment(f.read(), maintype=maintype, subtype=subtype,
-                                         filename=os.path.basename(filepath))
-
-                server.send_message(msg)
-                server.quit()
-                conn.execute("""
-                    INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, tracking_id, sent_at, workspace_id)
-                    VALUES (?,?,?,?,?,?,?,?,?)
-                """, (campaign_id, cid, contact['email'], subject, body, 'sent', tracking_id, datetime.now(), wid))
-                conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (cid,))
-                conn.commit()
-                sent += 1
-                # Log to thread system
                 try:
-                    from services.inbox_service import get_or_create_thread, insert_message
-                    thread_id = get_or_create_thread(cid, campaign_id, subject)
-                    insert_message(
-                        thread_id=thread_id, direction='outgoing',
-                        sender_email=from_email, recipient_email=contact['email'],
-                        subject=subject, body=body, message_id=tracking_id
-                    )
-                except Exception:
-                    pass
-                if account_id:
-                    mark_send_success(account_id)
-                smtp_logger.info(f'SENT | Campaign {campaign_id} | To: {contact["email"]} | Subject: {subject[:50]}')
-                time.sleep(5)
+                    server = smtplib.SMTP(smtp_server, smtp_port)
+                    server.starttls()
+                    server.login(smtp_username, smtp_password)
 
-            except smtplib.SMTPRecipientsRefused as e:
-                conn.execute("""
-                    INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, bounce_reason, sent_at)
-                    VALUES (?,?,?,?,?,?,?,?)
-                """, (campaign_id, cid, contact['email'], subject, body, 'bounced', str(e), datetime.now()))
-                conn.commit()
-                failed += 1
-                if account_id:
-                    mark_send_failure(account_id)
-                smtp_logger.warning(f'BOUNCED | {contact["email"]} | {str(e)[:100]}')
-                # Lead score penalty for bounce
-                try:
-                    from services.lead_scoring import update_lead_score
-                    update_lead_score(cid, 'bounce')
-                except Exception:
-                    pass
+                    tracking_id = str(uuid.uuid4())
+                    # Append inbox signature before tracking pixel
+                    from services.smtp_rotation import append_signature
+                    body_with_sig = append_signature(body, signature)
+                    tracked_body = inject_tracking_pixel(body_with_sig, tracking_id)
 
-            except Exception as e:
-                conn.execute("""
-                    INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, bounce_reason, sent_at)
-                    VALUES (?,?,?,?,?,?,?,?)
-                """, (campaign_id, cid, contact['email'], subject, body, 'failed', str(e), datetime.now()))
-                conn.commit()
-                failed += 1
-                if account_id:
-                    mark_send_failure(account_id)
-                smtp_logger.error(f'FAILED | {contact["email"]} | {str(e)[:100]}')
-                error_logger.error(f'Send failed for {contact["email"]}: {str(e)}')
+                    msg = EmailMessage()
+                    msg['Subject']    = subject
+                    msg['From']       = formataddr((from_name, from_email))
+                    msg['To']         = contact['email']
+                    msg['Message-ID'] = f'<{tracking_id}@outreachos>'
+                    if reply_to and reply_to.strip():
+                        msg['Reply-To'] = reply_to
+                    if bcc and bcc.strip():
+                        msg['Bcc'] = bcc
+                    msg.add_alternative(tracked_body, subtype='html')
+
+                    if attachment_filename and os.path.exists(os.path.join(ATTACHMENT_DIR, attachment_filename)):
+                        filepath = os.path.join(ATTACHMENT_DIR, attachment_filename)
+                        mime_type, _ = mimetypes.guess_type(filepath)
+                        if mime_type:
+                            maintype, subtype = mime_type.split('/', 1)
+                        else:
+                            maintype, subtype = 'application', 'octet-stream'
+                        with open(filepath, 'rb') as f:
+                            msg.add_attachment(f.read(), maintype=maintype, subtype=subtype,
+                                             filename=os.path.basename(filepath))
+
+                    server.send_message(msg)
+                    server.quit()
+                    conn.execute("""
+                        INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, tracking_id, sent_at, workspace_id)
+                        VALUES (?,?,?,?,?,?,?,?,?)
+                    """, (campaign_id, cid, contact['email'], subject, body, 'sent', tracking_id, datetime.now(), wid))
+                    conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (cid,))
+                    conn.commit()
+                    sent += 1
+                    # Log to thread system
+                    try:
+                        from services.inbox_service import get_or_create_thread, insert_message
+                        thread_id = get_or_create_thread(cid, campaign_id, subject)
+                        insert_message(
+                            thread_id=thread_id, direction='outgoing',
+                            sender_email=from_email, recipient_email=contact['email'],
+                            subject=subject, body=body, message_id=tracking_id
+                        )
+                    except Exception:
+                        pass
+                    if account_id:
+                        mark_send_success(account_id)
+                    smtp_logger.info(f'SENT | Campaign {campaign_id} | To: {contact["email"]} | Subject: {subject[:50]}')
+                    time.sleep(5)
+
+                except smtplib.SMTPRecipientsRefused as e:
+                    conn.execute("""
+                        INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, bounce_reason, sent_at)
+                        VALUES (?,?,?,?,?,?,?,?)
+                    """, (campaign_id, cid, contact['email'], subject, body, 'bounced', str(e), datetime.now()))
+                    conn.commit()
+                    failed += 1
+                    if account_id:
+                        mark_send_failure(account_id)
+                    smtp_logger.warning(f'BOUNCED | {contact["email"]} | {str(e)[:100]}')
+                    # Lead score penalty for bounce
+                    try:
+                        from services.lead_scoring import update_lead_score
+                        update_lead_score(cid, 'bounce')
+                    except Exception:
+                        pass
+
+                except Exception as e:
+                    conn.execute("""
+                        INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, bounce_reason, sent_at)
+                        VALUES (?,?,?,?,?,?,?,?)
+                    """, (campaign_id, cid, contact['email'], subject, body, 'failed', str(e), datetime.now()))
+                    conn.commit()
+                    failed += 1
+                    if account_id:
+                        mark_send_failure(account_id)
+                    smtp_logger.error(f'FAILED | {contact["email"]} | {str(e)[:100]}')
+                    error_logger.error(f'Send failed for {contact["email"]}: {str(e)}')
 
     except Exception as e:
         flash(f'SMTP Error: {e}', 'error')
@@ -2350,8 +2422,9 @@ def send_campaign(campaign_id):
 @app.route('/retry/<int:email_id>', methods=['POST'])
 @login_required
 def retry_email(email_id):
+    from utils.ownership import owns_email_sent
     conn = get_db()
-    record = conn.execute("SELECT * FROM emails_sent WHERE id=?", (email_id,)).fetchone()
+    record = owns_email_sent(email_id)
     if not record:
         flash('Email record not found', 'error')
         conn.close()
@@ -2410,11 +2483,11 @@ def retry_email(email_id):
 @login_required
 def api_retry_email(email_id):
     """AJAX retry - returns JSON with loader support"""
-    conn = get_db()
-    record = conn.execute("SELECT * FROM emails_sent WHERE id=?", (email_id,)).fetchone()
+    from utils.ownership import owns_email_sent
+    record = owns_email_sent(email_id)
     if not record:
-        conn.close()
-        return jsonify({'success': False, 'error': 'Not found'})
+        return jsonify({'success': False, 'error': 'Not found'}), 404
+    conn = get_db()
 
     # Duplicate protection - don't resend if already sent in same campaign
     already_sent = conn.execute(
@@ -2461,6 +2534,18 @@ def api_retry_email(email_id):
         conn.commit()
         conn.close()
         return jsonify({'success': False, 'error': str(e)[:100]})
+
+
+# Per-campaign send lock — prevents race condition duplicate sends
+import threading
+_campaign_send_locks = {}
+_campaign_send_locks_mutex = threading.Lock()
+
+def _get_campaign_lock(campaign_id):
+    with _campaign_send_locks_mutex:
+        if campaign_id not in _campaign_send_locks:
+            _campaign_send_locks[campaign_id] = threading.Lock()
+        return _campaign_send_locks[campaign_id]
 
 
 # Send progress tracking — keyed by user_id to prevent race conditions
@@ -3436,6 +3521,9 @@ def api_add_smtp_account():
 @login_required
 def api_update_smtp_account(account_id):
     """Update full sender identity for an existing SMTP account."""
+    from utils.ownership import owns_smtp_account
+    if not owns_smtp_account(account_id):
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     data = request.json or {}
     conn = get_db()
     acc = conn.execute('SELECT id FROM smtp_accounts WHERE id=?', (account_id,)).fetchone()
@@ -3464,11 +3552,11 @@ def api_update_smtp_account(account_id):
 @app.route('/api/smtp_accounts/<int:account_id>/toggle', methods=['POST'])
 @login_required
 def api_toggle_smtp_account(account_id):
-    conn = get_db()
-    acc = conn.execute("SELECT active FROM smtp_accounts WHERE id=?", (account_id,)).fetchone()
+    from utils.ownership import owns_smtp_account
+    acc = owns_smtp_account(account_id)
     if not acc:
-        conn.close()
-        return jsonify({'success': False, 'error': 'Not found'})
+        return jsonify({'success': False, 'error': 'Not found'}), 404
+    conn = get_db()
     new_status = 0 if acc['active'] else 1
     conn.execute("UPDATE smtp_accounts SET active=? WHERE id=?", (new_status, account_id))
     conn.commit()
@@ -3479,6 +3567,9 @@ def api_toggle_smtp_account(account_id):
 @app.route('/api/smtp_accounts/<int:account_id>/delete', methods=['DELETE'])
 @login_required
 def api_delete_smtp_account(account_id):
+    from utils.ownership import owns_smtp_account
+    if not owns_smtp_account(account_id):
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     conn = get_db()
     conn.execute("DELETE FROM smtp_accounts WHERE id=?", (account_id,))
     conn.commit()
