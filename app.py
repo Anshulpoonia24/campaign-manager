@@ -28,32 +28,53 @@ load_dotenv()
 # ==============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# HARDCODED persistent path for Azure App Service
 # /home is the ONLY persistent directory on Azure Linux App Service
+# App runs from /tmp — so we copy DB from /home/data on startup
+PERSISTENT_DIR = '/home/data'
 DATA_DIR = '/home/data'
 LOG_DIR = '/home/logs'
 UPLOAD_DIR = '/home/uploads'
 
-# Create directories (will work on Azure, may fail on Windows - that's OK)
-try:
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(LOG_DIR, exist_ok=True)
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    # Test write permission
-    test_file = os.path.join(DATA_DIR, '.write_test')
-    with open(test_file, 'w') as f:
-        f.write('ok')
-    os.remove(test_file)
-    print(f'[STARTUP] Using persistent path: {DATA_DIR} (writable)')
-except (OSError, PermissionError) as e:
-    # Fallback for local Windows dev OR if /home/data not writable
-    print(f'[STARTUP] /home/data failed: {e}, falling back to local')
-    DATA_DIR = os.path.join(BASE_DIR, 'data')
-    LOG_DIR = os.path.join(BASE_DIR, 'logs')
-    UPLOAD_DIR = os.path.join(BASE_DIR, 'attachments')
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(LOG_DIR, exist_ok=True)
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+def _setup_paths():
+    """Ensure persistent dirs exist and DB is accessible from app working dir."""
+    global DATA_DIR, LOG_DIR, UPLOAD_DIR
+    try:
+        os.makedirs(PERSISTENT_DIR, exist_ok=True)
+        os.makedirs(LOG_DIR, exist_ok=True)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        # Test write permission on /home/data
+        test_file = os.path.join(PERSISTENT_DIR, '.write_test')
+        with open(test_file, 'w') as f:
+            f.write('ok')
+        os.remove(test_file)
+        DATA_DIR = PERSISTENT_DIR
+        print(f'[STARTUP] Persistent storage: {DATA_DIR} (writable)')
+    except (OSError, PermissionError) as e:
+        # Local Windows dev fallback
+        print(f'[STARTUP] /home/data not writable ({e}), using local data/')
+        DATA_DIR = os.path.join(BASE_DIR, 'data')
+        LOG_DIR = os.path.join(BASE_DIR, 'logs')
+        UPLOAD_DIR = os.path.join(BASE_DIR, 'attachments')
+        os.makedirs(DATA_DIR, exist_ok=True)
+        os.makedirs(LOG_DIR, exist_ok=True)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        return
+
+    # If app is running from /tmp (Azure), ensure DB exists in DATA_DIR
+    # The app's cwd may be /tmp/xxx — DB must live in /home/data always
+    app_cwd = os.getcwd()
+    if app_cwd.startswith('/tmp'):
+        cwd_db = os.path.join(app_cwd, 'campaigns.db')
+        persistent_db = os.path.join(PERSISTENT_DIR, 'campaigns.db')
+        if os.path.exists(cwd_db) and not os.path.exists(persistent_db):
+            # First run — move blank DB out of the way, persistent one takes over
+            import shutil
+            shutil.copy2(cwd_db, persistent_db)
+            print(f'[STARTUP] Copied blank DB to persistent storage')
+        elif os.path.exists(persistent_db):
+            print(f'[STARTUP] Using persistent DB: {persistent_db} ({os.path.getsize(persistent_db)} bytes)')
+
+_setup_paths()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'CHANGE-ME-generate-with-python-secrets')
@@ -3405,8 +3426,6 @@ def api_add_smtp_account():
         conn.close()
         if inserted == 0:
             return jsonify({'success': False, 'error': 'An inbox with this email already exists'})
-        conn.commit()
-        conn.close()
         app_logger.info(f'SMTP account added: {email}')
         return jsonify({'success': True})
     except Exception as e:

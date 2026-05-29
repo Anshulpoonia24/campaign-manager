@@ -23,16 +23,23 @@ USE_POSTGRES = bool(DATABASE_URL or DB_HOST)
 
 # ── SQLITE FALLBACK CONFIG ────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR  = os.getenv('DATA_DIR', '/home/data')
-try:
-    os.makedirs(DATA_DIR, exist_ok=True)
-    test = os.path.join(DATA_DIR, '.write_test')
-    open(test, 'w').close()
-    os.remove(test)
-except (OSError, PermissionError):
-    DATA_DIR = os.path.join(BASE_DIR, 'data')
-    os.makedirs(DATA_DIR, exist_ok=True)
 
+# Always prefer /home/data (Azure persistent storage)
+# Fall back to local data/ only if /home/data is not writable
+def _resolve_data_dir():
+    persistent = '/home/data'
+    try:
+        os.makedirs(persistent, exist_ok=True)
+        test = os.path.join(persistent, '.db_write_test')
+        open(test, 'w').close()
+        os.remove(test)
+        return persistent
+    except (OSError, PermissionError):
+        local = os.path.join(BASE_DIR, 'data')
+        os.makedirs(local, exist_ok=True)
+        return local
+
+DATA_DIR = _resolve_data_dir()
 DB_PATH = os.path.join(DATA_DIR, 'campaigns.db')
 
 # ── POSTGRES CONFIG ───────────────────────────────────────────
