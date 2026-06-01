@@ -39,11 +39,11 @@ UPLOAD_DIR = '/home/uploads'
 def _setup_paths():
     """Ensure persistent dirs exist and DB is accessible from app working dir."""
     global DATA_DIR, LOG_DIR, UPLOAD_DIR
+    # Try /home/data (Azure)
     try:
         os.makedirs(PERSISTENT_DIR, exist_ok=True)
         os.makedirs(LOG_DIR, exist_ok=True)
         os.makedirs(UPLOAD_DIR, exist_ok=True)
-        # Test write permission on /home/data
         test_file = os.path.join(PERSISTENT_DIR, '.write_test')
         with open(test_file, 'w') as f:
             f.write('ok')
@@ -51,6 +51,25 @@ def _setup_paths():
         DATA_DIR = PERSISTENT_DIR
         print(f'[STARTUP] Persistent storage: {DATA_DIR} (writable)')
     except (OSError, PermissionError) as e:
+        # Try Render path
+        render_data = '/opt/render/project/src/data'
+        render_logs = '/opt/render/project/src/logs'
+        render_uploads = '/opt/render/project/src/uploads'
+        try:
+            os.makedirs(render_data, exist_ok=True)
+            os.makedirs(render_logs, exist_ok=True)
+            os.makedirs(render_uploads, exist_ok=True)
+            test_file = os.path.join(render_data, '.write_test')
+            with open(test_file, 'w') as f:
+                f.write('ok')
+            os.remove(test_file)
+            DATA_DIR = render_data
+            LOG_DIR = render_logs
+            UPLOAD_DIR = render_uploads
+            print(f'[STARTUP] Render storage: {DATA_DIR} (writable)')
+            return
+        except (OSError, PermissionError):
+            pass
         # Local Windows dev fallback
         print(f'[STARTUP] /home/data not writable ({e}), using local data/')
         DATA_DIR = os.path.join(BASE_DIR, 'data')
@@ -62,13 +81,11 @@ def _setup_paths():
         return
 
     # If app is running from /tmp (Azure), ensure DB exists in DATA_DIR
-    # The app's cwd may be /tmp/xxx — DB must live in /home/data always
     app_cwd = os.getcwd()
     if app_cwd.startswith('/tmp'):
         cwd_db = os.path.join(app_cwd, 'campaigns.db')
         persistent_db = os.path.join(PERSISTENT_DIR, 'campaigns.db')
         if os.path.exists(cwd_db) and not os.path.exists(persistent_db):
-            # First run — move blank DB out of the way, persistent one takes over
             import shutil
             shutil.copy2(cwd_db, persistent_db)
             print(f'[STARTUP] Copied blank DB to persistent storage')
