@@ -19,6 +19,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from utils.constants import CATCHALL_DOMAINS
 
 # Load .env file
 load_dotenv()
@@ -627,10 +628,37 @@ def init_db():
             """, (rule_key, enabled, delay_days, max_followups))
     conn.commit()
 
+    # send_reservations — duplicate send protection
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS send_reservations (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id INTEGER NOT NULL DEFAULT 1,
+            contact_id   INTEGER NOT NULL,
+            campaign_id  INTEGER NOT NULL,
+            send_key     TEXT    NOT NULL,
+            status       TEXT    NOT NULL DEFAULT 'sending',
+            reserved_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (workspace_id, contact_id, campaign_id, send_key)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_sr_lookup
+        ON send_reservations (workspace_id, contact_id, campaign_id, send_key)
+    """)
+    conn.commit()
+
     conn.close()
 
 
 # Initialize DB immediately at module load (before any request can hit load_user)
+try:
+    # Backup before init — guard inside backup_db prevents duplicate runs
+    from utils.backup import backup_db
+    backup_db(DB_PATH, os.path.join(os.path.dirname(DB_PATH), 'backups'))
+except Exception as _be:
+    print(f'[STARTUP] Backup skipped: {_be}')
+
 try:
     init_db()
     # Ensure tracking_events table exists
@@ -2440,15 +2468,28 @@ def retry_email(email_id):
         conn.close()
         return redirect(url_for('campaign_detail', campaign_id=record['campaign_id']))
 
-    smtp_server = get_setting('smtp_server')
-    smtp_port = int(get_setting('smtp_port') or 587)
-    smtp_username = get_setting('smtp_username')
-    smtp_password = get_setting('smtp_password')
-    smtp_login = get_setting('smtp_login_username') or smtp_username
-    from_email = get_setting('from_email') or smtp_username
-    from_name = get_setting('from_name')
-    reply_to = get_setting('reply_to') or from_email
-    bcc = get_setting('bcc_emails')
+    from services.workspace_service import get_wid
+    from services.smtp_rotation import get_next_smtp_account
+    wid = get_wid()
+    account = get_next_smtp_account(workspace_id=wid)
+    if account:
+        smtp_server = account['smtp_server']
+        smtp_port = int(account['smtp_port'])
+        smtp_login = account['login_username'] or account['email']
+        smtp_password = account['password']
+        from_email = account['from_email'] or account['email']
+        from_name = account.get('from_name', '')
+        reply_to = account.get('reply_to') or _get_reply_to()
+        bcc = account.get('bcc_emails', '')
+    else:
+        smtp_server = get_setting('smtp_server')
+        smtp_port = int(get_setting('smtp_port') or 587)
+        smtp_login = get_setting('smtp_username')
+        smtp_password = get_setting('smtp_password')
+        from_email = get_setting('from_email') or smtp_login
+        from_name = get_setting('from_name')
+        reply_to = get_setting('reply_to') or from_email
+        bcc = get_setting('bcc_emails')
 
     try:
         server = smtplib.SMTP(smtp_server, smtp_port)
@@ -2498,15 +2539,28 @@ def api_retry_email(email_id):
         conn.close()
         return jsonify({'success': False, 'error': 'Already sent in this campaign'})
 
-    smtp_server = get_setting('smtp_server')
-    smtp_port = int(get_setting('smtp_port') or 587)
-    smtp_username = get_setting('smtp_username')
-    smtp_password = get_setting('smtp_password')
-    smtp_login = get_setting('smtp_login_username') or smtp_username
-    from_email = get_setting('from_email') or smtp_username
-    from_name = get_setting('from_name')
-    reply_to = get_setting('reply_to') or from_email
-    bcc = get_setting('bcc_emails')
+    from services.workspace_service import get_wid
+    from services.smtp_rotation import get_next_smtp_account
+    wid = get_wid()
+    account = get_next_smtp_account(workspace_id=wid)
+    if account:
+        smtp_server = account['smtp_server']
+        smtp_port = int(account['smtp_port'])
+        smtp_login = account['login_username'] or account['email']
+        smtp_password = account['password']
+        from_email = account['from_email'] or account['email']
+        from_name = account.get('from_name', '')
+        reply_to = account.get('reply_to') or _get_reply_to()
+        bcc = account.get('bcc_emails', '')
+    else:
+        smtp_server = get_setting('smtp_server')
+        smtp_port = int(get_setting('smtp_port') or 587)
+        smtp_login = get_setting('smtp_username')
+        smtp_password = get_setting('smtp_password')
+        from_email = get_setting('from_email') or smtp_login
+        from_name = get_setting('from_name')
+        reply_to = get_setting('reply_to') or from_email
+        bcc = get_setting('bcc_emails')
 
     try:
         server = smtplib.SMTP(smtp_server, smtp_port)
@@ -2608,25 +2662,50 @@ def send_campaign_ai(campaign_id):
         prog = {'running': True, 'total': len(contact_ids), 'done': 0, 'sent': 0, 'failed': 0, 'current': '', 'campaign_id': campaign_id}
         _set_send_progress(uid, prog)
         prompt_template = get_setting('email_prompt')
-        smtp_server = get_setting('smtp_server')
-        smtp_port = int(get_setting('smtp_port') or 587)
-        smtp_username = get_setting('smtp_username')
-        smtp_password = get_setting('smtp_password')
-        smtp_login = get_setting('smtp_login_username') or smtp_username
-        from_email = get_setting('from_email') or smtp_username
-        from_name = get_setting('from_name')
-        reply_to = get_setting('reply_to') or from_email
-        bcc = get_setting('bcc_emails')
         from services.workspace_service import get_wid
+        from services.smtp_rotation import get_next_smtp_account, append_signature
         wid = get_wid()
         conn = get_db()
 
+        # Get SMTP creds via rotation (handles Brevo login_username properly)
+        def _get_smtp_creds():
+            account = get_next_smtp_account(workspace_id=wid)
+            if account:
+                return account
+            return {
+                'smtp_server':    get_setting('smtp_server'),
+                'smtp_port':      int(get_setting('smtp_port') or 587),
+                'login_username': get_setting('smtp_username'),
+                'password':       get_setting('smtp_password'),
+                'from_email':     get_setting('from_email') or get_setting('smtp_username'),
+                'from_name':      get_setting('from_name'),
+                'reply_to':       get_setting('reply_to'),
+                'bcc_emails':     get_setting('bcc_emails'),
+                'signature':      '',
+                'email':          get_setting('from_email') or get_setting('smtp_username'),
+                'account_id':     None,
+                'id':             None,
+            }
+
+        creds = _get_smtp_creds()
+        smtp_server_addr = creds.get('smtp_server')
+        smtp_port_num = int(creds.get('smtp_port') or 587)
+        smtp_login = creds.get('login_username') or creds.get('email')
+        smtp_password = creds['password']
+        from_email = creds.get('from_email') or creds.get('email')
+        from_name = creds.get('from_name', '')
+        reply_to = creds.get('reply_to') or _get_reply_to()
+        bcc = creds.get('bcc_emails') or get_setting('bcc_emails')
+        signature = creds.get('signature', '')
+        account_id = creds.get('account_id') or creds.get('id')
+
         server = None
         try:
-            server = smtplib.SMTP(smtp_server, smtp_port)
+            server = smtplib.SMTP(smtp_server_addr, smtp_port_num)
             server.starttls()
             server.login(smtp_login, smtp_password)
         except Exception as e:
+            error_logger.error(f'[AI SEND] SMTP login failed: {smtp_login}@{smtp_server_addr}:{smtp_port_num} — {e}')
             prog['running'] = False
             _set_send_progress(uid, prog)
             return
@@ -2636,7 +2715,19 @@ def send_campaign_ai(campaign_id):
                 try: server.quit()
                 except Exception: pass
                 try:
-                    server = smtplib.SMTP(smtp_server, smtp_port)
+                    # Re-get creds (rotation may pick next account)
+                    creds = _get_smtp_creds()
+                    smtp_server_addr = creds.get('smtp_server')
+                    smtp_port_num = int(creds.get('smtp_port') or 587)
+                    smtp_login = creds.get('login_username') or creds.get('email')
+                    smtp_password = creds['password']
+                    from_email = creds.get('from_email') or creds.get('email')
+                    from_name = creds.get('from_name', '')
+                    reply_to = creds.get('reply_to') or _get_reply_to()
+                    bcc = creds.get('bcc_emails') or get_setting('bcc_emails')
+                    signature = creds.get('signature', '')
+                    account_id = creds.get('account_id') or creds.get('id')
+                    server = smtplib.SMTP(smtp_server_addr, smtp_port_num)
                     server.starttls()
                     server.login(smtp_login, smtp_password)
                 except Exception: pass
@@ -2684,16 +2775,7 @@ def send_campaign_ai(campaign_id):
 
             try:
                 tracking_id = str(uuid.uuid4())
-                # Append SMTP account signature
-                from services.smtp_rotation import append_signature
-                _sig = ''
-                try:
-                    _sig_conn = get_db()
-                    _sig_row = _sig_conn.execute("SELECT signature FROM smtp_accounts WHERE email=?", (from_email,)).fetchone()
-                    if _sig_row: _sig = _sig_row['signature'] or ''
-                    _sig_conn.close()
-                except Exception: pass
-                body_with_sig = append_signature(body, _sig)
+                body_with_sig = append_signature(body, signature)
                 tracked_body = inject_tracking_pixel(body_with_sig, tracking_id)
 
                 msg = EmailMessage()
@@ -2717,11 +2799,15 @@ def send_campaign_ai(campaign_id):
                 conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (cid,))
                 conn.commit()
                 prog['sent'] += 1
+                if account_id:
+                    mark_send_success(account_id)
             except Exception as e:
                 conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,bounce_reason,sent_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
                     (campaign_id, cid, contact['email'], subject, body if 'body' in dir() else '', 'failed', str(e)[:200], datetime.now(), wid))
                 conn.commit()
                 prog['failed'] += 1
+                if account_id:
+                    mark_send_failure(account_id)
 
             prog['done'] += 1
             _set_send_progress(uid, prog)
@@ -2890,19 +2976,31 @@ def api_imap_status():
 @app.route('/api/smtp_test')
 @login_required
 def api_smtp_test():
-    """Test SMTP connection and show current settings (for debugging)"""
-    smtp_server = get_setting('smtp_server')
-    smtp_port = get_setting('smtp_port')
-    smtp_username = get_setting('smtp_username')
-    smtp_password = get_setting('smtp_password')
-    smtp_login = get_setting('smtp_login_username') or smtp_username
-    from_email = get_setting('from_email')
+    """Test SMTP connection — tries rotation account first, then fallback settings."""
+    from services.workspace_service import get_wid
+    from services.smtp_rotation import get_next_smtp_account
+    wid = get_wid()
     tracking_host = get_setting('tracking_host')
+
+    # Try rotation account first
+    account = get_next_smtp_account(workspace_id=wid)
+    if account:
+        smtp_server = account['smtp_server']
+        smtp_port = str(account['smtp_port'])
+        smtp_login = account['login_username'] or account['email']
+        smtp_password = account['password']
+        from_email = account['from_email'] or account['email']
+    else:
+        smtp_server = get_setting('smtp_server')
+        smtp_port = get_setting('smtp_port')
+        smtp_login = get_setting('smtp_username')
+        smtp_password = get_setting('smtp_password')
+        from_email = get_setting('from_email') or smtp_login
 
     result = {
         'smtp_server': smtp_server or 'NOT SET',
         'smtp_port': smtp_port or 'NOT SET',
-        'smtp_username': smtp_username or 'NOT SET',
+        'smtp_username': smtp_login or 'NOT SET',
         'smtp_password_set': bool(smtp_password),
         'from_email': from_email or 'NOT SET',
         'tracking_host': tracking_host or 'NOT SET',
@@ -2910,7 +3008,7 @@ def api_smtp_test():
         'connection_test': None
     }
 
-    if not all([smtp_server, smtp_port, smtp_username, smtp_password]):
+    if not all([smtp_server, smtp_port, smtp_login, smtp_password]):
         result['connection_test'] = 'FAILED - Missing SMTP settings'
         return jsonify(result)
 

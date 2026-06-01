@@ -254,6 +254,31 @@ def get_db():
     return conn
 
 
+def get_workspace_only_setting(key, workspace_id, default=''):
+    """
+    Strict workspace-only setting lookup.
+    Returns value ONLY if explicitly set for this workspace_id.
+    Does NOT fall back to global/workspace_id=1.
+    Returns default (empty string) if:
+      - No row found for this workspace
+      - workspace_id column does not exist in settings table (local dev)
+      - Any DB error
+    Safe to call even if settings table has no workspace_id column.
+    """
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key=? AND workspace_id=?",
+            (key, workspace_id)
+        ).fetchone()
+        return row[0] if row else default
+    except Exception:
+        # workspace_id column missing (local dev without migration) or other error
+        return default
+    finally:
+        conn.close()
+
+
 def get_setting(key, default=''):
     """Read a single setting value from the DB."""
     conn = get_db()
@@ -291,3 +316,110 @@ def get_db_url():
 
 # Alias for backward compatibility
 get_db_connection = get_db
+
+
+# ── SEND RESERVATION HELPERS ─────────────────────────────────
+
+def cleanup_stale_reservations(conn, campaign_id, workspace_id,
+                                stale_minutes=10):
+    """
+    Mark 'sending' reservations older than stale_minutes as 'failed'.
+    Call once per campaign batch — not per email.
+    """
+    conn.execute("""
+        UPDATE send_reservations
+        SET    status     = 'failed',
+               updated_at = CURRENT_TIMESTAMP
+        WHERE  campaign_id  = ?
+          AND  workspace_id = ?
+          AND  status       = 'sending'
+          AND  reserved_at  < datetime('now', ?)
+    """, (campaign_id, workspace_id, f'-{stale_minutes} minutes'))
+    conn.commit()
+
+
+def claim_reservation(conn, workspace_id, contact_id,
+                      campaign_id, send_key):
+    """
+    Atomic reservation claim.
+
+    Returns one of:
+      'claimed'     — reservation created/reclaimed, proceed with send
+      'skip'        — already sent successfully, skip forever
+      'in_progress' — another worker is currently sending this, skip
+
+    State transitions:
+      None    → INSERT 'sending'              → 'claimed'
+      sent    → no change                     → 'skip'
+      sending → no change (fresh)             → 'in_progress'
+      failed  → UPDATE back to 'sending'      → 'claimed'
+                (only if still failed — atomic)
+    """
+    # Attempt fresh INSERT
+    conn.execute("""
+        INSERT OR IGNORE INTO send_reservations
+            (workspace_id, contact_id, campaign_id, send_key,
+             status, reserved_at, updated_at)
+        VALUES (?, ?, ?, ?, 'sending',
+                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    """, (workspace_id, contact_id, campaign_id, send_key))
+
+    if conn.execute("SELECT changes()").fetchone()[0] == 1:
+        conn.commit()
+        return 'claimed'   # fresh insert won
+
+    # Row already exists — read its current status
+    row = conn.execute("""
+        SELECT id, status FROM send_reservations
+        WHERE  workspace_id = ?
+          AND  contact_id   = ?
+          AND  campaign_id  = ?
+          AND  send_key     = ?
+    """, (workspace_id, contact_id, campaign_id, send_key)).fetchone()
+
+    if not row:
+        # Extremely rare: row disappeared between INSERT and SELECT
+        return 'in_progress'
+
+    if row['status'] == 'sent':
+        return 'skip'
+
+    if row['status'] == 'sending':
+        return 'in_progress'
+
+    if row['status'] == 'failed':
+        # Reclaim: conditional UPDATE — only succeeds if still 'failed'
+        conn.execute("""
+            UPDATE send_reservations
+            SET    status      = 'sending',
+                   reserved_at = CURRENT_TIMESTAMP,
+                   updated_at  = CURRENT_TIMESTAMP
+            WHERE  id     = ?
+              AND  status = 'failed'
+        """, (row['id'],))
+        if conn.execute("SELECT changes()").fetchone()[0] == 1:
+            conn.commit()
+            return 'claimed'
+        # Another worker reclaimed it between our read and update
+        return 'in_progress'
+
+    return 'in_progress'  # unknown status — safe default
+
+
+def complete_reservation(conn, workspace_id, contact_id,
+                         campaign_id, send_key, success):
+    """
+    Mark reservation as 'sent' (success=True) or 'failed' (success=False).
+    Call after SMTP send attempt completes.
+    """
+    status = 'sent' if success else 'failed'
+    conn.execute("""
+        UPDATE send_reservations
+        SET    status     = ?,
+               updated_at = CURRENT_TIMESTAMP
+        WHERE  workspace_id = ?
+          AND  contact_id   = ?
+          AND  campaign_id  = ?
+          AND  send_key     = ?
+    """, (status, workspace_id, contact_id, campaign_id, send_key))
+    conn.commit()
