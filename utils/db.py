@@ -27,6 +27,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Always prefer /home/data (Azure persistent storage)
 # Fall back to local data/ only if /home/data is not writable
 def _resolve_data_dir():
+    # Try /home/data (Azure persistent storage)
     persistent = '/home/data'
     try:
         os.makedirs(persistent, exist_ok=True)
@@ -35,9 +36,23 @@ def _resolve_data_dir():
         os.remove(test)
         return persistent
     except (OSError, PermissionError):
-        local = os.path.join(BASE_DIR, 'data')
-        os.makedirs(local, exist_ok=True)
-        return local
+        pass
+
+    # Try /opt/render/project/src/data (Render)
+    render_dir = '/opt/render/project/src/data'
+    try:
+        os.makedirs(render_dir, exist_ok=True)
+        test = os.path.join(render_dir, '.db_write_test')
+        open(test, 'w').close()
+        os.remove(test)
+        return render_dir
+    except (OSError, PermissionError):
+        pass
+
+    # Fallback: local data/ dir
+    local = os.path.join(BASE_DIR, 'data')
+    os.makedirs(local, exist_ok=True)
+    return local
 
 DATA_DIR = _resolve_data_dir()
 DB_PATH = os.path.join(DATA_DIR, 'campaigns.db')
