@@ -143,7 +143,7 @@ def internal_error(e):
     if request.is_json or request.path.startswith('/api/'):
         return jsonify({'error': 'Internal server error'}), 500
     flash('Something went wrong! Check logs.', 'error')
-    return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
 
 
 @app.errorhandler(404)
@@ -179,7 +179,8 @@ def load_user(user_id):
         conn.close()
         if row:
             wid = row['workspace_id'] if 'workspace_id' in row.keys() else 1
-            return User(row['id'], row['username'], row['role'], wid)
+            role = row['role'] if 'role' in row.keys() else 'admin'
+            return User(row['id'], row['username'], role, wid)
     except Exception:
         pass
     return None
@@ -1267,6 +1268,25 @@ def change_password():
 @app.route('/')
 @login_required
 def dashboard():
+    try:
+        return _dashboard_inner()
+    except Exception as e:
+        error_logger.error(f'Dashboard crash: {e}')
+        # Show a minimal working page instead of redirect loop
+        return f'''<html><body style="font-family:sans-serif;padding:40px;">
+        <h2>Dashboard Error</h2>
+        <p style="color:red;">{str(e)[:200]}</p>
+        <p>The app started but dashboard has an error. Try:</p>
+        <ul>
+        <li><a href="/settings">Settings</a></li>
+        <li><a href="/campaigns">Campaigns</a></li>
+        <li><a href="/live-logs">Live Logs</a></li>
+        <li><a href="/logout">Logout</a></li>
+        </ul>
+        </body></html>''', 500
+
+
+def _dashboard_inner():
     from services.lead_scoring import get_hot_leads, calculate_priority
     conn = get_db()
     total_sent = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
