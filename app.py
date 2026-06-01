@@ -318,7 +318,9 @@ def _table_exists(conn, table_name):
 def init_db():
     from utils.db import USE_POSTGRES
     conn = get_db()
-    if USE_POSTGRES:
+    # Check if we actually got a PG connection (get_db may fallback to SQLite)
+    is_pg = USE_POSTGRES and hasattr(conn, 'raw')
+    if is_pg:
         from utils.pg_schema import init_pg
         init_pg(conn)
         # PostgreSQL: seed defaults
@@ -326,7 +328,7 @@ def init_db():
         existing_user = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
         if not existing_user:
             default_hash = generate_password_hash('admin123')
-            conn.execute("INSERT INTO users (username, password_hash, role) VALUES (%s,%s,%s)",
+            conn.execute("INSERT INTO users (username, password_hash, role) VALUES (?,?,?)",
                          ('admin', default_hash, 'admin'))
             conn.commit()
         # Ensure default workspace
@@ -335,15 +337,15 @@ def init_db():
             conn.commit()
         # Insert default settings
         for k, v in DEFAULT_SETTINGS.items():
-            existing = conn.execute("SELECT key FROM settings WHERE key=%s", (k,)).fetchone()
+            existing = conn.execute("SELECT key FROM settings WHERE key=?", (k,)).fetchone()
             if not existing:
-                conn.execute("INSERT INTO settings (key, value) VALUES (%s,%s)", (k, v))
+                conn.execute("INSERT INTO settings (key, value) VALUES (?,?)", (k, v))
         conn.commit()
         # Insert default automation rules
         for rule_key, enabled, delay_days, max_followups in [('no_reply_followup',1,2,3),('opened_multiple_times',1,1,2),('interested_pause',1,0,0),('ooo_retry',1,7,1),('bounce_pause',1,0,0)]:
-            existing = conn.execute("SELECT id FROM automation_settings WHERE rule_key=%s", (rule_key,)).fetchone()
+            existing = conn.execute("SELECT id FROM automation_settings WHERE rule_key=?", (rule_key,)).fetchone()
             if not existing:
-                conn.execute("INSERT INTO automation_settings (rule_key, enabled, delay_days, max_followups) VALUES (%s,%s,%s,%s)", (rule_key, enabled, delay_days, max_followups))
+                conn.execute("INSERT INTO automation_settings (rule_key, enabled, delay_days, max_followups) VALUES (?,?,?,?)", (rule_key, enabled, delay_days, max_followups))
         conn.commit()
         conn.close()
         return
