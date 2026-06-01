@@ -142,8 +142,11 @@ def internal_error(e):
     error_logger.error(f'500 Error: {request.path} - {str(e)}')
     if request.is_json or request.path.startswith('/api/'):
         return jsonify({'error': 'Internal server error'}), 500
-    flash('Something went wrong! Check logs.', 'error')
-    return redirect(url_for('login'))
+    return f'''<html><body style="font-family:sans-serif;padding:40px;">
+    <h2>500 — Internal Error</h2>
+    <p style="color:red;">{str(e)[:200]}</p>
+    <a href="/">Dashboard</a> | <a href="/settings">Settings</a> | <a href="/logout">Logout</a>
+    </body></html>''', 500
 
 
 @app.errorhandler(404)
@@ -4553,7 +4556,7 @@ def api_copilot_chat():
 
     if not user_msg:
         return jsonify({'success': False, 'error': 'Empty message'})
-    if page_type not in ('campaign_status', 'inbox_thread', 'contacts'):
+    if page_type not in ('campaign_status', 'inbox_thread', 'contacts', 'dashboard'):
         return jsonify({'success': False, 'error': 'Invalid page_type'})
 
     wid = get_wid()

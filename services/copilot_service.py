@@ -98,6 +98,12 @@ def get_page_context(page_type: str, page_id: int, workspace_id: int) -> dict:
         ).fetchone()[0]
         ctx['stats'] = stats
 
+    elif page_type == 'dashboard':
+        ctx['total_sent'] = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent' AND workspace_id=?", (workspace_id,)).fetchone()[0]
+        ctx['total_contacts'] = conn.execute("SELECT COUNT(*) FROM contacts WHERE workspace_id=?", (workspace_id,)).fetchone()[0]
+        ctx['total_bounced'] = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed') AND workspace_id=?", (workspace_id,)).fetchone()[0]
+        ctx['active_campaigns'] = conn.execute("SELECT COUNT(*) FROM campaigns WHERE status='sent' AND workspace_id=?", (workspace_id,)).fetchone()[0]
+
     conn.close()
     return ctx
 
@@ -162,6 +168,16 @@ You can help with:
 - Suggesting enrichment for unenriched contacts
 - Filtering advice
 - Lead scoring explanations"""
+
+    elif page_type == 'dashboard':
+        base += """
+
+PAGE: Dashboard — user is viewing the command center overview.
+You can help with:
+- Summarizing overall performance
+- Identifying issues (high bounce rate, low open rate)
+- Suggesting next actions (new campaign, check replies, fix SMTP)
+- Explaining metrics"""
 
     return base
 
