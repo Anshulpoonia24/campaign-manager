@@ -14,9 +14,10 @@ from utils.db import get_db
 WARMUP_LIMITS = {1: 10, 2: 20, 3: 35, 4: 50, 5: 100}
 
 
-def get_next_smtp_account():
+def get_next_smtp_account(workspace_id=1):
     """
     Pick the best available SMTP account using round-robin rotation.
+    Only picks accounts belonging to the given workspace.
     Returns full sender identity dict or None.
     """
     conn = get_db()
@@ -28,9 +29,10 @@ def get_next_smtp_account():
             WHERE active = 1
             AND sent_today < daily_limit
             AND health_score > 20
+            AND workspace_id = ?
             ORDER BY last_used ASC NULLS FIRST
             LIMIT 1
-        """).fetchone()
+        """, (workspace_id,)).fetchone()
     else:
         account = conn.execute("""
             SELECT *
@@ -38,9 +40,10 @@ def get_next_smtp_account():
             WHERE active = 1
             AND sent_today < daily_limit
             AND health_score > 20
+            AND workspace_id = ?
             ORDER BY CASE WHEN last_used IS NULL THEN 0 ELSE 1 END, last_used ASC
             LIMIT 1
-        """).fetchone()
+        """, (workspace_id,)).fetchone()
 
     if account:
         conn.execute("""

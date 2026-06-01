@@ -19,6 +19,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from utils.constants import CATCHALL_DOMAINS
 
 # Load .env file
 load_dotenv()
@@ -28,32 +29,53 @@ load_dotenv()
 # ==============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# HARDCODED persistent path for Azure App Service
 # /home is the ONLY persistent directory on Azure Linux App Service
+# App runs from /tmp — so we copy DB from /home/data on startup
+PERSISTENT_DIR = '/home/data'
 DATA_DIR = '/home/data'
 LOG_DIR = '/home/logs'
 UPLOAD_DIR = '/home/uploads'
 
-# Create directories (will work on Azure, may fail on Windows - that's OK)
-try:
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(LOG_DIR, exist_ok=True)
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    # Test write permission
-    test_file = os.path.join(DATA_DIR, '.write_test')
-    with open(test_file, 'w') as f:
-        f.write('ok')
-    os.remove(test_file)
-    print(f'[STARTUP] Using persistent path: {DATA_DIR} (writable)')
-except (OSError, PermissionError) as e:
-    # Fallback for local Windows dev OR if /home/data not writable
-    print(f'[STARTUP] /home/data failed: {e}, falling back to local')
-    DATA_DIR = os.path.join(BASE_DIR, 'data')
-    LOG_DIR = os.path.join(BASE_DIR, 'logs')
-    UPLOAD_DIR = os.path.join(BASE_DIR, 'attachments')
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(LOG_DIR, exist_ok=True)
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+def _setup_paths():
+    """Ensure persistent dirs exist and DB is accessible from app working dir."""
+    global DATA_DIR, LOG_DIR, UPLOAD_DIR
+    try:
+        os.makedirs(PERSISTENT_DIR, exist_ok=True)
+        os.makedirs(LOG_DIR, exist_ok=True)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        # Test write permission on /home/data
+        test_file = os.path.join(PERSISTENT_DIR, '.write_test')
+        with open(test_file, 'w') as f:
+            f.write('ok')
+        os.remove(test_file)
+        DATA_DIR = PERSISTENT_DIR
+        print(f'[STARTUP] Persistent storage: {DATA_DIR} (writable)')
+    except (OSError, PermissionError) as e:
+        # Local Windows dev fallback
+        print(f'[STARTUP] /home/data not writable ({e}), using local data/')
+        DATA_DIR = os.path.join(BASE_DIR, 'data')
+        LOG_DIR = os.path.join(BASE_DIR, 'logs')
+        UPLOAD_DIR = os.path.join(BASE_DIR, 'attachments')
+        os.makedirs(DATA_DIR, exist_ok=True)
+        os.makedirs(LOG_DIR, exist_ok=True)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        return
+
+    # If app is running from /tmp (Azure), ensure DB exists in DATA_DIR
+    # The app's cwd may be /tmp/xxx — DB must live in /home/data always
+    app_cwd = os.getcwd()
+    if app_cwd.startswith('/tmp'):
+        cwd_db = os.path.join(app_cwd, 'campaigns.db')
+        persistent_db = os.path.join(PERSISTENT_DIR, 'campaigns.db')
+        if os.path.exists(cwd_db) and not os.path.exists(persistent_db):
+            # First run — move blank DB out of the way, persistent one takes over
+            import shutil
+            shutil.copy2(cwd_db, persistent_db)
+            print(f'[STARTUP] Copied blank DB to persistent storage')
+        elif os.path.exists(persistent_db):
+            print(f'[STARTUP] Using persistent DB: {persistent_db} ({os.path.getsize(persistent_db)} bytes)')
+
+_setup_paths()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'CHANGE-ME-generate-with-python-secrets')
@@ -606,10 +628,37 @@ def init_db():
             """, (rule_key, enabled, delay_days, max_followups))
     conn.commit()
 
+    # send_reservations — duplicate send protection
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS send_reservations (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id INTEGER NOT NULL DEFAULT 1,
+            contact_id   INTEGER NOT NULL,
+            campaign_id  INTEGER NOT NULL,
+            send_key     TEXT    NOT NULL,
+            status       TEXT    NOT NULL DEFAULT 'sending',
+            reserved_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (workspace_id, contact_id, campaign_id, send_key)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_sr_lookup
+        ON send_reservations (workspace_id, contact_id, campaign_id, send_key)
+    """)
+    conn.commit()
+
     conn.close()
 
 
 # Initialize DB immediately at module load (before any request can hit load_user)
+try:
+    # Backup before init — guard inside backup_db prevents duplicate runs
+    from utils.backup import backup_db
+    backup_db(DB_PATH, os.path.join(os.path.dirname(DB_PATH), 'backups'))
+except Exception as _be:
+    print(f'[STARTUP] Backup skipped: {_be}')
+
 try:
     init_db()
     # Ensure tracking_events table exists
@@ -1503,6 +1552,10 @@ def api_get_contact(contact_id):
 @app.route('/contact/edit/<int:contact_id>', methods=['POST'])
 @login_required
 def edit_contact(contact_id):
+    from utils.ownership import owns_contact
+    if not owns_contact(contact_id):
+        flash('Not found.', 'error')
+        return redirect(url_for('contacts'))
     name = request.form.get('name', '').strip().title()
     company = request.form.get('company', '').strip()
     email = request.form.get('email', '').strip().lower()
@@ -1521,6 +1574,9 @@ def edit_contact(contact_id):
 @app.route('/api/contact/delete/<int:contact_id>', methods=['DELETE'])
 @login_required
 def delete_contact(contact_id):
+    from utils.ownership import owns_contact
+    if not owns_contact(contact_id):
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     conn = get_db()
     conn.execute("DELETE FROM emails_sent WHERE contact_id=?", (contact_id,))
     conn.execute("DELETE FROM follow_ups WHERE contact_id=?", (contact_id,))
@@ -1533,6 +1589,9 @@ def delete_contact(contact_id):
 @app.route('/api/campaign/delete/<int:campaign_id>', methods=['DELETE'])
 @login_required
 def delete_campaign(campaign_id):
+    from utils.ownership import owns_campaign
+    if not owns_campaign(campaign_id):
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     conn = get_db()
     conn.execute("DELETE FROM emails_sent WHERE campaign_id=?", (campaign_id,))
     conn.execute("DELETE FROM campaigns WHERE id=?", (campaign_id,))
@@ -1766,11 +1825,36 @@ def api_verify_single(contact_id):
 @app.route('/api/fetch_context/<int:contact_id>')
 @login_required
 def api_fetch_context(contact_id):
+    from utils.ownership import owns_contact
     conn = get_db()
-    contact = conn.execute("SELECT id, name, company FROM contacts WHERE id=?", (contact_id,)).fetchone()
+    contact = owns_contact(contact_id)
     if not contact:
         conn.close()
         return jsonify({'success': False, 'error': 'Not found'})
+
+    # ── Company-level cache: reuse context from same domain/company ──
+    domain = contact['email'].split('@')[1] if contact['email'] and '@' in contact['email'] else ''
+    company = (contact['company'] or '').strip()
+    if domain or company:
+        existing = conn.execute("""
+            SELECT context FROM contacts
+            WHERE workspace_id=?
+            AND (context IS NOT NULL AND context != '')
+            AND (
+                (? != '' AND email LIKE ?)
+                OR (? != '' AND LOWER(company) = LOWER(?))
+            )
+            LIMIT 1
+        """, (
+            getattr(current_user, 'workspace_id', 1),
+            domain, f'%@{domain}',
+            company, company
+        )).fetchone()
+        if existing:
+            conn.execute("UPDATE contacts SET context=? WHERE id=?", (existing['context'], contact_id))
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True, 'context': existing['context'], 'cached': True})
 
     prompt = f"""In 1-2 short bullet points, tell me the latest publicly known context about {contact['company']}.
 Include: what they do, recent funding/news, tech stack, or growth stage.
@@ -1800,22 +1884,53 @@ Keep it under 50 words. No fluff. Plain text, no markdown."""
 @app.route('/api/fetch_all_context', methods=['POST'])
 @login_required
 def api_fetch_all_context():
+    from services.workspace_service import get_wid
     contact_ids = request.json.get('contact_ids', [])
+    wid = get_wid()
     results = []
+    # company_cache: domain/company -> context already fetched this run
+    company_cache = {}
     conn = get_db()
     for cid in contact_ids:
-        contact = conn.execute("SELECT name, company FROM contacts WHERE id=?", (cid,)).fetchone()
+        contact = conn.execute("SELECT id, name, company, email FROM contacts WHERE id=? AND workspace_id=?", (cid, wid)).fetchone()
         if not contact:
             continue
+        domain = contact['email'].split('@')[1] if contact['email'] and '@' in contact['email'] else ''
+        company = (contact['company'] or '').strip().lower()
+        cache_key = domain or company
+        # Reuse if already fetched this run
+        if cache_key and cache_key in company_cache:
+            conn.execute("UPDATE contacts SET context=? WHERE id=?", (company_cache[cache_key], cid))
+            conn.commit()
+            results.append({'id': cid, 'context': company_cache[cache_key]})
+            continue
+        # Reuse if another contact in same workspace already has context
+        if cache_key:
+            existing = conn.execute("""
+                SELECT context FROM contacts
+                WHERE workspace_id=? AND (context IS NOT NULL AND context != '')
+                AND (email LIKE ? OR LOWER(company)=?)
+                AND id != ?
+                LIMIT 1
+            """, (wid, f'%@{domain}' if domain else '%', company, cid)).fetchone()
+            if existing:
+                company_cache[cache_key] = existing['context']
+                conn.execute("UPDATE contacts SET context=? WHERE id=?", (existing['context'], cid))
+                conn.commit()
+                results.append({'id': cid, 'context': existing['context']})
+                continue
         prompt = f"In 1-2 short bullet points (under 50 words), what does {contact['company']} do? Any recent funding or news? Only well-known facts. Plain text."
         try:
             text, err = call_groq(prompt)
             if not text:
                 text, err = call_gemini(prompt)
             if text:
-                conn.execute("UPDATE contacts SET context=? WHERE id=?", (text.strip(), cid))
+                text = text.strip()
+                if cache_key:
+                    company_cache[cache_key] = text
+                conn.execute("UPDATE contacts SET context=? WHERE id=?", (text, cid))
                 conn.commit()
-                results.append({'id': cid, 'context': text.strip()})
+                results.append({'id': cid, 'context': text})
             time.sleep(0.5)
         except Exception:
             pass
@@ -2101,6 +2216,10 @@ def new_campaign():
 @app.route('/campaign/edit/<int:campaign_id>', methods=['POST'])
 @login_required
 def edit_campaign(campaign_id):
+    from utils.ownership import owns_campaign
+    if not owns_campaign(campaign_id):
+        flash('Not found.', 'error')
+        return redirect(url_for('campaigns_list'))
     name = request.form.get('name', '').strip()
     description = request.form.get('description', '').strip()
     conn = get_db()
@@ -2168,7 +2287,7 @@ def send_campaign(campaign_id):
     # Try rotation first, fallback to settings
     def get_smtp_creds():
         from services.smtp_rotation import get_next_smtp_account, append_signature
-        account = get_next_smtp_account()
+        account = get_next_smtp_account(workspace_id=wid)
         if account:
             return account  # Full identity object
         # Fallback — backup SMTP only, no identity override
@@ -2213,104 +2332,106 @@ def send_campaign(campaign_id):
             if is_unsubscribed(contact['email']):
                 continue
 
-            # Check duplicate in THIS campaign only
-            already = conn.execute(
-                "SELECT id FROM emails_sent WHERE contact_id=? AND campaign_id=? AND status='sent'", (cid, campaign_id)
-            ).fetchone()
-            if already:
-                continue
+            # Atomic duplicate check — lock per campaign to prevent race condition
+            with _get_campaign_lock(campaign_id):
+                already = conn.execute(
+                    "SELECT id FROM emails_sent WHERE contact_id=? AND campaign_id=? AND status='sent'",
+                    (cid, campaign_id)
+                ).fetchone()
+                if already:
+                    continue
 
-            subject = subject_template.replace('{company}', contact['company'] or '')
-            subject = subject.replace('{name}', contact['name'] or '')
-            body = body_template.replace('{company}', contact['company'] or '')
-            body = body.replace('{name}', contact['name'] or '')
+                subject = subject_template.replace('{company}', contact['company'] or '')
+                subject = subject.replace('{name}', contact['name'] or '')
+                body = body_template.replace('{company}', contact['company'] or '')
+                body = body.replace('{name}', contact['name'] or '')
 
-            try:
-                server = smtplib.SMTP(smtp_server, smtp_port)
-                server.starttls()
-                server.login(smtp_username, smtp_password)
-
-                tracking_id = str(uuid.uuid4())
-                # Append inbox signature before tracking pixel
-                from services.smtp_rotation import append_signature
-                body_with_sig = append_signature(body, signature)
-                tracked_body = inject_tracking_pixel(body_with_sig, tracking_id)
-
-                msg = EmailMessage()
-                msg['Subject']    = subject
-                msg['From']       = formataddr((from_name, from_email))
-                msg['To']         = contact['email']
-                msg['Message-ID'] = f'<{tracking_id}@outreachos>'
-                if reply_to and reply_to.strip():
-                    msg['Reply-To'] = reply_to
-                if bcc and bcc.strip():
-                    msg['Bcc'] = bcc
-                msg.add_alternative(tracked_body, subtype='html')
-
-                if attachment_filename and os.path.exists(os.path.join(ATTACHMENT_DIR, attachment_filename)):
-                    filepath = os.path.join(ATTACHMENT_DIR, attachment_filename)
-                    mime_type, _ = mimetypes.guess_type(filepath)
-                    if mime_type:
-                        maintype, subtype = mime_type.split('/', 1)
-                    else:
-                        maintype, subtype = 'application', 'octet-stream'
-                    with open(filepath, 'rb') as f:
-                        msg.add_attachment(f.read(), maintype=maintype, subtype=subtype,
-                                         filename=os.path.basename(filepath))
-
-                server.send_message(msg)
-                server.quit()
-                conn.execute("""
-                    INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, tracking_id, sent_at, workspace_id)
-                    VALUES (?,?,?,?,?,?,?,?,?)
-                """, (campaign_id, cid, contact['email'], subject, body, 'sent', tracking_id, datetime.now(), wid))
-                conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (cid,))
-                conn.commit()
-                sent += 1
-                # Log to thread system
                 try:
-                    from services.inbox_service import get_or_create_thread, insert_message
-                    thread_id = get_or_create_thread(cid, campaign_id, subject)
-                    insert_message(
-                        thread_id=thread_id, direction='outgoing',
-                        sender_email=from_email, recipient_email=contact['email'],
-                        subject=subject, body=body, message_id=tracking_id
-                    )
-                except Exception:
-                    pass
-                if account_id:
-                    mark_send_success(account_id)
-                smtp_logger.info(f'SENT | Campaign {campaign_id} | To: {contact["email"]} | Subject: {subject[:50]}')
-                time.sleep(5)
+                    server = smtplib.SMTP(smtp_server, smtp_port)
+                    server.starttls()
+                    server.login(smtp_username, smtp_password)
 
-            except smtplib.SMTPRecipientsRefused as e:
-                conn.execute("""
-                    INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, bounce_reason, sent_at)
-                    VALUES (?,?,?,?,?,?,?,?)
-                """, (campaign_id, cid, contact['email'], subject, body, 'bounced', str(e), datetime.now()))
-                conn.commit()
-                failed += 1
-                if account_id:
-                    mark_send_failure(account_id)
-                smtp_logger.warning(f'BOUNCED | {contact["email"]} | {str(e)[:100]}')
-                # Lead score penalty for bounce
-                try:
-                    from services.lead_scoring import update_lead_score
-                    update_lead_score(cid, 'bounce')
-                except Exception:
-                    pass
+                    tracking_id = str(uuid.uuid4())
+                    # Append inbox signature before tracking pixel
+                    from services.smtp_rotation import append_signature
+                    body_with_sig = append_signature(body, signature)
+                    tracked_body = inject_tracking_pixel(body_with_sig, tracking_id)
 
-            except Exception as e:
-                conn.execute("""
-                    INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, bounce_reason, sent_at)
-                    VALUES (?,?,?,?,?,?,?,?)
-                """, (campaign_id, cid, contact['email'], subject, body, 'failed', str(e), datetime.now()))
-                conn.commit()
-                failed += 1
-                if account_id:
-                    mark_send_failure(account_id)
-                smtp_logger.error(f'FAILED | {contact["email"]} | {str(e)[:100]}')
-                error_logger.error(f'Send failed for {contact["email"]}: {str(e)}')
+                    msg = EmailMessage()
+                    msg['Subject']    = subject
+                    msg['From']       = formataddr((from_name, from_email))
+                    msg['To']         = contact['email']
+                    msg['Message-ID'] = f'<{tracking_id}@outreachos>'
+                    if reply_to and reply_to.strip():
+                        msg['Reply-To'] = reply_to
+                    if bcc and bcc.strip():
+                        msg['Bcc'] = bcc
+                    msg.add_alternative(tracked_body, subtype='html')
+
+                    if attachment_filename and os.path.exists(os.path.join(ATTACHMENT_DIR, attachment_filename)):
+                        filepath = os.path.join(ATTACHMENT_DIR, attachment_filename)
+                        mime_type, _ = mimetypes.guess_type(filepath)
+                        if mime_type:
+                            maintype, subtype = mime_type.split('/', 1)
+                        else:
+                            maintype, subtype = 'application', 'octet-stream'
+                        with open(filepath, 'rb') as f:
+                            msg.add_attachment(f.read(), maintype=maintype, subtype=subtype,
+                                             filename=os.path.basename(filepath))
+
+                    server.send_message(msg)
+                    server.quit()
+                    conn.execute("""
+                        INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, tracking_id, sent_at, workspace_id)
+                        VALUES (?,?,?,?,?,?,?,?,?)
+                    """, (campaign_id, cid, contact['email'], subject, body, 'sent', tracking_id, datetime.now(), wid))
+                    conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (cid,))
+                    conn.commit()
+                    sent += 1
+                    # Log to thread system
+                    try:
+                        from services.inbox_service import get_or_create_thread, insert_message
+                        thread_id = get_or_create_thread(cid, campaign_id, subject)
+                        insert_message(
+                            thread_id=thread_id, direction='outgoing',
+                            sender_email=from_email, recipient_email=contact['email'],
+                            subject=subject, body=body, message_id=tracking_id
+                        )
+                    except Exception:
+                        pass
+                    if account_id:
+                        mark_send_success(account_id)
+                    smtp_logger.info(f'SENT | Campaign {campaign_id} | To: {contact["email"]} | Subject: {subject[:50]}')
+                    time.sleep(5)
+
+                except smtplib.SMTPRecipientsRefused as e:
+                    conn.execute("""
+                        INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, bounce_reason, sent_at)
+                        VALUES (?,?,?,?,?,?,?,?)
+                    """, (campaign_id, cid, contact['email'], subject, body, 'bounced', str(e), datetime.now()))
+                    conn.commit()
+                    failed += 1
+                    if account_id:
+                        mark_send_failure(account_id)
+                    smtp_logger.warning(f'BOUNCED | {contact["email"]} | {str(e)[:100]}')
+                    # Lead score penalty for bounce
+                    try:
+                        from services.lead_scoring import update_lead_score
+                        update_lead_score(cid, 'bounce')
+                    except Exception:
+                        pass
+
+                except Exception as e:
+                    conn.execute("""
+                        INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, bounce_reason, sent_at)
+                        VALUES (?,?,?,?,?,?,?,?)
+                    """, (campaign_id, cid, contact['email'], subject, body, 'failed', str(e), datetime.now()))
+                    conn.commit()
+                    failed += 1
+                    if account_id:
+                        mark_send_failure(account_id)
+                    smtp_logger.error(f'FAILED | {contact["email"]} | {str(e)[:100]}')
+                    error_logger.error(f'Send failed for {contact["email"]}: {str(e)}')
 
     except Exception as e:
         flash(f'SMTP Error: {e}', 'error')
@@ -2329,8 +2450,9 @@ def send_campaign(campaign_id):
 @app.route('/retry/<int:email_id>', methods=['POST'])
 @login_required
 def retry_email(email_id):
+    from utils.ownership import owns_email_sent
     conn = get_db()
-    record = conn.execute("SELECT * FROM emails_sent WHERE id=?", (email_id,)).fetchone()
+    record = owns_email_sent(email_id)
     if not record:
         flash('Email record not found', 'error')
         conn.close()
@@ -2346,15 +2468,28 @@ def retry_email(email_id):
         conn.close()
         return redirect(url_for('campaign_detail', campaign_id=record['campaign_id']))
 
-    smtp_server = get_setting('smtp_server')
-    smtp_port = int(get_setting('smtp_port') or 587)
-    smtp_username = get_setting('smtp_username')
-    smtp_password = get_setting('smtp_password')
-    smtp_login = get_setting('smtp_login_username') or smtp_username
-    from_email = get_setting('from_email') or smtp_username
-    from_name = get_setting('from_name')
-    reply_to = get_setting('reply_to') or from_email
-    bcc = get_setting('bcc_emails')
+    from services.workspace_service import get_wid
+    from services.smtp_rotation import get_next_smtp_account
+    wid = get_wid()
+    account = get_next_smtp_account(workspace_id=wid)
+    if account:
+        smtp_server = account['smtp_server']
+        smtp_port = int(account['smtp_port'])
+        smtp_login = account['login_username'] or account['email']
+        smtp_password = account['password']
+        from_email = account['from_email'] or account['email']
+        from_name = account.get('from_name', '')
+        reply_to = account.get('reply_to') or _get_reply_to()
+        bcc = account.get('bcc_emails', '')
+    else:
+        smtp_server = get_setting('smtp_server')
+        smtp_port = int(get_setting('smtp_port') or 587)
+        smtp_login = get_setting('smtp_username')
+        smtp_password = get_setting('smtp_password')
+        from_email = get_setting('from_email') or smtp_login
+        from_name = get_setting('from_name')
+        reply_to = get_setting('reply_to') or from_email
+        bcc = get_setting('bcc_emails')
 
     try:
         server = smtplib.SMTP(smtp_server, smtp_port)
@@ -2389,11 +2524,11 @@ def retry_email(email_id):
 @login_required
 def api_retry_email(email_id):
     """AJAX retry - returns JSON with loader support"""
-    conn = get_db()
-    record = conn.execute("SELECT * FROM emails_sent WHERE id=?", (email_id,)).fetchone()
+    from utils.ownership import owns_email_sent
+    record = owns_email_sent(email_id)
     if not record:
-        conn.close()
-        return jsonify({'success': False, 'error': 'Not found'})
+        return jsonify({'success': False, 'error': 'Not found'}), 404
+    conn = get_db()
 
     # Duplicate protection - don't resend if already sent in same campaign
     already_sent = conn.execute(
@@ -2404,15 +2539,28 @@ def api_retry_email(email_id):
         conn.close()
         return jsonify({'success': False, 'error': 'Already sent in this campaign'})
 
-    smtp_server = get_setting('smtp_server')
-    smtp_port = int(get_setting('smtp_port') or 587)
-    smtp_username = get_setting('smtp_username')
-    smtp_password = get_setting('smtp_password')
-    smtp_login = get_setting('smtp_login_username') or smtp_username
-    from_email = get_setting('from_email') or smtp_username
-    from_name = get_setting('from_name')
-    reply_to = get_setting('reply_to') or from_email
-    bcc = get_setting('bcc_emails')
+    from services.workspace_service import get_wid
+    from services.smtp_rotation import get_next_smtp_account
+    wid = get_wid()
+    account = get_next_smtp_account(workspace_id=wid)
+    if account:
+        smtp_server = account['smtp_server']
+        smtp_port = int(account['smtp_port'])
+        smtp_login = account['login_username'] or account['email']
+        smtp_password = account['password']
+        from_email = account['from_email'] or account['email']
+        from_name = account.get('from_name', '')
+        reply_to = account.get('reply_to') or _get_reply_to()
+        bcc = account.get('bcc_emails', '')
+    else:
+        smtp_server = get_setting('smtp_server')
+        smtp_port = int(get_setting('smtp_port') or 587)
+        smtp_login = get_setting('smtp_username')
+        smtp_password = get_setting('smtp_password')
+        from_email = get_setting('from_email') or smtp_login
+        from_name = get_setting('from_name')
+        reply_to = get_setting('reply_to') or from_email
+        bcc = get_setting('bcc_emails')
 
     try:
         server = smtplib.SMTP(smtp_server, smtp_port)
@@ -2440,6 +2588,18 @@ def api_retry_email(email_id):
         conn.commit()
         conn.close()
         return jsonify({'success': False, 'error': str(e)[:100]})
+
+
+# Per-campaign send lock — prevents race condition duplicate sends
+import threading
+_campaign_send_locks = {}
+_campaign_send_locks_mutex = threading.Lock()
+
+def _get_campaign_lock(campaign_id):
+    with _campaign_send_locks_mutex:
+        if campaign_id not in _campaign_send_locks:
+            _campaign_send_locks[campaign_id] = threading.Lock()
+        return _campaign_send_locks[campaign_id]
 
 
 # Send progress tracking — keyed by user_id to prevent race conditions
@@ -2502,25 +2662,50 @@ def send_campaign_ai(campaign_id):
         prog = {'running': True, 'total': len(contact_ids), 'done': 0, 'sent': 0, 'failed': 0, 'current': '', 'campaign_id': campaign_id}
         _set_send_progress(uid, prog)
         prompt_template = get_setting('email_prompt')
-        smtp_server = get_setting('smtp_server')
-        smtp_port = int(get_setting('smtp_port') or 587)
-        smtp_username = get_setting('smtp_username')
-        smtp_password = get_setting('smtp_password')
-        smtp_login = get_setting('smtp_login_username') or smtp_username
-        from_email = get_setting('from_email') or smtp_username
-        from_name = get_setting('from_name')
-        reply_to = get_setting('reply_to') or from_email
-        bcc = get_setting('bcc_emails')
         from services.workspace_service import get_wid
+        from services.smtp_rotation import get_next_smtp_account, append_signature
         wid = get_wid()
         conn = get_db()
 
+        # Get SMTP creds via rotation (handles Brevo login_username properly)
+        def _get_smtp_creds():
+            account = get_next_smtp_account(workspace_id=wid)
+            if account:
+                return account
+            return {
+                'smtp_server':    get_setting('smtp_server'),
+                'smtp_port':      int(get_setting('smtp_port') or 587),
+                'login_username': get_setting('smtp_username'),
+                'password':       get_setting('smtp_password'),
+                'from_email':     get_setting('from_email') or get_setting('smtp_username'),
+                'from_name':      get_setting('from_name'),
+                'reply_to':       get_setting('reply_to'),
+                'bcc_emails':     get_setting('bcc_emails'),
+                'signature':      '',
+                'email':          get_setting('from_email') or get_setting('smtp_username'),
+                'account_id':     None,
+                'id':             None,
+            }
+
+        creds = _get_smtp_creds()
+        smtp_server_addr = creds.get('smtp_server')
+        smtp_port_num = int(creds.get('smtp_port') or 587)
+        smtp_login = creds.get('login_username') or creds.get('email')
+        smtp_password = creds['password']
+        from_email = creds.get('from_email') or creds.get('email')
+        from_name = creds.get('from_name', '')
+        reply_to = creds.get('reply_to') or _get_reply_to()
+        bcc = creds.get('bcc_emails') or get_setting('bcc_emails')
+        signature = creds.get('signature', '')
+        account_id = creds.get('account_id') or creds.get('id')
+
         server = None
         try:
-            server = smtplib.SMTP(smtp_server, smtp_port)
+            server = smtplib.SMTP(smtp_server_addr, smtp_port_num)
             server.starttls()
             server.login(smtp_login, smtp_password)
         except Exception as e:
+            error_logger.error(f'[AI SEND] SMTP login failed: {smtp_login}@{smtp_server_addr}:{smtp_port_num} — {e}')
             prog['running'] = False
             _set_send_progress(uid, prog)
             return
@@ -2530,7 +2715,19 @@ def send_campaign_ai(campaign_id):
                 try: server.quit()
                 except Exception: pass
                 try:
-                    server = smtplib.SMTP(smtp_server, smtp_port)
+                    # Re-get creds (rotation may pick next account)
+                    creds = _get_smtp_creds()
+                    smtp_server_addr = creds.get('smtp_server')
+                    smtp_port_num = int(creds.get('smtp_port') or 587)
+                    smtp_login = creds.get('login_username') or creds.get('email')
+                    smtp_password = creds['password']
+                    from_email = creds.get('from_email') or creds.get('email')
+                    from_name = creds.get('from_name', '')
+                    reply_to = creds.get('reply_to') or _get_reply_to()
+                    bcc = creds.get('bcc_emails') or get_setting('bcc_emails')
+                    signature = creds.get('signature', '')
+                    account_id = creds.get('account_id') or creds.get('id')
+                    server = smtplib.SMTP(smtp_server_addr, smtp_port_num)
                     server.starttls()
                     server.login(smtp_login, smtp_password)
                 except Exception: pass
@@ -2578,16 +2775,7 @@ def send_campaign_ai(campaign_id):
 
             try:
                 tracking_id = str(uuid.uuid4())
-                # Append SMTP account signature
-                from services.smtp_rotation import append_signature
-                _sig = ''
-                try:
-                    _sig_conn = get_db()
-                    _sig_row = _sig_conn.execute("SELECT signature FROM smtp_accounts WHERE email=?", (from_email,)).fetchone()
-                    if _sig_row: _sig = _sig_row['signature'] or ''
-                    _sig_conn.close()
-                except Exception: pass
-                body_with_sig = append_signature(body, _sig)
+                body_with_sig = append_signature(body, signature)
                 tracked_body = inject_tracking_pixel(body_with_sig, tracking_id)
 
                 msg = EmailMessage()
@@ -2611,11 +2799,15 @@ def send_campaign_ai(campaign_id):
                 conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (cid,))
                 conn.commit()
                 prog['sent'] += 1
+                if account_id:
+                    mark_send_success(account_id)
             except Exception as e:
                 conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,bounce_reason,sent_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
                     (campaign_id, cid, contact['email'], subject, body if 'body' in dir() else '', 'failed', str(e)[:200], datetime.now(), wid))
                 conn.commit()
                 prog['failed'] += 1
+                if account_id:
+                    mark_send_failure(account_id)
 
             prog['done'] += 1
             _set_send_progress(uid, prog)
@@ -2784,19 +2976,31 @@ def api_imap_status():
 @app.route('/api/smtp_test')
 @login_required
 def api_smtp_test():
-    """Test SMTP connection and show current settings (for debugging)"""
-    smtp_server = get_setting('smtp_server')
-    smtp_port = get_setting('smtp_port')
-    smtp_username = get_setting('smtp_username')
-    smtp_password = get_setting('smtp_password')
-    smtp_login = get_setting('smtp_login_username') or smtp_username
-    from_email = get_setting('from_email')
+    """Test SMTP connection — tries rotation account first, then fallback settings."""
+    from services.workspace_service import get_wid
+    from services.smtp_rotation import get_next_smtp_account
+    wid = get_wid()
     tracking_host = get_setting('tracking_host')
+
+    # Try rotation account first
+    account = get_next_smtp_account(workspace_id=wid)
+    if account:
+        smtp_server = account['smtp_server']
+        smtp_port = str(account['smtp_port'])
+        smtp_login = account['login_username'] or account['email']
+        smtp_password = account['password']
+        from_email = account['from_email'] or account['email']
+    else:
+        smtp_server = get_setting('smtp_server')
+        smtp_port = get_setting('smtp_port')
+        smtp_login = get_setting('smtp_username')
+        smtp_password = get_setting('smtp_password')
+        from_email = get_setting('from_email') or smtp_login
 
     result = {
         'smtp_server': smtp_server or 'NOT SET',
         'smtp_port': smtp_port or 'NOT SET',
-        'smtp_username': smtp_username or 'NOT SET',
+        'smtp_username': smtp_login or 'NOT SET',
         'smtp_password_set': bool(smtp_password),
         'from_email': from_email or 'NOT SET',
         'tracking_host': tracking_host or 'NOT SET',
@@ -2804,7 +3008,7 @@ def api_smtp_test():
         'connection_test': None
     }
 
-    if not all([smtp_server, smtp_port, smtp_username, smtp_password]):
+    if not all([smtp_server, smtp_port, smtp_login, smtp_password]):
         result['connection_test'] = 'FAILED - Missing SMTP settings'
         return jsonify(result)
 
@@ -3405,8 +3609,6 @@ def api_add_smtp_account():
         conn.close()
         if inserted == 0:
             return jsonify({'success': False, 'error': 'An inbox with this email already exists'})
-        conn.commit()
-        conn.close()
         app_logger.info(f'SMTP account added: {email}')
         return jsonify({'success': True})
     except Exception as e:
@@ -3417,6 +3619,9 @@ def api_add_smtp_account():
 @login_required
 def api_update_smtp_account(account_id):
     """Update full sender identity for an existing SMTP account."""
+    from utils.ownership import owns_smtp_account
+    if not owns_smtp_account(account_id):
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     data = request.json or {}
     conn = get_db()
     acc = conn.execute('SELECT id FROM smtp_accounts WHERE id=?', (account_id,)).fetchone()
@@ -3445,11 +3650,11 @@ def api_update_smtp_account(account_id):
 @app.route('/api/smtp_accounts/<int:account_id>/toggle', methods=['POST'])
 @login_required
 def api_toggle_smtp_account(account_id):
-    conn = get_db()
-    acc = conn.execute("SELECT active FROM smtp_accounts WHERE id=?", (account_id,)).fetchone()
+    from utils.ownership import owns_smtp_account
+    acc = owns_smtp_account(account_id)
     if not acc:
-        conn.close()
-        return jsonify({'success': False, 'error': 'Not found'})
+        return jsonify({'success': False, 'error': 'Not found'}), 404
+    conn = get_db()
     new_status = 0 if acc['active'] else 1
     conn.execute("UPDATE smtp_accounts SET active=? WHERE id=?", (new_status, account_id))
     conn.commit()
@@ -3460,6 +3665,9 @@ def api_toggle_smtp_account(account_id):
 @app.route('/api/smtp_accounts/<int:account_id>/delete', methods=['DELETE'])
 @login_required
 def api_delete_smtp_account(account_id):
+    from utils.ownership import owns_smtp_account
+    if not owns_smtp_account(account_id):
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     conn = get_db()
     conn.execute("DELETE FROM smtp_accounts WHERE id=?", (account_id,))
     conn.commit()

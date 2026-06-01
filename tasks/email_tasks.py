@@ -235,8 +235,14 @@ def send_campaign_async(campaign_id, contact_ids, subject_template, body_templat
     from services.smtp_rotation import get_next_smtp_account
     queued = skipped = 0
 
+    # Get workspace_id from campaign
+    _conn = get_db()
+    _camp = _conn.execute("SELECT workspace_id FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
+    _wid = _camp['workspace_id'] if _camp else 1
+    _conn.close()
+
     for i, contact_id in enumerate(contact_ids):
-        account = get_next_smtp_account()
+        account = get_next_smtp_account(workspace_id=_wid)
         if account:
             creds = {
                 'server':         account['smtp_server'],

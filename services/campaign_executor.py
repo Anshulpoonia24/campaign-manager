@@ -400,7 +400,7 @@ def _run_campaign_sync(campaign_id: int, contact_ids: list,
             continue
 
         # Get SMTP account
-        account = get_next_smtp_account()
+        account = get_next_smtp_account(workspace_id=workspace_id)
         if not account:
             log(campaign_id, 'No active SMTP accounts available — stopping',
                 'error', workspace_id=workspace_id)
