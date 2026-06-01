@@ -472,8 +472,12 @@ def _run_campaign_sync(campaign_id: int, contact_ids: list,
 def _generate_ai_body(contact, body_template: str, workspace_id: int) -> str:
     """Generate AI-personalized body with timeout protection. Falls back to None on failure."""
     try:
-        from utils.db import get_setting
+        from utils.db import get_workspace_only_setting, get_setting as _fallback
         import requests as _req
+
+        def _ws_setting(key):
+            val = get_workspace_only_setting(key, workspace_id)
+            return val if val else _fallback(key)
 
         context     = contact['context']     if 'context'     in contact.keys() else ''
         designation = contact['designation'] if 'designation' in contact.keys() else 'founder/executive'
@@ -493,7 +497,7 @@ Rules:
 - Casual, direct tone
 - Output as HTML with <p> tags"""
 
-        keys_str = get_setting('groq_api_keys') or ''
+        keys_str = _ws_setting('groq_api_keys') or ''
         keys = [k.strip() for k in keys_str.split(',') if k.strip()]
         if keys:
             r = _req.post(
@@ -517,7 +521,11 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
               workspace_id: int, account: dict, attachment_path: str = '') -> tuple:
     """Send one email. Returns (success, error_msg)."""
     import uuid, mimetypes, os
-    from utils.db import get_setting
+    from utils.db import get_workspace_only_setting, get_setting as _fallback
+
+    def _ws_setting(key):
+        val = get_workspace_only_setting(key, workspace_id)
+        return val if val else _fallback(key)
 
     try:
         tracking_id = str(uuid.uuid4())
@@ -534,8 +542,8 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
         except Exception:
             pass
 
-        reply_to = account.get('reply_to') or get_setting('reply_to') or get_setting('imap_username') or account.get('email', '')
-        bcc      = account.get('bcc_emails') or get_setting('bcc_emails')
+        reply_to = account.get('reply_to') or _ws_setting('reply_to') or _ws_setting('imap_username') or account.get('email', '')
+        bcc      = account.get('bcc_emails') or _ws_setting('bcc_emails')
 
         msg = EmailMessage()
         msg['Subject']    = subject

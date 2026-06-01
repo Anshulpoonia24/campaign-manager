@@ -96,6 +96,7 @@ _setup_paths()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'CHANGE-ME-generate-with-python-secrets')
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB upload limit
 DB_PATH = os.path.join(DATA_DIR, 'campaigns.db')
 
 # Register admin blueprint
@@ -172,6 +173,14 @@ def not_found(e):
         return jsonify({'error': 'Not found'}), 404
     flash('Page not found!', 'error')
     return redirect(url_for('dashboard'))
+
+
+@app.errorhandler(413)
+def file_too_large(e):
+    if request.is_json or request.path.startswith('/api/'):
+        return jsonify({'error': 'File too large (max 16MB)'}), 413
+    flash('File too large! Maximum 16MB allowed.', 'error')
+    return redirect(request.referrer or url_for('dashboard'))
 
 # ==============================
 # AUTHENTICATION
@@ -279,10 +288,16 @@ def get_setting(key):
 
 def set_setting(key, value):
     conn = get_db()
-    conn.execute(
-        "INSERT INTO settings (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        (key, value)
-    )
+    try:
+        from flask_login import current_user
+        wid = getattr(current_user, 'workspace_id', 1) if current_user and current_user.is_authenticated else 1
+    except Exception:
+        wid = 1
+    existing = conn.execute("SELECT key FROM settings WHERE key=? AND workspace_id=?", (key, wid)).fetchone()
+    if existing:
+        conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=?", (value, key, wid))
+    else:
+        conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)", (key, value, wid))
     conn.commit()
     conn.close()
 
@@ -353,8 +368,11 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL,
+            value TEXT,
+            workspace_id INTEGER DEFAULT 1,
+            UNIQUE(key, workspace_id)
         );
 
         CREATE TABLE IF NOT EXISTS ai_usage (
@@ -546,7 +564,6 @@ def init_db():
         "ALTER TABLE email_clicks ADD COLUMN workspace_id INTEGER DEFAULT 1",
         "ALTER TABLE emails_sent ADD COLUMN workspace_id INTEGER DEFAULT 1",
         "ALTER TABLE ai_usage ADD COLUMN workspace_id INTEGER DEFAULT 1",
-        "ALTER TABLE settings ADD COLUMN workspace_id INTEGER DEFAULT 1",
         # Sequence engine indexes
         "CREATE INDEX IF NOT EXISTS idx_seq_steps_campaign ON sequence_steps(campaign_id)",
         "CREATE INDEX IF NOT EXISTS idx_seq_steps_order ON sequence_steps(campaign_id, step_order)",
@@ -708,6 +725,8 @@ except Exception as e:
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ── MX cache with TTL (24h expiry, 1000 domain max) ──
+import time as _time
+
 class _MXCache:
     def __init__(self):
         self._d = {}
@@ -729,6 +748,8 @@ class _MXCache:
     def get(self, k, default=None):
         try: return self[k]
         except KeyError: return default
+    def clear(self):
+        self._d = {}
 
 mx_cache = _MXCache()
 
@@ -1818,8 +1839,8 @@ def verify_emails_route():
     reverify = request.form.get('reverify', '0')
 
     def run_verify(reverify_flag):
-        global verify_progress, mx_cache
-        mx_cache = {}  # Reset cache
+        global verify_progress
+        mx_cache.clear()  # Reset cache
         conn = get_db()
 
         if reverify_flag == '1':
@@ -4256,9 +4277,10 @@ def export_data(export_type):
         df = pd.read_sql("SELECT * FROM contacts WHERE workspace_id=?", conn, params=(wid,))
 
     conn.close()
-    filepath = f"export_{export_type}.xlsx"
+    import tempfile
+    filepath = os.path.join(tempfile.gettempdir(), f"export_{export_type}_{uuid.uuid4().hex[:8]}.xlsx")
     df.to_excel(filepath, index=False)
-    return send_file(filepath, as_attachment=True)
+    return send_file(filepath, as_attachment=True, download_name=f"export_{export_type}.xlsx")
 
 
 @app.route('/api/sequence/<int:campaign_id>/analytics')
