@@ -107,7 +107,10 @@ body {
     </div>
     <div class="field-group">
       <label class="field-label">Password</label>
-      <input type="password" name="password" class="field-input" placeholder="Enter password" required autocomplete="current-password">
+      <div style="position:relative;">
+        <input type="password" name="password" id="pwField" class="field-input" placeholder="Enter password" required autocomplete="off">
+        <i class="fas fa-eye" id="pwToggle" onclick="togglePw()" style="position:absolute;right:13px;top:50%;transform:translateY(-50%);color:#9CA3AF;cursor:pointer;font-size:13px;"></i>
+      </div>
     </div>
     <button type="submit" class="btn-login">
       <i class="fas fa-shield-alt me-2"></i>Access Admin Panel
@@ -118,5 +121,13 @@ body {
     Tenant login? <a href="/login">Go to tenant login →</a>
   </div>
 </div>
+<script>
+function togglePw() {
+  const f = document.getElementById('pwField');
+  const i = document.getElementById('pwToggle');
+  f.type = f.type === 'password' ? 'text' : 'password';
+  i.className = f.type === 'password' ? 'fas fa-eye' : 'fas fa-eye-slash';
+}
+</script>
 </body>
 </html>
