@@ -3566,6 +3566,8 @@ def api_get_smtp_accounts():
         row.setdefault('bcc_emails', '')
         row.setdefault('signature', '')
         row.setdefault('login_username', '')
+        # Mask password but show if it's set
+        row['password'] = ('***' + row['password'][-4:]) if row.get('password') and len(row['password']) > 4 else '(empty)'
         result.append(row)
     return jsonify({'accounts': result})
 
