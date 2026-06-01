@@ -141,9 +141,9 @@
         let html = `<div class="cp-msg cp-msg-ai"><div class="cp-bubble">${formatMsg(d.message)}</div>`;
         if (d.actions && d.actions.length) {
           html += '<div class="cp-actions">';
-          d.actions.forEach((a, i) => {
+          d.actions.forEach((a) => {
             const cls = isConfirmAction(a.type) ? 'confirm' : 'safe';
-            html += `<button class="cp-action-btn ${cls}" onclick="window._cpAction(${i})" data-action='${esc(JSON.stringify(a))}'>${esc(a.label)}</button>`;
+            html += `<button class="cp-action-btn ${cls}" data-action='${esc(JSON.stringify(a))}'>${esc(a.label)}</button>`;
           });
           html += '</div>';
         }
@@ -165,28 +165,13 @@
     sendBtn.disabled = false;
   }
 
-  // Action execution
-  window._cpAction = async function(idx) {
-    const btns = document.querySelectorAll('.cp-action-btn');
-    let actionData = null;
-    let btnEl = null;
-    let count = 0;
-    btns.forEach(b => {
-      try {
-        if (count === idx) { actionData = JSON.parse(b.getAttribute('data-action')); btnEl = b; }
-      } catch(e) {}
-      count++;
-    });
-    // Find the last set of action buttons
-    const allActions = document.querySelectorAll('.cp-actions');
-    const lastActions = allActions[allActions.length - 1];
-    if (!lastActions) return;
-    const actionBtns = lastActions.querySelectorAll('.cp-action-btn');
-    if (idx < actionBtns.length) {
-      btnEl = actionBtns[idx];
-      try { actionData = JSON.parse(btnEl.getAttribute('data-action')); } catch(e) { return; }
-    }
-    if (!actionData || !btnEl) return;
+  // Action execution — delegate click via event delegation on body
+  document.body.addEventListener('click', async function(e) {
+    const btnEl = e.target.closest('.cp-action-btn');
+    if (!btnEl) return;
+    let actionData;
+    try { actionData = JSON.parse(btnEl.getAttribute('data-action')); } catch(ex) { return; }
+    if (!actionData) return;
 
     // Confirm dangerous actions
     if (isConfirmAction(actionData.type)) {
@@ -196,40 +181,7 @@
     btnEl.disabled = true;
     btnEl.textContent = '...';
 
-    // Special handling for actions that call existing APIs
-    if (actionData.type === 'draft_reply') {
-      // Use existing AI draft endpoint
-      try {
-        const threadId = actionData.params?.thread_id || PAGE_ID;
-        const r = await fetch(`/api/inbox/thread/${threadId}/ai_reply`, {method:'POST'});
-        const d = await r.json();
-        if (d.success && d.draft) {
-          const ta = document.getElementById('replyDraft');
-          if (ta) ta.value = d.draft;
-          btnEl.textContent = '✓ Drafted';
-          btnEl.style.borderColor = '#bbf7d0';
-          btnEl.style.color = '#15803d';
-        } else {
-          btnEl.textContent = '✗ Failed';
-        }
-      } catch(e) { btnEl.textContent = '✗ Error'; }
-      return;
-    }
-
-    // Actions that hit existing campaign APIs
-    if (['pause_campaign','resume_campaign','cancel_campaign'].includes(actionData.type)) {
-      const campId = actionData.params?.campaign_id || PAGE_ID;
-      const actionMap = {pause_campaign:'pause', resume_campaign:'resume', cancel_campaign:'cancel'};
-      try {
-        await fetch(`/api/campaign/${campId}/${actionMap[actionData.type]}`, {method:'POST'});
-        btnEl.textContent = '✓ Done';
-        btnEl.style.borderColor = '#bbf7d0';
-        btnEl.style.color = '#15803d';
-      } catch(e) { btnEl.textContent = '✗ Failed'; }
-      return;
-    }
-
-    // Generic action via copilot endpoint
+    // ALL actions route through /api/copilot/action for server-side workspace checks
     try {
       const r = await fetch('/api/copilot/action', {
         method: 'POST',
@@ -237,11 +189,26 @@
         body: JSON.stringify({action_type: actionData.type, params: actionData.params || {}, page_type: PAGE_TYPE, page_id: PAGE_ID})
       });
       const d = await r.json();
-      btnEl.textContent = d.success ? '✓ Done' : '✗ Failed';
-      btnEl.style.borderColor = d.success ? '#bbf7d0' : '#fecaca';
-      btnEl.style.color = d.success ? '#15803d' : '#dc2626';
-    } catch(e) { btnEl.textContent = '✗ Error'; }
-  };
+      if (d.success) {
+        // Handle draft_reply result — populate textarea if present
+        if (actionData.type === 'draft_reply' && d.draft) {
+          const ta = document.getElementById('replyDraft');
+          if (ta) ta.value = d.draft;
+        }
+        btnEl.textContent = d.message ? '✓ ' + d.message.substring(0, 30) : '✓ Done';
+        btnEl.style.borderColor = '#bbf7d0';
+        btnEl.style.color = '#15803d';
+      } else {
+        btnEl.textContent = '✗ ' + (d.error || 'Failed');
+        btnEl.style.borderColor = '#fecaca';
+        btnEl.style.color = '#dc2626';
+      }
+    } catch(ex) {
+      btnEl.textContent = '✗ Network error';
+      btnEl.style.borderColor = '#fecaca';
+      btnEl.style.color = '#dc2626';
+    }
+  });
 
   function isConfirmAction(type) {
     return ['retry_failed','pause_campaign','resume_campaign','cancel_campaign','send_reply','bulk_enrich'].includes(type);

@@ -166,10 +166,18 @@ You can help with:
     return base
 
 
-def call_ai(system_prompt: str, user_msg: str, context: dict) -> dict:
+def call_ai(system_prompt: str, user_msg: str, context: dict, workspace_id: int = 1) -> dict:
     """Call Groq/Gemini with copilot prompt. Returns parsed response."""
     import requests as http_requests
-    from utils.db import get_setting
+
+    # Use workspace-scoped settings (app.py get_setting reads current_user workspace)
+    # Import from app module which has workspace-aware get_setting
+    import sys
+    _app = sys.modules.get('app') or sys.modules.get('__main__')
+    if _app and hasattr(_app, 'get_setting'):
+        _get_setting = _app.get_setting
+    else:
+        from utils.db import get_setting as _get_setting
 
     # Build the full prompt
     context_str = json.dumps(context, default=str, indent=2)
@@ -183,7 +191,7 @@ USER QUESTION: {user_msg}
 Respond with valid JSON only. No markdown wrapping."""
 
     # Try Groq first
-    keys_str = get_setting('groq_api_keys') or ''
+    keys_str = _get_setting('groq_api_keys') or ''
     keys = [k.strip() for k in keys_str.split(',') if k.strip()]
 
     for key in keys:
@@ -213,7 +221,7 @@ Respond with valid JSON only. No markdown wrapping."""
             continue
 
     # Fallback: Gemini
-    gemini_key = get_setting('gemini_api_key')
+    gemini_key = _get_setting('gemini_api_key')
     if gemini_key:
         try:
             r = http_requests.post(
@@ -309,13 +317,22 @@ def execute_action(action_type: str, params: dict, workspace_id: int) -> dict:
         if not campaign_id:
             return {'success': False, 'error': 'No campaign_id'}
         conn = get_db()
+        camp = conn.execute(
+            'SELECT id FROM campaigns WHERE id=? AND workspace_id=?',
+            (campaign_id, workspace_id)
+        ).fetchone()
+        if not camp:
+            conn.close()
+            return {'success': False, 'error': 'Campaign not found'}
         failed = conn.execute("""
             SELECT id FROM emails_sent
-            WHERE campaign_id=? AND status IN ('failed','bounced') AND workspace_id=?
-        """, (campaign_id, workspace_id)).fetchall()
+            WHERE campaign_id=? AND status IN ('failed','bounced')
+        """, (campaign_id,)).fetchall()
         conn.close()
-        return {'success': True, 'count': len(failed),
-                'message': f'{len(failed)} failed emails ready to retry'}
+        count = len(failed)
+        if count == 0:
+            return {'success': True, 'message': 'No failed emails to retry'}
+        return {'success': True, 'message': f'{count} failed emails found (use campaign retry to re-send)'}
 
     elif action_type in ('pause_campaign', 'resume_campaign', 'cancel_campaign'):
         campaign_id = params.get('campaign_id')
@@ -330,12 +347,16 @@ def execute_action(action_type: str, params: dict, workspace_id: int) -> dict:
         conn.close()
         if not camp:
             return {'success': False, 'error': 'Campaign not found'}
-        # Return confirmation — actual execution happens via existing API
-        action_map = {
-            'pause_campaign': f'/api/campaign/{campaign_id}/pause',
-            'resume_campaign': f'/api/campaign/{campaign_id}/resume',
-            'cancel_campaign': f'/api/campaign/{campaign_id}/cancel',
-        }
-        return {'success': True, 'api_url': action_map[action_type], 'method': 'POST'}
+        # Execute the action directly
+        from services.campaign_executor import pause_campaign, resume_campaign, cancel_campaign
+        if action_type == 'pause_campaign':
+            pause_campaign(campaign_id, workspace_id)
+            return {'success': True, 'message': 'Campaign paused'}
+        elif action_type == 'resume_campaign':
+            result = resume_campaign(campaign_id, workspace_id)
+            return {'success': bool(result), 'message': 'Campaign resumed' if result else 'Nothing to resume'}
+        else:
+            cancel_campaign(campaign_id, workspace_id)
+            return {'success': True, 'message': 'Campaign cancelled'}
 
     return {'success': False, 'error': 'Action not implemented'}

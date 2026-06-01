@@ -501,6 +501,15 @@ def init_db():
         print("[AUTH] Default admin created -- username: admin, password: admin123")
         print("[AUTH] WARNING: CHANGE THIS PASSWORD from Settings after first login!")
 
+    # Ensure superadmin account exists
+    sa = conn.execute("SELECT id FROM users WHERE username='superadmin'").fetchone()
+    if not sa:
+        sa_hash = generate_password_hash('OutreachOS@2025')
+        conn.execute("INSERT INTO users (username, password_hash, role, workspace_id) VALUES (?,?,?,?)",
+                     ('superadmin', sa_hash, 'admin', 1))
+        conn.commit()
+        print("[AUTH] Super admin created -- username: superadmin")
+
     # Insert default settings for any missing keys
     for k, v in DEFAULT_SETTINGS.items():
         existing = conn.execute("SELECT key FROM settings WHERE key=?", (k,)).fetchone()
@@ -2895,7 +2904,13 @@ def api_campaign_execution_status(campaign_id):
 def api_pause_campaign(campaign_id):
     from services.campaign_executor import pause_campaign
     from services.workspace_service import get_wid
-    pause_campaign(campaign_id, get_wid())
+    wid = get_wid()
+    conn = get_db()
+    camp = conn.execute('SELECT id FROM campaigns WHERE id=? AND workspace_id=?', (campaign_id, wid)).fetchone()
+    conn.close()
+    if not camp:
+        return jsonify({'success': False, 'error': 'Campaign not found'}), 404
+    pause_campaign(campaign_id, wid)
     return jsonify({'success': True, 'status': 'paused'})
 
 
@@ -2904,7 +2919,13 @@ def api_pause_campaign(campaign_id):
 def api_resume_campaign(campaign_id):
     from services.campaign_executor import resume_campaign
     from services.workspace_service import get_wid
-    result = resume_campaign(campaign_id, get_wid())
+    wid = get_wid()
+    conn = get_db()
+    camp = conn.execute('SELECT id FROM campaigns WHERE id=? AND workspace_id=?', (campaign_id, wid)).fetchone()
+    conn.close()
+    if not camp:
+        return jsonify({'success': False, 'error': 'Campaign not found'}), 404
+    result = resume_campaign(campaign_id, wid)
     return jsonify({'success': bool(result)})
 
 
@@ -2913,7 +2934,13 @@ def api_resume_campaign(campaign_id):
 def api_cancel_campaign(campaign_id):
     from services.campaign_executor import cancel_campaign
     from services.workspace_service import get_wid
-    cancel_campaign(campaign_id, get_wid())
+    wid = get_wid()
+    conn = get_db()
+    camp = conn.execute('SELECT id FROM campaigns WHERE id=? AND workspace_id=?', (campaign_id, wid)).fetchone()
+    conn.close()
+    if not camp:
+        return jsonify({'success': False, 'error': 'Campaign not found'}), 404
+    cancel_campaign(campaign_id, wid)
     return jsonify({'success': True, 'status': 'cancelled'})
 
 
@@ -3273,14 +3300,16 @@ def api_update_thread_status(thread_id):
 @login_required
 def api_generate_inbox_reply(thread_id):
     from services.inbox_service import generate_ai_reply_draft
+    from services.workspace_service import get_wid
+    wid = get_wid()
     conn = get_db()
     thread = conn.execute("""
         SELECT t.*, c.name as contact_name, c.company as contact_company, c.context as contact_context
-        FROM threads t LEFT JOIN contacts c ON t.contact_id = c.id WHERE t.id = ?
-    """, (thread_id,)).fetchone()
+        FROM threads t LEFT JOIN contacts c ON t.contact_id = c.id WHERE t.id = ? AND t.workspace_id=?
+    """, (thread_id, wid)).fetchone()
     conn.close()
     if not thread:
-        return jsonify({'success': False, 'error': 'Thread not found'})
+        return jsonify({'success': False, 'error': 'Thread not found'}), 404
     draft = generate_ai_reply_draft(
         thread_id,
         thread['contact_name'] or 'there',
@@ -3734,10 +3763,14 @@ def api_save_setting():
     # Fields that should never be overwritten with empty string
     PROTECTED_FIELDS = {'imap_password', 'smtp_password', 'groq_api_keys',
                         'gemini_api_key', 'imap_username', 'imap_server'}
+    # AI keys are admin-only
+    ADMIN_ONLY_KEYS = {'groq_api_keys', 'gemini_api_key'}
     conn = get_db()
     saved = []
     for key, val in data.items():
         if key not in DEFAULT_SETTINGS:
+            continue
+        if key in ADMIN_ONLY_KEYS and getattr(current_user, 'role', '') != 'admin':
             continue
         # Skip empty values for protected fields
         if key in PROTECTED_FIELDS and not str(val).strip():
@@ -3768,7 +3801,10 @@ def settings_page():
     wid = get_wid()
     if request.method == 'POST':
         conn = get_db()
+        admin_only = {'groq_api_keys', 'gemini_api_key'}
         for key in DEFAULT_SETTINGS.keys():
+            if key in admin_only and getattr(current_user, 'role', '') != 'admin':
+                continue
             val = request.form.get(key, '')
             existing = conn.execute("SELECT key FROM settings WHERE key=? AND workspace_id=?", (key, wid)).fetchone()
             if existing:
@@ -3782,6 +3818,10 @@ def settings_page():
     current = {}
     for key in DEFAULT_SETTINGS.keys():
         current[key] = get_setting(key)
+    # Hide AI keys from non-admin users
+    if getattr(current_user, 'role', '') != 'admin':
+        current['groq_api_keys'] = ''
+        current['gemini_api_key'] = ''
     return render_template('settings.html', settings=current)
 
 
@@ -4437,7 +4477,7 @@ def api_copilot_chat():
     context = get_page_context(page_type, page_id, wid)
     system_prompt = build_system_prompt(page_type)
     # Call AI
-    result = call_ai(system_prompt, user_msg, context)
+    result = call_ai(system_prompt, user_msg, context, wid)
     # Log
     log_copilot_action(
         wid, current_user.id, page_type, page_id,
