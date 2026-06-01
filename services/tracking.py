@@ -83,7 +83,7 @@ BLOCKED_URL_PATTERNS = re.compile(
 
 def _sign(payload: str) -> str:
     """HMAC-SHA256 sign a payload."""
-    return hmac.new(_SECRET, payload.encode(), hashlib.sha256).hexdigest()[:16]
+    return hmac.HMAC(_SECRET, payload.encode(), hashlib.sha256).hexdigest()[:16]
 
 
 def generate_token(workspace_id: int, contact_id: int, campaign_id: int,

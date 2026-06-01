@@ -185,15 +185,11 @@ You can help with:
 def call_ai(system_prompt: str, user_msg: str, context: dict, workspace_id: int = 1) -> dict:
     """Call Groq/Gemini with copilot prompt. Returns parsed response."""
     import requests as http_requests
+    from utils.db import get_workspace_only_setting, get_setting as _fallback_setting
 
-    # Use workspace-scoped settings (app.py get_setting reads current_user workspace)
-    # Import from app module which has workspace-aware get_setting
-    import sys
-    _app = sys.modules.get('app') or sys.modules.get('__main__')
-    if _app and hasattr(_app, 'get_setting'):
-        _get_setting = _app.get_setting
-    else:
-        from utils.db import get_setting as _get_setting
+    def _get_setting(key):
+        val = get_workspace_only_setting(key, workspace_id)
+        return val if val else _fallback_setting(key)
 
     # Build the full prompt
     context_str = json.dumps(context, default=str, indent=2)

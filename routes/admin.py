@@ -35,6 +35,11 @@ def admin_login():
         return redirect(url_for('admin.admin_dashboard'))
     error = None
     if request.method == 'POST':
+        # Basic rate limit: track failed attempts in session
+        fail_count = session.get('_admin_fails', 0)
+        if fail_count >= 5:
+            error = 'Too many failed attempts. Wait and try again.'
+            return render_template('admin/login.html', error=error)
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         # Check ONLY against .env — no DB, no tenant access
@@ -43,7 +48,9 @@ def admin_login():
         if username == admin_user and password == admin_pass:
             session[ADMIN_SESSION_KEY] = True
             session['admin_username'] = username
+            session.pop('_admin_fails', None)
             return redirect(url_for('admin.admin_dashboard'))
+        session['_admin_fails'] = fail_count + 1
         error = 'Invalid admin credentials.'
     return render_template('admin/login.html', error=error)
 
