@@ -558,6 +558,7 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
 
         # Use login_username for Brevo/custom SMTP (may differ from from_email)
         smtp_login = account.get('login_username') or account['email']
+        app_logger.info(f'[EXEC] SMTP connecting: server={account["smtp_server"]}:{account["smtp_port"]} login={smtp_login} from={account["email"]}')
         server = smtplib.SMTP(account['smtp_server'], account['smtp_port'], timeout=30)
         server.starttls()
         server.login(smtp_login, account['password'])
