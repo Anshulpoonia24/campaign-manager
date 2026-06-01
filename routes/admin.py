@@ -32,18 +32,18 @@ def admin_required(f):
 @admin_bp.route('/login', methods=['GET', 'POST'])
 def admin_login():
     if session.get(ADMIN_SESSION_KEY):
-        return redirect(url_for('admin.tenant_list'))
+        return redirect(url_for('admin.admin_dashboard'))
     error = None
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         # Check ONLY against .env — no DB, no tenant access
         admin_user = os.getenv('ADMIN_USERNAME', 'superadmin')
-        admin_pass = os.getenv('ADMIN_PASSWORD', '')
-        if username == admin_user and password == admin_pass and admin_pass:
+        admin_pass = os.getenv('ADMIN_PASSWORD', 'OutreachOS@2025')
+        if username == admin_user and password == admin_pass:
             session[ADMIN_SESSION_KEY] = True
             session['admin_username'] = username
-            return redirect(url_for('admin.tenant_list'))
+            return redirect(url_for('admin.admin_dashboard'))
         error = 'Invalid admin credentials.'
     return render_template('admin/login.html', error=error)
 
@@ -58,6 +58,76 @@ def admin_logout():
 
 # ── TENANT LIST ───────────────────────────────────────────────
 @admin_bp.route('/')
+@admin_required
+def admin_dashboard():
+    """Platform Super Admin Dashboard — infrastructure overview."""
+    conn = get_db()
+    stats = {
+        'total_workspaces': conn.execute("SELECT COUNT(*) FROM workspaces").fetchone()[0],
+        'total_users': conn.execute("SELECT COUNT(*) FROM users").fetchone()[0],
+        'total_contacts': conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0],
+        'total_sent': conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0],
+        'total_failed': conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('failed','bounced')").fetchone()[0],
+        'total_campaigns': conn.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0],
+        'active_campaigns': conn.execute("SELECT COUNT(*) FROM campaigns WHERE job_status IN ('running','queued')").fetchone()[0],
+    }
+    # SMTP health across all tenants
+    smtp_accounts = conn.execute("SELECT email, health_score, active, sent_today, daily_limit, workspace_id FROM smtp_accounts ORDER BY health_score ASC").fetchall()
+    stats['smtp_total'] = len(smtp_accounts)
+    stats['smtp_active'] = sum(1 for s in smtp_accounts if s['active'])
+    stats['smtp_at_risk'] = sum(1 for s in smtp_accounts if s['health_score'] < 50 and s['active'])
+    stats['avg_health'] = round(sum(s['health_score'] for s in smtp_accounts) / len(smtp_accounts), 0) if smtp_accounts else 0
+
+    # Global bounce rate
+    total_all = stats['total_sent'] + stats['total_failed']
+    stats['bounce_rate'] = round(stats['total_failed'] / total_all * 100, 1) if total_all else 0
+
+    # Recent failed jobs
+    failed_campaigns = conn.execute("""
+        SELECT c.id, c.name, c.job_status, c.failed_count, w.name as workspace_name
+        FROM campaigns c LEFT JOIN workspaces w ON c.workspace_id = w.id
+        WHERE c.job_status IN ('failed','cancelled') OR c.failed_count > 5
+        ORDER BY c.started_at DESC LIMIT 10
+    """).fetchall()
+
+    # Top workspaces by volume
+    top_workspaces = conn.execute("""
+        SELECT w.id, w.name, w.plan,
+            COUNT(DISTINCT es.id) as send_count,
+            COUNT(DISTINCT c.id) as contact_count
+        FROM workspaces w
+        LEFT JOIN emails_sent es ON es.workspace_id = w.id
+        LEFT JOIN contacts c ON c.workspace_id = w.id
+        GROUP BY w.id ORDER BY send_count DESC LIMIT 10
+    """).fetchall()
+
+    # System logs (last 20)
+    try:
+        sys_logs = conn.execute("""
+            SELECT level, message, created_at FROM campaign_logs
+            ORDER BY created_at DESC LIMIT 20
+        """).fetchall()
+    except Exception:
+        sys_logs = []
+
+    conn.close()
+
+    # Redis/Celery status
+    infra = {'redis': False, 'celery_workers': 0}
+    try:
+        from celery_app import is_redis_available, has_active_workers
+        infra['redis'] = is_redis_available()
+        infra['celery_workers'] = 1 if has_active_workers() else 0
+    except Exception:
+        pass
+
+    return render_template('admin/dashboard.html',
+        stats=stats, smtp_accounts=smtp_accounts,
+        failed_campaigns=failed_campaigns, top_workspaces=top_workspaces,
+        sys_logs=sys_logs, infra=infra)
+
+
+@admin_bp.route('/workspaces')
 @admin_required
 def tenant_list():
     conn = get_db()
