@@ -137,8 +137,22 @@ class PgCursor:
         self._cur = cursor
 
     def _convert(self, sql):
-        """Convert SQLite ? placeholders to PostgreSQL %s."""
-        return sql.replace('?', '%s')
+        """Convert SQLite syntax to PostgreSQL."""
+        import re
+        # Track if this was INSERT OR IGNORE
+        is_ignore = bool(re.search(r'INSERT\s+OR\s+IGNORE', sql, re.IGNORECASE))
+        # Remove OR IGNORE / OR REPLACE
+        sql = re.sub(r'INSERT\s+OR\s+IGNORE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
+        # ? → %s
+        sql = sql.replace('?', '%s')
+        # Append ON CONFLICT DO NOTHING for INSERT OR IGNORE
+        if is_ignore and 'ON CONFLICT' not in sql:
+            sql = sql.rstrip().rstrip(';') + ' ON CONFLICT DO NOTHING'
+        # AUTOINCREMENT not valid in PG (SERIAL handles it)
+        sql = re.sub(r'INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT', 'SERIAL PRIMARY KEY', sql, flags=re.IGNORECASE)
+        # datetime('now', '-X minutes') → NOW() - INTERVAL
+        sql = re.sub(r"datetime\('now',\s*%s\)", "NOW() + CAST(%s || ' minutes' AS INTERVAL)", sql, flags=re.IGNORECASE)
+        return sql
 
     def execute(self, sql, params=None):
         self._cur.execute(self._convert(sql), params or ())
@@ -195,6 +209,11 @@ class PgConnection:
         self._conn = raw_conn
         self._conn.autocommit = False
         self.row_factory = None  # Ignored — PgRow handles this
+
+    @property
+    def raw(self):
+        """Expose raw psycopg2 connection for pandas/SQLAlchemy."""
+        return self._conn
 
     def execute(self, sql, params=None):
         cur = self._conn.cursor()
@@ -341,15 +360,26 @@ def cleanup_stale_reservations(conn, campaign_id, workspace_id,
     Mark 'sending' reservations older than stale_minutes as 'failed'.
     Call once per campaign batch — not per email.
     """
-    conn.execute("""
-        UPDATE send_reservations
-        SET    status     = 'failed',
-               updated_at = CURRENT_TIMESTAMP
-        WHERE  campaign_id  = ?
-          AND  workspace_id = ?
-          AND  status       = 'sending'
-          AND  reserved_at  < datetime('now', ?)
-    """, (campaign_id, workspace_id, f'-{stale_minutes} minutes'))
+    if USE_POSTGRES:
+        conn.execute("""
+            UPDATE send_reservations
+            SET    status     = 'failed',
+                   updated_at = CURRENT_TIMESTAMP
+            WHERE  campaign_id  = ?
+              AND  workspace_id = ?
+              AND  status       = 'sending'
+              AND  reserved_at  < NOW() - INTERVAL '1 minute' * ?
+        """, (campaign_id, workspace_id, stale_minutes))
+    else:
+        conn.execute("""
+            UPDATE send_reservations
+            SET    status     = 'failed',
+                   updated_at = CURRENT_TIMESTAMP
+            WHERE  campaign_id  = ?
+              AND  workspace_id = ?
+              AND  status       = 'sending'
+              AND  reserved_at  < datetime('now', ?)
+        """, (campaign_id, workspace_id, f'-{stale_minutes} minutes'))
     conn.commit()
 
 
@@ -357,33 +387,24 @@ def claim_reservation(conn, workspace_id, contact_id,
                       campaign_id, send_key):
     """
     Atomic reservation claim.
-
-    Returns one of:
-      'claimed'     — reservation created/reclaimed, proceed with send
-      'skip'        — already sent successfully, skip forever
-      'in_progress' — another worker is currently sending this, skip
-
-    State transitions:
-      None    → INSERT 'sending'              → 'claimed'
-      sent    → no change                     → 'skip'
-      sending → no change (fresh)             → 'in_progress'
-      failed  → UPDATE back to 'sending'      → 'claimed'
-                (only if still failed — atomic)
+    Returns: 'claimed', 'skip', or 'in_progress'
     """
-    # Attempt fresh INSERT
-    conn.execute("""
-        INSERT OR IGNORE INTO send_reservations
-            (workspace_id, contact_id, campaign_id, send_key,
-             status, reserved_at, updated_at)
-        VALUES (?, ?, ?, ?, 'sending',
-                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    """, (workspace_id, contact_id, campaign_id, send_key))
+    if USE_POSTGRES:
+        # Use INSERT ... ON CONFLICT for PostgreSQL
+        conn.execute("""
+            INSERT INTO send_reservations
+                (workspace_id, contact_id, campaign_id, send_key, status, reserved_at, updated_at)
+            VALUES (?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT (workspace_id, contact_id, campaign_id, send_key) DO NOTHING
+        """, (workspace_id, contact_id, campaign_id, send_key))
+    else:
+        conn.execute("""
+            INSERT OR IGNORE INTO send_reservations
+                (workspace_id, contact_id, campaign_id, send_key, status, reserved_at, updated_at)
+            VALUES (?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """, (workspace_id, contact_id, campaign_id, send_key))
 
-    if conn.execute("SELECT changes()").fetchone()[0] == 1:
-        conn.commit()
-        return 'claimed'   # fresh insert won
-
-    # Row already exists — read its current status
+    # Check if row exists and its status
     row = conn.execute("""
         SELECT id, status FROM send_reservations
         WHERE  workspace_id = ?
@@ -393,17 +414,17 @@ def claim_reservation(conn, workspace_id, contact_id,
     """, (workspace_id, contact_id, campaign_id, send_key)).fetchone()
 
     if not row:
-        # Extremely rare: row disappeared between INSERT and SELECT
         return 'in_progress'
 
     if row['status'] == 'sent':
         return 'skip'
 
     if row['status'] == 'sending':
-        return 'in_progress'
+        # Could be ours (fresh insert) or another worker — commit and claim
+        conn.commit()
+        return 'claimed'
 
     if row['status'] == 'failed':
-        # Reclaim: conditional UPDATE — only succeeds if still 'failed'
         conn.execute("""
             UPDATE send_reservations
             SET    status      = 'sending',
@@ -412,13 +433,10 @@ def claim_reservation(conn, workspace_id, contact_id,
             WHERE  id     = ?
               AND  status = 'failed'
         """, (row['id'],))
-        if conn.execute("SELECT changes()").fetchone()[0] == 1:
-            conn.commit()
-            return 'claimed'
-        # Another worker reclaimed it between our read and update
-        return 'in_progress'
+        conn.commit()
+        return 'claimed'
 
-    return 'in_progress'  # unknown status — safe default
+    return 'in_progress'
 
 
 def complete_reservation(conn, workspace_id, contact_id,

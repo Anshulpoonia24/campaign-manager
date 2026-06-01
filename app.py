@@ -307,8 +307,46 @@ def get_db():
     return _utils_get_db()
 
 
+def _table_exists(conn, table_name):
+    from utils.db import USE_POSTGRES
+    if USE_POSTGRES:
+        row = conn.execute("SELECT 1 FROM information_schema.tables WHERE table_name=%s", (table_name,)).fetchone()
+    else:
+        row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,)).fetchone()
+    return row is not None
+
 def init_db():
+    from utils.db import USE_POSTGRES
     conn = get_db()
+    if USE_POSTGRES:
+        from utils.pg_schema import init_pg
+        init_pg(conn)
+        # PostgreSQL: seed defaults
+        from werkzeug.security import generate_password_hash
+        existing_user = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
+        if not existing_user:
+            default_hash = generate_password_hash('admin123')
+            conn.execute("INSERT INTO users (username, password_hash, role) VALUES (%s,%s,%s)",
+                         ('admin', default_hash, 'admin'))
+            conn.commit()
+        # Ensure default workspace
+        if not conn.execute("SELECT id FROM workspaces WHERE id=1").fetchone():
+            conn.execute("INSERT INTO workspaces (id, name, slug, plan) VALUES (1, 'Default Workspace', 'default', 'free')")
+            conn.commit()
+        # Insert default settings
+        for k, v in DEFAULT_SETTINGS.items():
+            existing = conn.execute("SELECT key FROM settings WHERE key=%s", (k,)).fetchone()
+            if not existing:
+                conn.execute("INSERT INTO settings (key, value) VALUES (%s,%s)", (k, v))
+        conn.commit()
+        # Insert default automation rules
+        for rule_key, enabled, delay_days, max_followups in [('no_reply_followup',1,2,3),('opened_multiple_times',1,1,2),('interested_pause',1,0,0),('ooo_retry',1,7,1),('bounce_pause',1,0,0)]:
+            existing = conn.execute("SELECT id FROM automation_settings WHERE rule_key=%s", (rule_key,)).fetchone()
+            if not existing:
+                conn.execute("INSERT INTO automation_settings (rule_key, enabled, delay_days, max_followups) VALUES (%s,%s,%s,%s)", (rule_key, enabled, delay_days, max_followups))
+        conn.commit()
+        conn.close()
+        return
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3190,7 +3228,7 @@ def api_diagnostics():
     recent_logs = conn.execute("""
         SELECT level, message, created_at FROM campaign_logs
         ORDER BY created_at DESC LIMIT 10
-    """).fetchall() if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='campaign_logs'").fetchone() else []
+    """).fetchall() if _table_exists(conn, 'campaign_logs') else []
 
     conn.close()
 
@@ -3692,6 +3730,10 @@ def api_add_smtp_account():
         from services.workspace_service import get_wid
         wid = get_wid()
         login_username = data.get('login_username', '').strip()
+        # Check duplicate before insert
+        if conn.execute("SELECT id FROM smtp_accounts WHERE email=?", (email,)).fetchone():
+            conn.close()
+            return jsonify({'success': False, 'error': 'An inbox with this email already exists'})
         conn.execute("""
             INSERT OR IGNORE INTO smtp_accounts
               (email, password, smtp_server, smtp_port, from_name,
@@ -3699,7 +3741,7 @@ def api_add_smtp_account():
             VALUES (?,?,?,?,?,?,?,?,?,?,?)
         """, (email, password, smtp_server, smtp_port, from_name,
               daily_limit, reply_to, bcc_emails, signature, login_username, wid))
-        inserted = conn.execute("SELECT changes()").fetchone()[0]
+        inserted = 1  # INSERT OR IGNORE handles duplicates
         conn.commit()
         conn.close()
         if inserted == 0:
@@ -4117,7 +4159,7 @@ def api_groq_usage():
         # Get usage from ai_usage table
         conn = get_db()
         total_used = conn.execute("SELECT COUNT(*) FROM ai_usage WHERE provider='groq'").fetchone()[0]
-        today_used = conn.execute("SELECT COUNT(*) FROM ai_usage WHERE provider='groq' AND DATE(created_at)=DATE('now')").fetchone()[0]
+        today_used = conn.execute("SELECT COUNT(*) FROM ai_usage WHERE provider='groq' AND DATE(created_at)=CURRENT_DATE").fetchone()[0]
         conn.close()
 
         results.append({
@@ -4265,16 +4307,18 @@ def export_data(export_type):
     from services.workspace_service import get_wid
     wid = get_wid()
     conn = get_db()
+    # pandas needs raw connection for PostgreSQL
+    db_conn = conn.raw if hasattr(conn, 'raw') else conn
     if export_type == 'sent':
-        df = pd.read_sql("SELECT c.name, c.company, es.email, es.subject, es.status, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status='sent' AND es.workspace_id=?", conn, params=(wid,))
+        df = pd.read_sql("SELECT c.name, c.company, es.email, es.subject, es.status, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status='sent' AND es.workspace_id=?", db_conn, params=(wid,))
     elif export_type == 'bounced':
-        df = pd.read_sql("SELECT c.name, c.company, es.email, es.bounce_reason, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status IN ('bounced','failed') AND es.workspace_id=?", conn, params=(wid,))
+        df = pd.read_sql("SELECT c.name, c.company, es.email, es.bounce_reason, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status IN ('bounced','failed') AND es.workspace_id=?", db_conn, params=(wid,))
     elif export_type == 'follow_ups':
-        df = pd.read_sql("SELECT * FROM follow_ups WHERE workspace_id=?", conn, params=(wid,))
+        df = pd.read_sql("SELECT * FROM follow_ups WHERE workspace_id=?", db_conn, params=(wid,))
     elif export_type == 'invalid':
-        df = pd.read_sql("SELECT name, company, email, validation_reason FROM contacts WHERE email_valid=0 AND workspace_id=?", conn, params=(wid,))
+        df = pd.read_sql("SELECT name, company, email, validation_reason FROM contacts WHERE email_valid=0 AND workspace_id=?", db_conn, params=(wid,))
     else:
-        df = pd.read_sql("SELECT * FROM contacts WHERE workspace_id=?", conn, params=(wid,))
+        df = pd.read_sql("SELECT * FROM contacts WHERE workspace_id=?", db_conn, params=(wid,))
 
     conn.close()
     import tempfile
