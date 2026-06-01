@@ -52,6 +52,7 @@
 
   // Quick suggestions per page
   const QUICK = {
+    dashboard: ['How am I doing?', 'Any issues?', 'What should I do next?', 'Summarize performance'],
     campaign_status: ['Why are emails failing?', 'Should I pause?', 'SMTP health check', 'Retry failed emails'],
     inbox_thread: ['Draft a reply', 'What does this contact want?', 'Suggest next steps', 'Summarize thread'],
     contacts: ['How many are enriched?', 'Enrich all contacts', 'Show invalid emails', 'Lead score breakdown']
@@ -60,7 +61,7 @@
   // Build DOM
   const fab = document.createElement('div');
   fab.id = 'copilot-fab';
-  fab.innerHTML = '<i class="fas fa-sparkles"></i>';
+  fab.innerHTML = '<i class="fas fa-robot"></i>';
   fab.title = 'Outreach Copilot';
   document.body.appendChild(fab);
 
@@ -68,7 +69,7 @@
   panel.id = 'copilot-panel';
   panel.innerHTML = `
     <div class="cp-header">
-      <div class="cp-header-icon"><i class="fas fa-sparkles"></i></div>
+      <div class="cp-header-icon"><i class="fas fa-robot"></i></div>
       <div class="cp-header-title">Outreach Copilot</div>
       <div class="cp-header-close" id="cp-close"><i class="fas fa-times"></i></div>
     </div>
