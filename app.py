@@ -4084,6 +4084,79 @@ def api_groq_usage():
     return jsonify({'keys': results})
 
 
+@app.route('/live-logs')
+@login_required
+def live_logs_page():
+    if getattr(current_user, 'role', '') != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard'))
+    return render_template('live_logs.html')
+
+
+@app.route('/api/live-logs')
+@login_required
+def api_live_logs():
+    """Stream logs for live logs page. Reads from campaign_logs + log files."""
+    if getattr(current_user, 'role', '') != 'admin':
+        return jsonify({'logs': [], 'last_id': 0})
+    from services.workspace_service import get_wid
+    tab = request.args.get('tab', 'all')
+    after_id = int(request.args.get('after', 0))
+    wid = get_wid()
+    logs = []
+
+    if tab in ('all', 'campaign', 'smtp'):
+        conn = get_db()
+        rows = conn.execute("""
+            SELECT id, campaign_id, level, message, smtp_email, created_at
+            FROM campaign_logs WHERE id > ? AND workspace_id = ?
+            ORDER BY created_at DESC LIMIT 100
+        """, (after_id, wid)).fetchall()
+        conn.close()
+        for r in reversed(rows):
+            if tab == 'smtp' and not r['smtp_email']:
+                continue
+            logs.append(dict(r))
+
+    if tab in ('all', 'error'):
+        # Read last 50 lines from error.log
+        err_path = os.path.join(LOG_DIR, 'error.log')
+        if os.path.exists(err_path):
+            try:
+                with open(err_path, 'r') as f:
+                    lines = f.readlines()[-50:]
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    ts = line[:19] if len(line) > 19 else ''
+                    msg = line[20:].strip() if len(line) > 20 else line
+                    logs.append({'id': 0, 'level': 'error', 'message': msg, 'smtp_email': '', 'created_at': ts})
+            except Exception:
+                pass
+
+    if tab == 'copilot':
+        conn = get_db()
+        try:
+            rows = conn.execute("""
+                SELECT id, page_type, user_message, action_taken, created_at
+                FROM copilot_logs WHERE workspace_id = ?
+                ORDER BY created_at DESC LIMIT 50
+            """, (wid,)).fetchall()
+            for r in reversed(rows):
+                logs.append({
+                    'id': r['id'], 'level': 'info',
+                    'message': f"[{r['page_type']}] {r['user_message'][:80]}" + (f" → {r['action_taken']}" if r['action_taken'] else ''),
+                    'smtp_email': '', 'created_at': r['created_at']
+                })
+        except Exception:
+            pass
+        conn.close()
+
+    last_id = max((l.get('id', 0) for l in logs), default=after_id)
+    return jsonify({'logs': logs, 'last_id': last_id})
+
+
 @app.route('/logs')
 @login_required
 def logs_page():

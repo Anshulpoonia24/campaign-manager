@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Logs — OutreachOS</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;}
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#1e293b;border-bottom:1px solid #334155;position:sticky;top:0;z-index:100;}
+.top-bar h1{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.top-bar h1 i{color:#6366f1;}
+.controls{display:flex;align-items:center;gap:12px;}
+.tab-btn{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;border:1px solid #334155;background:transparent;color:#94a3b8;cursor:pointer;transition:all .15s;}
+.tab-btn.active{background:#6366f1;border-color:#6366f1;color:#fff;}
+.tab-btn:hover:not(.active){background:#334155;color:#e2e8f0;}
+.toggle-btn{padding:6px 12px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid #334155;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;gap:5px;}
+.toggle-btn.live{border-color:#10b981;color:#10b981;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.6;}}
+.badge-count{font-size:10px;background:#ef4444;color:#fff;border-radius:99px;padding:1px 6px;margin-left:4px;}
+.back-link{color:#94a3b8;text-decoration:none;font-size:12px;display:flex;align-items:center;gap:5px;}.back-link:hover{color:#6366f1;}
+.log-container{padding:16px 24px;max-height:calc(100vh - 60px);overflow-y:auto;}
+.log-line{font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.8;padding:2px 8px;border-radius:4px;white-space:pre-wrap;word-break:break-all;}
+.log-line:hover{background:#1e293b;}
+.log-line .ts{color:#64748b;}
+.log-line .lvl-info{color:#38bdf8;}
+.log-line .lvl-warning{color:#fbbf24;}
+.log-line .lvl-error{color:#f87171;}
+.log-line .lvl-debug{color:#a78bfa;}
+.log-line .msg{color:#e2e8f0;}
+.empty-state{text-align:center;padding:80px 20px;color:#64748b;}
+.empty-state i{font-size:32px;margin-bottom:12px;display:block;}
+.filter-bar{display:flex;align-items:center;gap:10px;padding:10px 24px;background:#1e293b;border-bottom:1px solid #334155;}
+.filter-input{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:6px 10px 6px 30px;color:#e2e8f0;font-size:12px;font-family:'JetBrains Mono',monospace;width:250px;outline:none;}
+.filter-input:focus{border-color:#6366f1;}
+.filter-wrap{position:relative;}.filter-wrap i{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#64748b;font-size:11px;}
+.level-filter{display:flex;gap:6px;}
+.lf-btn{font-size:10px;padding:4px 8px;border-radius:4px;border:1px solid #334155;background:transparent;color:#94a3b8;cursor:pointer;}.lf-btn.active{background:#334155;color:#e2e8f0;}
+.stats-bar{display:flex;gap:16px;margin-left:auto;}
+.stat-item{font-size:11px;color:#64748b;display:flex;align-items:center;gap:4px;}
+.stat-item .dot{width:6px;height:6px;border-radius:50%;}
+.dot-info{background:#38bdf8;}.dot-warn{background:#fbbf24;}.dot-err{background:#f87171;}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <h1><i class="fas fa-terminal"></i> Live Logs</h1>
+  <div class="controls">
+    <a href="/dashboard" class="back-link"><i class="fas fa-arrow-left"></i> Dashboard</a>
+    <button class="tab-btn active" data-tab="all">All</button>
+    <button class="tab-btn" data-tab="campaign">Campaign</button>
+    <button class="tab-btn" data-tab="smtp">SMTP</button>
+    <button class="tab-btn" data-tab="error">Errors</button>
+    <button class="tab-btn" data-tab="copilot">Copilot</button>
+    <button class="toggle-btn live" id="liveToggle" onclick="toggleLive()"><i class="fas fa-circle" style="font-size:7px;"></i> LIVE</button>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <div class="filter-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" class="filter-input" id="filterInput" placeholder="Filter logs..." oninput="applyFilter()">
+  </div>
+  <div class="level-filter">
+    <button class="lf-btn active" data-level="all" onclick="setLevel(this)">All</button>
+    <button class="lf-btn" data-level="info" onclick="setLevel(this)">Info</button>
+    <button class="lf-btn" data-level="warning" onclick="setLevel(this)">Warning</button>
+    <button class="lf-btn" data-level="error" onclick="setLevel(this)">Error</button>
+  </div>
+  <div class="stats-bar">
+    <span class="stat-item"><span class="dot dot-info"></span> <span id="countInfo">0</span> info</span>
+    <span class="stat-item"><span class="dot dot-warn"></span> <span id="countWarn">0</span> warn</span>
+    <span class="stat-item"><span class="dot dot-err"></span> <span id="countErr">0</span> error</span>
+  </div>
+</div>
+
+<div class="log-container" id="logContainer">
+  <div class="empty-state"><i class="fas fa-satellite-dish"></i><p>Connecting to log stream...</p></div>
+</div>
+
+<script>
+let isLive = true;
+let currentTab = 'all';
+let currentLevel = 'all';
+let allLogs = [];
+let pollTimer = null;
+let lastId = 0;
+
+function toggleLive() {
+  isLive = !isLive;
+  const btn = document.getElementById('liveToggle');
+  if (isLive) {
+    btn.classList.add('live');
+    btn.innerHTML = '<i class="fas fa-circle" style="font-size:7px;"></i> LIVE';
+    startPolling();
+  } else {
+    btn.classList.remove('live');
+    btn.innerHTML = '<i class="fas fa-pause" style="font-size:9px;"></i> PAUSED';
+    stopPolling();
+  }
+}
+
+function startPolling() { if (!pollTimer) pollTimer = setInterval(fetchLogs, 3000); }
+function stopPolling() { clearInterval(pollTimer); pollTimer = null; }
+
+async function fetchLogs() {
+  try {
+    const r = await fetch(`/api/live-logs?tab=${currentTab}&after=${lastId}`);
+    const d = await r.json();
+    if (d.logs && d.logs.length) {
+      allLogs = allLogs.concat(d.logs);
+      if (allLogs.length > 500) allLogs = allLogs.slice(-500);
+      lastId = d.last_id || lastId;
+      renderLogs();
+      updateCounts();
+    }
+  } catch(e) {}
+}
+
+function renderLogs() {
+  const container = document.getElementById('logContainer');
+  const filter = document.getElementById('filterInput').value.toLowerCase();
+  let filtered = allLogs;
+  if (currentLevel !== 'all') filtered = filtered.filter(l => l.level === currentLevel);
+  if (filter) filtered = filtered.filter(l => l.message.toLowerCase().includes(filter) || (l.smtp_email||'').toLowerCase().includes(filter));
+
+  if (!filtered.length) {
+    container.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle"></i><p>No logs matching filter</p></div>';
+    return;
+  }
+
+  container.innerHTML = filtered.map(l => {
+    const lvlClass = l.level === 'error' ? 'lvl-error' : l.level === 'warning' ? 'lvl-warning' : l.level === 'debug' ? 'lvl-debug' : 'lvl-info';
+    const ts = l.created_at ? l.created_at.substring(5, 19) : '';
+    const prefix = l.smtp_email ? ` [${l.smtp_email}]` : '';
+    return `<div class="log-line"><span class="ts">${ts}</span> <span class="${lvlClass}">[${(l.level||'info').toUpperCase()}]</span>${prefix} <span class="msg">${escHtml(l.message)}</span></div>`;
+  }).join('');
+
+  container.scrollTop = container.scrollHeight;
+}
+
+function updateCounts() {
+  document.getElementById('countInfo').textContent = allLogs.filter(l=>l.level==='info').length;
+  document.getElementById('countWarn').textContent = allLogs.filter(l=>l.level==='warning').length;
+  document.getElementById('countErr').textContent = allLogs.filter(l=>l.level==='error').length;
+}
+
+function applyFilter() { renderLogs(); }
+
+function setLevel(btn) {
+  document.querySelectorAll('.lf-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentLevel = btn.dataset.level;
+  renderLogs();
+}
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTab = btn.dataset.tab;
+    allLogs = [];
+    lastId = 0;
+    fetchLogs();
+  };
+});
+
+function escHtml(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+// Start
+fetchLogs();
+startPolling();
+</script>
+</body>
+</html>
