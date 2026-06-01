@@ -505,10 +505,15 @@ def init_db():
     sa = conn.execute("SELECT id FROM users WHERE username='superadmin'").fetchone()
     if not sa:
         sa_hash = generate_password_hash('OutreachOS@2025')
-        conn.execute("INSERT INTO users (username, password_hash, role, workspace_id) VALUES (?,?,?,?)",
+        conn.execute("INSERT OR IGNORE INTO users (username, password_hash, role, workspace_id) VALUES (?,?,?,?)",
                      ('superadmin', sa_hash, 'admin', 1))
         conn.commit()
         print("[AUTH] Super admin created -- username: superadmin")
+    else:
+        # Reset password if superadmin exists but can't login
+        sa_hash = generate_password_hash('OutreachOS@2025')
+        conn.execute("UPDATE users SET password_hash=? WHERE username='superadmin'", (sa_hash,))
+        conn.commit()
 
     # Insert default settings for any missing keys
     for k, v in DEFAULT_SETTINGS.items():
