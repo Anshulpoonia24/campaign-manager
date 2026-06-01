@@ -66,6 +66,10 @@ def _build_pg_dsn():
         url = DATABASE_URL
         if url.startswith('postgres://'):
             url = 'postgresql://' + url[len('postgres://'):]
+        # Add sslmode if not present (required for Supabase/cloud)
+        if 'sslmode' not in url:
+            sep = '&' if '?' in url else '?'
+            url += sep + 'sslmode=require'
         return url
     return (
         f"host={os.getenv('DB_HOST','localhost')} "
