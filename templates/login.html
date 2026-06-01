@@ -354,19 +354,19 @@ body {
     {% endfor %}{% endif %}
     {% endwith %}
 
-    <form method="POST" id="loginForm" onsubmit="handleSubmit()">
+    <form method="POST" id="loginForm" onsubmit="handleSubmit()" autocomplete="off">
       <div class="field-group">
         <label class="field-label">Username</label>
         <div class="field-wrap">
           <i class="fas fa-user field-icon"></i>
-          <input type="text" name="username" class="field-input" placeholder="Enter your username" required autofocus autocomplete="username">
+          <input type="text" name="username" class="field-input" placeholder="Enter your username" required autofocus autocomplete="off">
         </div>
       </div>
       <div class="field-group">
         <label class="field-label">Password</label>
         <div class="field-wrap">
           <i class="fas fa-lock field-icon"></i>
-          <input type="password" name="password" id="pwField" class="field-input" placeholder="Enter your password" required autocomplete="current-password">
+          <input type="password" name="password" id="pwField" class="field-input" placeholder="Enter your password" required autocomplete="off">
           <i class="fas fa-eye toggle-pw" onclick="togglePw()" id="pwToggle"></i>
         </div>
       </div>
