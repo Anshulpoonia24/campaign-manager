@@ -590,6 +590,18 @@ def init_db():
         )""",
         "CREATE INDEX IF NOT EXISTS idx_cl_campaign ON campaign_logs(campaign_id)",
         "CREATE INDEX IF NOT EXISTS idx_cl_created ON campaign_logs(created_at DESC)",
+        # Copilot logs table
+        """CREATE TABLE IF NOT EXISTS copilot_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id INTEGER DEFAULT 1,
+            user_id INTEGER,
+            page_type TEXT,
+            page_id INTEGER,
+            user_message TEXT,
+            ai_response TEXT,
+            action_taken TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
     ]:
         try:
             conn.execute(migration)
@@ -4395,6 +4407,66 @@ def api_sequence_reorder_steps(campaign_id):
         return jsonify({'success': False, 'error': 'ordered_ids required'})
     reorder_steps(campaign_id, ordered_ids)
     return jsonify({'success': True})
+
+
+# ==============================
+# OUTREACH COPILOT
+# ==============================
+
+@app.route('/api/copilot/chat', methods=['POST'])
+@login_required
+@limiter.limit("20 per minute")
+def api_copilot_chat():
+    """Copilot chat endpoint — page-aware AI assistant."""
+    from services.copilot_service import (
+        get_page_context, build_system_prompt, call_ai, log_copilot_action
+    )
+    from services.workspace_service import get_wid
+    data = request.json or {}
+    user_msg = data.get('message', '').strip()
+    page_type = data.get('page_type', '')  # campaign_status, inbox_thread, contacts
+    page_id = int(data.get('page_id', 0))
+
+    if not user_msg:
+        return jsonify({'success': False, 'error': 'Empty message'})
+    if page_type not in ('campaign_status', 'inbox_thread', 'contacts'):
+        return jsonify({'success': False, 'error': 'Invalid page_type'})
+
+    wid = get_wid()
+    # Build context
+    context = get_page_context(page_type, page_id, wid)
+    system_prompt = build_system_prompt(page_type)
+    # Call AI
+    result = call_ai(system_prompt, user_msg, context)
+    # Log
+    log_copilot_action(
+        wid, current_user.id, page_type, page_id,
+        user_msg, result.get('message', '')
+    )
+    return jsonify({'success': True, **result})
+
+
+@app.route('/api/copilot/action', methods=['POST'])
+@login_required
+@limiter.limit("10 per minute")
+def api_copilot_action():
+    """Execute a confirmed copilot action."""
+    from services.copilot_service import execute_action, log_copilot_action
+    from services.workspace_service import get_wid
+    data = request.json or {}
+    action_type = data.get('action_type', '')
+    params = data.get('params', {})
+    wid = get_wid()
+
+    result = execute_action(action_type, params, wid)
+    # Log the action
+    log_copilot_action(
+        wid, current_user.id, data.get('page_type', ''),
+        int(data.get('page_id', 0)),
+        f'ACTION: {action_type}', json.dumps(result)[:200],
+        action_taken=action_type
+    )
+    return jsonify(result)
 
 
 if __name__ == '__main__':
