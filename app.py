@@ -317,6 +317,7 @@ def _table_exists(conn, table_name):
 
 def init_db():
     from utils.db import USE_POSTGRES
+    _hash_pw = generate_password_hash  # bind to local to avoid scoping issues
     conn = get_db()
     # Check if we actually got a PG connection (get_db may fallback to SQLite)
     is_pg = USE_POSTGRES and hasattr(conn, 'raw')
@@ -326,7 +327,7 @@ def init_db():
         # PostgreSQL: seed defaults
         existing_user = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
         if not existing_user:
-            default_hash = generate_password_hash('admin123')
+            default_hash = _hash_pw('admin123')
             conn.execute("INSERT INTO users (username, password_hash, role) VALUES (?,?,?)",
                          ('admin', default_hash, 'admin'))
             conn.commit()
@@ -572,7 +573,7 @@ def init_db():
     # Create default admin user if no users exist
     existing_user = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
     if not existing_user:
-        default_hash = generate_password_hash('admin123')
+        default_hash = _hash_pw('admin123')
         conn.execute("INSERT INTO users (username, password_hash, role) VALUES (?,?,?)",
                      ('admin', default_hash, 'admin'))
         conn.commit()
