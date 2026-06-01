@@ -324,7 +324,6 @@ def init_db():
         from utils.pg_schema import init_pg
         init_pg(conn)
         # PostgreSQL: seed defaults
-        from werkzeug.security import generate_password_hash
         existing_user = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
         if not existing_user:
             default_hash = generate_password_hash('admin123')
