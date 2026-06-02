@@ -1392,12 +1392,10 @@ def _dashboard_inner():
     attention_threads = conn.execute("""
         SELECT t.id, t.status, t.unread_count, t.last_message_at,
                c.name as contact_name, c.company as contact_company, c.email as contact_email,
-               m.ai_category
+               (SELECT m2.ai_category FROM messages m2 WHERE m2.thread_id = t.id AND m2.direction='incoming' ORDER BY m2.created_at DESC LIMIT 1) as ai_category
         FROM threads t
         LEFT JOIN contacts c ON t.contact_id = c.id
-        LEFT JOIN messages m ON m.thread_id = t.id AND m.direction='incoming'
         WHERE t.status IN ('interested','meeting') OR t.unread_count > 0
-        GROUP BY t.id
         ORDER BY t.last_message_at DESC LIMIT 8
     """).fetchall()
 
@@ -3333,12 +3331,12 @@ def api_tracking_hot_leads():
         SELECT c.id, c.name, c.company, c.email,
                COALESCE(c.lead_score, 0) as lead_score, c.status,
                MAX(es.sent_at) as last_activity,
-               t.status as thread_status, t.id as thread_id
+               (SELECT t2.status FROM threads t2 WHERE t2.contact_id = c.id ORDER BY t2.last_message_at DESC LIMIT 1) as thread_status,
+               (SELECT t3.id FROM threads t3 WHERE t3.contact_id = c.id ORDER BY t3.last_message_at DESC LIMIT 1) as thread_id
         FROM contacts c
         LEFT JOIN emails_sent es ON es.contact_id = c.id AND es.status='sent'
-        LEFT JOIN threads t ON t.contact_id = c.id
         WHERE c.workspace_id = ? AND COALESCE(c.lead_score, 0) > 0
-        GROUP BY c.id
+        GROUP BY c.id, c.name, c.company, c.email, c.lead_score, c.status
         ORDER BY c.lead_score DESC
         LIMIT 20
     """, (wid,)).fetchall()
