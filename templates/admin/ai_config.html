@@ -7,52 +7,65 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Inter',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;}
-a{color:#818cf8;text-decoration:none;}a:hover{color:#a5b4fc;}
-.nav{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;background:#1e293b;border-bottom:1px solid #334155;position:sticky;top:0;z-index:100;}
-.nav-brand{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700;}.nav-brand i{color:#6366f1;}
-.nav-links{display:flex;gap:6px;}
-.nav-link{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;color:#94a3b8;transition:all .15s;}.nav-link:hover,.nav-link.active{background:#334155;color:#e2e8f0;}
-.nav-right{display:flex;align-items:center;gap:12px;}
-.btn-sm{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid #334155;background:transparent;color:#94a3b8;cursor:pointer;}.btn-sm:hover{background:#334155;color:#e2e8f0;}
-.container{padding:24px 28px;max-width:1000px;margin:0 auto;}
-.panel{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;margin-bottom:20px;}
-.panel-title{font-size:14px;font-weight:700;color:#e2e8f0;margin-bottom:16px;display:flex;align-items:center;gap:8px;}.panel-title i{font-size:13px;}
-.form-label{display:block;font-size:12px;font-weight:600;color:#94a3b8;margin-bottom:6px;}
-.form-control{width:100%;padding:10px 14px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:13px;font-family:inherit;}.form-control:focus{outline:none;border-color:#6366f1;}
-select.form-control{cursor:pointer;}
+body{font-family:'Inter',sans-serif;background:#f8fafc;color:#1e293b;min-height:100vh;-webkit-font-smoothing:antialiased;}
+a{color:#6366f1;text-decoration:none;}a:hover{color:#4f46e5;}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:56px;background:#fff;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:100;}
+.nav-brand{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:800;color:#0f172a;}
+.nav-brand i{color:#6366f1;font-size:16px;}
+.nav-brand span{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:9px;font-weight:700;padding:2px 7px;border-radius:99px;}
+.nav-links{display:flex;gap:4px;}
+.nav-link{padding:7px 14px;border-radius:8px;font-size:13px;font-weight:500;color:#64748b;transition:all .15s;}
+.nav-link:hover{background:#f1f5f9;color:#1e293b;}
+.nav-link.active{background:#eef2ff;color:#4338ca;font-weight:600;}
+.nav-link i{margin-right:6px;font-size:11px;}
+.nav-right{display:flex;align-items:center;gap:14px;}
+.nav-user{font-size:12px;color:#64748b;font-weight:500;}
+.btn-logout{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid #e2e8f0;background:#fff;color:#64748b;cursor:pointer;transition:all .15s;}
+.btn-logout:hover{background:#fef2f2;border-color:#fecaca;color:#dc2626;}
+.container{padding:28px 32px;max-width:900px;margin:0 auto;}
+.page-header{margin-bottom:24px;}
+.page-header h1{font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-.4px;}
+.page-header p{font-size:13px;color:#64748b;margin-top:4px;}
+.panel{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:24px;margin-bottom:20px;transition:box-shadow .15s;}
+.panel:hover{box-shadow:0 4px 16px rgba(15,23,42,0.05);}
+.panel-title{font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
+.panel-title i{font-size:13px;}
+.panel-sub{font-size:12px;color:#64748b;margin-bottom:18px;}
+.form-label{display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;}
+.form-control{width:100%;padding:10px 14px;border-radius:9px;border:1px solid #e2e8f0;background:#f9fafb;color:#1e293b;font-size:13px;font-family:inherit;transition:border-color .15s,box-shadow .15s;}
+.form-control:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,0.08);background:#fff;}
+select.form-control{cursor:pointer;appearance:auto;}
 textarea.form-control{resize:vertical;min-height:70px;}
-.form-hint{font-size:11px;color:#64748b;margin-top:4px;}
+.form-hint{font-size:11px;color:#94a3b8;margin-top:4px;}
 .form-group{margin-bottom:16px;}
-.btn{padding:8px 18px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer;transition:all .15s;}
-.btn-primary{background:#6366f1;color:#fff;}.btn-primary:hover{background:#4f46e5;}
-.btn-outline{background:transparent;border:1px solid #334155;color:#94a3b8;}.btn-outline:hover{background:#334155;color:#e2e8f0;}
+.btn{padding:8px 18px;border-radius:9px;font-size:12px;font-weight:600;border:none;cursor:pointer;transition:all .15s;}
+.btn-primary{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;box-shadow:0 2px 8px rgba(99,102,241,0.2);}.btn-primary:hover{opacity:.9;transform:translateY(-1px);}
+.btn-outline{background:#fff;border:1px solid #e2e8f0;color:#374151;}.btn-outline:hover{background:#f8fafc;border-color:#6366f1;color:#4338ca;}
 .btn-row{display:flex;gap:10px;align-items:center;margin-top:16px;}
-.status-msg{font-size:12px;margin-left:10px;}.status-ok{color:#34d399;}.status-err{color:#f87171;}
-.flash{padding:10px 16px;border-radius:8px;margin-bottom:16px;font-size:12px;font-weight:500;}
-.flash-success{background:#064e3b;color:#34d399;border:1px solid #065f46;}
-.flash-error{background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;}
-.divider{border:0;border-top:1px solid #334155;margin:20px 0;}
+.status-msg{font-size:12px;margin-left:10px;font-weight:500;}.status-ok{color:#10b981;}.status-err{color:#dc2626;}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 .section-badge{display:inline-block;padding:3px 10px;border-radius:99px;font-size:10px;font-weight:700;margin-left:10px;}
-.badge-blue{background:#1e3a5f;color:#7dd3fc;border:1px solid #0c4a6e;}
-.badge-purple{background:#3b0764;color:#d8b4fe;border:1px solid #581c87;}
+.badge-blue{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;}
+.badge-purple{background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;}
+.flash{padding:10px 16px;border-radius:10px;margin-bottom:16px;font-size:12px;font-weight:500;}
+.flash-success{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;}
+.flash-error{background:#fef2f2;color:#dc2626;border:1px solid #fecaca;}
 @media(max-width:768px){.grid-2{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
 
 <div class="nav">
-  <div class="nav-brand"><i class="fas fa-shield-halved"></i> OutreachOS Platform Admin</div>
+  <div class="nav-brand"><i class="fas fa-paper-plane"></i> OutreachOS <span>ADMIN</span></div>
   <div class="nav-links">
-    <a href="/admin/" class="nav-link"><i class="fas fa-chart-line"></i> Dashboard</a>
-    <a href="/admin/workspaces" class="nav-link"><i class="fas fa-building"></i> Workspaces</a>
-    <a href="/admin/ai-config" class="nav-link active"><i class="fas fa-robot"></i> AI Config</a>
-    <a href="/admin/create" class="nav-link"><i class="fas fa-plus"></i> New Tenant</a>
+    <a href="/admin/" class="nav-link"><i class="fas fa-chart-line"></i>Dashboard</a>
+    <a href="/admin/workspaces" class="nav-link"><i class="fas fa-building"></i>Workspaces</a>
+    <a href="/admin/ai-config" class="nav-link active"><i class="fas fa-robot"></i>AI Config</a>
+    <a href="/admin/create" class="nav-link"><i class="fas fa-plus"></i>New Tenant</a>
   </div>
   <div class="nav-right">
-    <span style="font-size:11px;color:#64748b;">{{ session.get('admin_username','admin') }}</span>
-    <a href="/admin/logout" class="btn-sm"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    <span class="nav-user"><i class="fas fa-user-shield" style="margin-right:4px;color:#6366f1;"></i>{{ session.get('admin_username','admin') }}</span>
+    <a href="/admin/logout" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
   </div>
 </div>
 
@@ -64,15 +77,15 @@ textarea.form-control{resize:vertical;min-height:70px;}
   {% endfor %}
   {% endwith %}
 
-  <h2 style="font-size:18px;font-weight:800;margin-bottom:6px;"><i class="fas fa-brain" style="color:#6366f1;"></i> AI Configuration</h2>
-  <p style="color:#64748b;font-size:12px;margin-bottom:24px;">Separate AI configs for Email Personalization and Copilot. Each has its own keys and model selection.</p>
+  <div class="page-header">
+    <h1><i class="fas fa-brain" style="color:#6366f1;margin-right:8px;font-size:20px;"></i>AI Configuration</h1>
+    <p>Separate configs for Email Personalization and Copilot Assistant. Each has its own keys and model.</p>
+  </div>
 
-  <!-- ═══════════════════════════════════
-       EMAIL AI CONFIG
-  ═══════════════════════════════════ -->
+  <!-- EMAIL AI -->
   <div class="panel">
-    <div class="panel-title"><i class="fas fa-envelope" style="color:#3b82f6;"></i> Email Personalization AI <span class="section-badge badge-blue">Campaign Emails</span></div>
-    <p style="font-size:11.5px;color:#64748b;margin-bottom:18px;">Used for: Campaign email generation, follow-ups, automation replies, contact enrichment, industry detection</p>
+    <div class="panel-title"><i class="fas fa-envelope" style="color:#3b82f6;"></i> Email Personalization AI <span class="section-badge badge-blue">Campaigns</span></div>
+    <div class="panel-sub">Campaign emails, follow-ups, automation replies, enrichment, industry detection</div>
 
     <div class="grid-2">
       <div class="form-group">
@@ -95,9 +108,9 @@ textarea.form-control{resize:vertical;min-height:70px;}
     </div>
 
     <div class="form-group">
-      <label class="form-label">Groq API Keys <span style="color:#64748b;font-weight:400;">(comma separated for rotation)</span></label>
+      <label class="form-label">Groq API Keys <span style="color:#94a3b8;font-weight:400;">(comma separated for rotation)</span></label>
       <textarea class="form-control" id="email_groq_keys" rows="3" placeholder="gsk_abc123..., gsk_def456...">{{ settings.email_groq_keys }}</textarea>
-      <div class="form-hint">Get from: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> · Auto-rotates on rate limit</div>
+      <div class="form-hint"><a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> · Auto-rotates on rate limit</div>
     </div>
 
     <div class="form-group">
@@ -106,13 +119,12 @@ textarea.form-control{resize:vertical;min-height:70px;}
         <input type="password" class="form-control" id="email_gemini_key" value="{{ settings.email_gemini_key }}" placeholder="AIzaSy..." style="flex:1;">
         <button class="btn btn-outline" onclick="toggleVis('email_gemini_key')"><i class="fas fa-eye"></i></button>
       </div>
-      <div class="form-hint">Get from: <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a></div>
+      <div class="form-hint"><a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a></div>
     </div>
 
     <div class="form-group">
       <label class="form-label">Priority Order</label>
-      <input type="text" class="form-control" id="email_ai_priority" value="{{ settings.email_ai_priority or 'groq,gemini' }}" placeholder="groq,gemini" style="max-width:300px;">
-      <div class="form-hint">Comma separated. Tried in order until one succeeds.</div>
+      <input type="text" class="form-control" id="email_ai_priority" value="{{ settings.email_ai_priority or 'groq,gemini' }}" placeholder="groq,gemini" style="max-width:280px;">
     </div>
 
     <div class="btn-row">
@@ -123,12 +135,10 @@ textarea.form-control{resize:vertical;min-height:70px;}
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════
-       COPILOT AI CONFIG
-  ═══════════════════════════════════ -->
+  <!-- COPILOT AI -->
   <div class="panel">
-    <div class="panel-title"><i class="fas fa-robot" style="color:#8b5cf6;"></i> Copilot AI <span class="section-badge badge-purple">AI Assistant</span></div>
-    <p style="font-size:11.5px;color:#64748b;margin-bottom:18px;">Used for: In-app Copilot chat, campaign diagnostics, reply drafting, suggestions</p>
+    <div class="panel-title"><i class="fas fa-robot" style="color:#8b5cf6;"></i> Copilot AI <span class="section-badge badge-purple">Assistant</span></div>
+    <div class="panel-sub">In-app chat assistant, campaign diagnostics, reply drafting, suggestions</div>
 
     <div class="grid-2">
       <div class="form-group">
@@ -151,9 +161,9 @@ textarea.form-control{resize:vertical;min-height:70px;}
     </div>
 
     <div class="form-group">
-      <label class="form-label">Groq API Keys <span style="color:#64748b;font-weight:400;">(comma separated)</span></label>
+      <label class="form-label">Groq API Keys <span style="color:#94a3b8;font-weight:400;">(comma separated)</span></label>
       <textarea class="form-control" id="copilot_groq_keys" rows="3" placeholder="gsk_xyz789...">{{ settings.copilot_groq_keys }}</textarea>
-      <div class="form-hint">Can use same keys as Email AI, or separate keys for rate limit isolation</div>
+      <div class="form-hint">Same keys as Email AI work, or use separate for rate limit isolation</div>
     </div>
 
     <div class="form-group">
@@ -172,9 +182,9 @@ textarea.form-control{resize:vertical;min-height:70px;}
     </div>
   </div>
 
-  <!-- SAVE ALL -->
+  <!-- SAVE -->
   <div class="btn-row" style="margin-bottom:40px;">
-    <button class="btn btn-primary" onclick="saveAll()" style="padding:10px 28px;font-size:13px;"><i class="fas fa-save"></i> Save All AI Config</button>
+    <button class="btn btn-primary" onclick="saveAll()" style="padding:11px 32px;font-size:13px;"><i class="fas fa-save" style="margin-right:6px;"></i>Save All AI Config</button>
     <span id="saveStatus" class="status-msg"></span>
   </div>
 
@@ -189,49 +199,41 @@ function toggleVis(id) {
 function testKey(provider, fieldId, statusId) {
   const statusEl = document.getElementById(statusId);
   const el = document.getElementById(fieldId);
-  let key = '';
-  if (el.tagName === 'TEXTAREA') {
-    key = el.value.trim().split(',')[0].trim();
-  } else {
-    key = el.value.trim();
-  }
+  let key = el.tagName === 'TEXTAREA' ? el.value.trim().split(',')[0].trim() : el.value.trim();
   if (!key) { statusEl.innerHTML = '<span class="status-err">No key</span>'; return; }
-  statusEl.innerHTML = '<span style="color:#fbbf24;">Testing...</span>';
+  statusEl.innerHTML = '<span style="color:#f59e0b;">Testing...</span>';
   fetch('/admin/ai-config/test', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({provider, key})
   }).then(r => r.json()).then(d => {
     statusEl.innerHTML = d.success
-      ? `<span class="status-ok">${d.message}</span>`
-      : `<span class="status-err">${d.error}</span>`;
+      ? `<span class="status-ok"><i class="fas fa-check-circle"></i> ${d.message}</span>`
+      : `<span class="status-err"><i class="fas fa-times-circle"></i> ${d.error}</span>`;
   }).catch(() => { statusEl.innerHTML = '<span class="status-err">Network error</span>'; });
 }
 
 function saveAll() {
-  const saveStatus = document.getElementById('saveStatus');
-  saveStatus.innerHTML = '<span style="color:#fbbf24;">Saving...</span>';
-
-  const data = {
-    email_groq_keys: document.getElementById('email_groq_keys').value,
-    email_gemini_key: document.getElementById('email_gemini_key').value,
-    email_model_groq: document.getElementById('email_model_groq').value,
-    email_model_gemini: document.getElementById('email_model_gemini').value,
-    email_ai_priority: document.getElementById('email_ai_priority').value,
-    copilot_groq_keys: document.getElementById('copilot_groq_keys').value,
-    copilot_gemini_key: document.getElementById('copilot_gemini_key').value,
-    copilot_model_groq: document.getElementById('copilot_model_groq').value,
-    copilot_model_gemini: document.getElementById('copilot_model_gemini').value,
-  };
-
+  const s = document.getElementById('saveStatus');
+  s.innerHTML = '<span style="color:#f59e0b;">Saving...</span>';
   fetch('/admin/ai-config', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(data)
+    body: JSON.stringify({
+      email_groq_keys: document.getElementById('email_groq_keys').value,
+      email_gemini_key: document.getElementById('email_gemini_key').value,
+      email_model_groq: document.getElementById('email_model_groq').value,
+      email_model_gemini: document.getElementById('email_model_gemini').value,
+      email_ai_priority: document.getElementById('email_ai_priority').value,
+      copilot_groq_keys: document.getElementById('copilot_groq_keys').value,
+      copilot_gemini_key: document.getElementById('copilot_gemini_key').value,
+      copilot_model_groq: document.getElementById('copilot_model_groq').value,
+      copilot_model_gemini: document.getElementById('copilot_model_gemini').value,
+    })
   }).then(r => r.json()).then(d => {
-    saveStatus.innerHTML = d.success
-      ? '<span class="status-ok"><i class="fas fa-check-circle"></i> All saved!</span>'
-      : '<span class="status-err">Save failed</span>';
-    setTimeout(() => { saveStatus.innerHTML = ''; }, 3000);
-  }).catch(() => { saveStatus.innerHTML = '<span class="status-err">Network error</span>'; });
+    s.innerHTML = d.success
+      ? '<span class="status-ok"><i class="fas fa-check-circle"></i> Saved!</span>'
+      : '<span class="status-err">Failed</span>';
+    setTimeout(() => { s.innerHTML = ''; }, 3000);
+  }).catch(() => { s.innerHTML = '<span class="status-err">Network error</span>'; });
 }
 </script>
 </body>

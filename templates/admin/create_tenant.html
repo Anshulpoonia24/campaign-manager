@@ -8,7 +8,7 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Inter', sans-serif; background: linear-gradient(160deg, #f8fafc, #f1f5ff); min-height: 100vh; font-size: 14px; -webkit-font-smoothing: antialiased; }
+body { font-family: 'Inter', sans-serif; background: #f8fafc; min-height: 100vh; font-size: 14px; -webkit-font-smoothing: antialiased; }
 .admin-nav { background: #0f172a; padding: 0 28px; height: 52px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); }
 .admin-nav .brand { font-size: 14px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }
 .admin-nav .brand span { background: linear-gradient(135deg,#6366f1,#8b5cf6); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; }
@@ -31,11 +31,11 @@ body { font-family: 'Inter', sans-serif; background: linear-gradient(160deg, #f8
 </head>
 <body>
 
-<div class="admin-nav">
-  <div class="brand"><i class="fas fa-paper-plane" style="color:#6366f1;"></i> OutreachOS <span>ADMIN</span></div>
-  <div>
-    <a href="/admin"><i class="fas fa-arrow-left me-1"></i>Back to Tenants</a>
-    <a href="/admin/logout" style="color:#f87171;"><i class="fas fa-sign-out-alt me-1"></i>Logout</a>
+<div class="admin-nav" style="background:#fff;border-bottom:1px solid #e2e8f0;padding:0 32px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;">
+  <div class="brand" style="font-size:15px;font-weight:800;color:#0f172a;display:flex;align-items:center;gap:10px;"><i class="fas fa-paper-plane" style="color:#6366f1;font-size:16px;"></i> OutreachOS <span style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:9px;font-weight:700;padding:2px 7px;border-radius:99px;">ADMIN</span></div>
+  <div style="display:flex;gap:12px;">
+    <a href="/admin"><i class="fas fa-arrow-left me-1"></i>Back to Dashboard</a>
+    <a href="/admin/logout" style="color:#dc2626;"><i class="fas fa-sign-out-alt me-1"></i>Logout</a>
   </div>
 </div>
 

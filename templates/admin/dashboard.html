@@ -7,150 +7,174 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Inter',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;}
-a{color:#818cf8;text-decoration:none;}a:hover{color:#a5b4fc;}
+body{font-family:'Inter',sans-serif;background:#f8fafc;color:#1e293b;min-height:100vh;-webkit-font-smoothing:antialiased;}
+a{color:#6366f1;text-decoration:none;}a:hover{color:#4f46e5;}
 
 /* Nav */
-.nav{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;background:#1e293b;border-bottom:1px solid #334155;position:sticky;top:0;z-index:100;}
-.nav-brand{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700;}
-.nav-brand i{color:#6366f1;}
-.nav-links{display:flex;gap:6px;}
-.nav-link{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;color:#94a3b8;transition:all .15s;}
-.nav-link:hover,.nav-link.active{background:#334155;color:#e2e8f0;}
-.nav-right{display:flex;align-items:center;gap:12px;}
-.nav-user{font-size:11px;color:#64748b;}
-.btn-sm{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid #334155;background:transparent;color:#94a3b8;cursor:pointer;}.btn-sm:hover{background:#334155;color:#e2e8f0;}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:56px;background:#fff;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:100;}
+.nav-brand{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:800;color:#0f172a;}
+.nav-brand i{color:#6366f1;font-size:16px;}
+.nav-brand span{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:9px;font-weight:700;padding:2px 7px;border-radius:99px;letter-spacing:.3px;}
+.nav-links{display:flex;gap:4px;}
+.nav-link{padding:7px 14px;border-radius:8px;font-size:13px;font-weight:500;color:#64748b;transition:all .15s;}
+.nav-link:hover{background:#f1f5f9;color:#1e293b;}
+.nav-link.active{background:#eef2ff;color:#4338ca;font-weight:600;}
+.nav-link i{margin-right:6px;font-size:11px;}
+.nav-right{display:flex;align-items:center;gap:14px;}
+.nav-user{font-size:12px;color:#64748b;font-weight:500;}
+.btn-logout{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid #e2e8f0;background:#fff;color:#64748b;cursor:pointer;transition:all .15s;}
+.btn-logout:hover{background:#fef2f2;border-color:#fecaca;color:#dc2626;}
+
+/* Layout */
+.container{padding:28px 32px;max-width:1320px;margin:0 auto;}
+.page-header{margin-bottom:24px;}
+.page-header h1{font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-.4px;}
+.page-header p{font-size:13px;color:#64748b;margin-top:4px;}
 
 /* Grid */
-.container{padding:24px 28px;max-width:1400px;margin:0 auto;}
 .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
 .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;}
 
 /* Cards */
-.stat-card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:18px 20px;}
-.stat-card .label{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
-.stat-card .value{font-size:26px;font-weight:800;color:#f1f5f9;}
-.stat-card .sub{font-size:11px;color:#64748b;margin-top:4px;}
-.stat-card.green .value{color:#34d399;}
-.stat-card.red .value{color:#f87171;}
-.stat-card.yellow .value{color:#fbbf24;}
-.stat-card.blue .value{color:#38bdf8;}
+.stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px 22px;transition:box-shadow .15s;}
+.stat-card:hover{box-shadow:0 4px 16px rgba(15,23,42,0.06);}
+.stat-card .label{font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+.stat-card .value{font-size:28px;font-weight:800;color:#0f172a;letter-spacing:-.5px;}
+.stat-card .sub{font-size:11.5px;color:#94a3b8;margin-top:4px;}
+.stat-card.accent-blue .value{color:#3b82f6;}
+.stat-card.accent-green .value{color:#10b981;}
+.stat-card.accent-red .value{color:#ef4444;}
+.stat-card.accent-amber .value{color:#f59e0b;}
+.stat-card.accent-purple .value{color:#8b5cf6;}
 
-.panel{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:20px;margin-bottom:16px;}
-.panel-title{font-size:13px;font-weight:700;color:#e2e8f0;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.panel{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:22px;margin-bottom:16px;transition:box-shadow .15s;}
+.panel:hover{box-shadow:0 4px 16px rgba(15,23,42,0.05);}
+.panel-title{font-size:13px;font-weight:700;color:#0f172a;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 .panel-title i{color:#6366f1;font-size:12px;}
 
 /* Table */
-.tbl{width:100%;border-collapse:collapse;font-size:12px;}
-.tbl th{text-align:left;padding:8px 10px;color:#64748b;font-weight:600;border-bottom:1px solid #334155;font-size:10px;text-transform:uppercase;letter-spacing:.5px;}
-.tbl td{padding:8px 10px;border-bottom:1px solid #1e293b;color:#cbd5e1;}
-.tbl tr:hover td{background:#334155/30;}
-.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;}
-.badge-green{background:#064e3b;color:#34d399;border:1px solid #065f46;}
-.badge-red{background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;}
-.badge-yellow{background:#451a03;color:#fcd34d;border:1px solid #78350f;}
-.badge-blue{background:#0c4a6e;color:#7dd3fc;border:1px solid #075985;}
+.tbl{width:100%;border-collapse:collapse;font-size:13px;}
+.tbl th{text-align:left;padding:10px 12px;color:#64748b;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #f1f5f9;background:#f8fafc;}
+.tbl td{padding:10px 12px;border-bottom:1px solid #f8fafc;color:#334155;}
+.tbl tr:hover td{background:#f8fafc;}
 
-/* Infra */
-.infra-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;}
-.dot-up{background:#34d399;box-shadow:0 0 6px #34d399;}
-.dot-down{background:#f87171;box-shadow:0 0 6px #f87171;}
+/* Badges */
+.badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:700;}
+.badge-green{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;}
+.badge-red{background:#fef2f2;color:#dc2626;border:1px solid #fecaca;}
+.badge-amber{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}
+.badge-blue{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;}
 
-/* Log lines */
-.log-line{font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 0;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.log-line .lvl-error{color:#f87171;}.log-line .lvl-warning{color:#fbbf24;}.log-line .lvl-info{color:#38bdf8;}
+/* Infra dots */
+.infra-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:8px;}
+.dot-up{background:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,0.15);}
+.dot-down{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,0.15);}
 
-@media(max-width:1024px){.grid-4{grid-template-columns:repeat(2,1fr);}.grid-3{grid-template-columns:1fr;}.grid-2{grid-template-columns:1fr;}}
+/* Log */
+.log-line{font-family:'JetBrains Mono','Fira Code',monospace;font-size:11.5px;padding:4px 0;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.log-line .lvl-error{color:#dc2626;font-weight:600;}
+.log-line .lvl-warning{color:#d97706;font-weight:600;}
+.log-line .lvl-info{color:#2563eb;font-weight:600;}
+
+@media(max-width:1024px){.grid-4{grid-template-columns:repeat(2,1fr);}.grid-3,.grid-2{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
 
 <div class="nav">
-  <div class="nav-brand"><i class="fas fa-shield-halved"></i> OutreachOS Platform Admin</div>
+  <div class="nav-brand"><i class="fas fa-paper-plane"></i> OutreachOS <span>ADMIN</span></div>
   <div class="nav-links">
-    <a href="/admin/" class="nav-link active"><i class="fas fa-chart-line"></i> Dashboard</a>
-    <a href="/admin/workspaces" class="nav-link"><i class="fas fa-building"></i> Workspaces</a>
-    <a href="/admin/ai-config" class="nav-link"><i class="fas fa-robot"></i> AI Config</a>
-    <a href="/admin/create" class="nav-link"><i class="fas fa-plus"></i> New Tenant</a>
+    <a href="/admin/" class="nav-link active"><i class="fas fa-chart-line"></i>Dashboard</a>
+    <a href="/admin/workspaces" class="nav-link"><i class="fas fa-building"></i>Workspaces</a>
+    <a href="/admin/ai-config" class="nav-link"><i class="fas fa-robot"></i>AI Config</a>
+    <a href="/admin/create" class="nav-link"><i class="fas fa-plus"></i>New Tenant</a>
   </div>
   <div class="nav-right">
-    <span class="nav-user">{{ session.get('admin_username','admin') }}</span>
-    <a href="/admin/logout" class="btn-sm"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    <span class="nav-user"><i class="fas fa-user-shield" style="margin-right:4px;color:#6366f1;"></i>{{ session.get('admin_username','admin') }}</span>
+    <a href="/admin/logout" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
   </div>
 </div>
 
 <div class="container">
 
+  <div class="page-header">
+    <h1>Platform Overview</h1>
+    <p>Real-time infrastructure health and metrics across all workspaces</p>
+  </div>
+
   <!-- KPI Row -->
   <div class="grid-4">
-    <div class="stat-card">
-      <div class="label">Total Workspaces</div>
+    <div class="stat-card accent-purple">
+      <div class="label">Workspaces</div>
       <div class="value">{{ stats.total_workspaces }}</div>
-      <div class="sub">{{ stats.total_users }} users</div>
+      <div class="sub">{{ stats.total_users }} total users</div>
     </div>
-    <div class="stat-card blue">
-      <div class="label">Emails Sent (Global)</div>
+    <div class="stat-card accent-blue">
+      <div class="label">Emails Sent</div>
       <div class="value">{{ '{:,}'.format(stats.total_sent) }}</div>
       <div class="sub">{{ stats.active_campaigns }} active campaigns</div>
     </div>
-    <div class="stat-card {{ 'red' if stats.bounce_rate > 5 else 'green' }}">
-      <div class="label">Global Bounce Rate</div>
+    <div class="stat-card {{ 'accent-red' if stats.bounce_rate > 5 else 'accent-green' }}">
+      <div class="label">Bounce Rate</div>
       <div class="value">{{ stats.bounce_rate }}%</div>
       <div class="sub">{{ '{:,}'.format(stats.total_failed) }} failed/bounced</div>
     </div>
-    <div class="stat-card {{ 'green' if stats.smtp_at_risk == 0 else 'yellow' }}">
+    <div class="stat-card {{ 'accent-green' if stats.smtp_at_risk == 0 else 'accent-amber' }}">
       <div class="label">SMTP Health</div>
       <div class="value">{{ stats.avg_health|int }}%</div>
-      <div class="sub">{{ stats.smtp_active }}/{{ stats.smtp_total }} active, {{ stats.smtp_at_risk }} at risk</div>
+      <div class="sub">{{ stats.smtp_active }}/{{ stats.smtp_total }} active · {{ stats.smtp_at_risk }} at risk</div>
     </div>
   </div>
 
-  <!-- Infrastructure Status -->
+  <!-- Infrastructure + SMTP + Failed Campaigns -->
   <div class="grid-3">
     <div class="panel">
       <div class="panel-title"><i class="fas fa-server"></i> Infrastructure</div>
       <table class="tbl">
-        <tr><td><span class="infra-dot {{ 'dot-up' if infra.redis else 'dot-down' }}"></span>Redis</td><td>{{ 'Connected' if infra.redis else 'Unavailable' }}</td></tr>
-        <tr><td><span class="infra-dot {{ 'dot-up' if infra.celery_workers else 'dot-down' }}"></span>Celery Workers</td><td>{{ infra.celery_workers or 'None' }}</td></tr>
-        <tr><td><span class="infra-dot dot-up"></span>SQLite DB</td><td>Active</td></tr>
-        <tr><td><span class="infra-dot dot-up"></span>Web Server</td><td>Running</td></tr>
+        <tr><td><span class="infra-dot {{ 'dot-up' if infra.redis else 'dot-down' }}"></span>Redis</td><td style="text-align:right;font-weight:600;color:{{ '#10b981' if infra.redis else '#94a3b8' }};">{{ 'Connected' if infra.redis else 'Unavailable' }}</td></tr>
+        <tr><td><span class="infra-dot {{ 'dot-up' if infra.celery_workers else 'dot-down' }}"></span>Celery Workers</td><td style="text-align:right;font-weight:600;color:{{ '#10b981' if infra.celery_workers else '#94a3b8' }};">{{ infra.celery_workers or 'None' }}</td></tr>
+        <tr><td><span class="infra-dot dot-up"></span>Database</td><td style="text-align:right;font-weight:600;color:#10b981;">Active</td></tr>
+        <tr><td><span class="infra-dot dot-up"></span>Web Server</td><td style="text-align:right;font-weight:600;color:#10b981;">Running</td></tr>
       </table>
     </div>
 
     <div class="panel">
-      <div class="panel-title"><i class="fas fa-envelope"></i> SMTP Accounts (At Risk)</div>
+      <div class="panel-title"><i class="fas fa-envelope"></i> SMTP Accounts</div>
       {% if smtp_accounts %}
       <table class="tbl">
         <tr><th>Email</th><th>Health</th><th>Today</th></tr>
         {% for s in smtp_accounts[:6] %}
         <tr>
-          <td>{{ s.email[:25] }}</td>
-          <td><span class="badge {{ 'badge-red' if s.health_score < 50 else 'badge-yellow' if s.health_score < 80 else 'badge-green' }}">{{ s.health_score }}%</span></td>
-          <td>{{ s.sent_today }}/{{ s.daily_limit }}</td>
+          <td style="font-weight:500;">{{ s.email[:22] }}{{ '...' if s.email|length > 22 }}</td>
+          <td><span class="badge {{ 'badge-red' if s.health_score < 50 else 'badge-amber' if s.health_score < 80 else 'badge-green' }}">{{ s.health_score }}%</span></td>
+          <td style="font-weight:600;color:#64748b;">{{ s.sent_today }}/{{ s.daily_limit }}</td>
         </tr>
         {% endfor %}
       </table>
       {% else %}
-      <p style="color:#64748b;font-size:12px;">No SMTP accounts configured.</p>
+      <p style="color:#94a3b8;font-size:12px;text-align:center;padding:20px 0;">No SMTP accounts configured</p>
       {% endif %}
     </div>
 
     <div class="panel">
-      <div class="panel-title"><i class="fas fa-exclamation-triangle"></i> Failed/Problem Campaigns</div>
+      <div class="panel-title"><i class="fas fa-exclamation-triangle"></i> Problem Campaigns</div>
       {% if failed_campaigns %}
       <table class="tbl">
         <tr><th>Campaign</th><th>Workspace</th><th>Status</th></tr>
         {% for c in failed_campaigns %}
         <tr>
-          <td>{{ c.name[:20] }}</td>
-          <td>{{ c.workspace_name[:15] }}</td>
+          <td style="font-weight:500;">{{ c.name[:18] }}{{ '...' if c.name|length > 18 }}</td>
+          <td style="color:#64748b;">{{ c.workspace_name[:12] }}</td>
           <td><span class="badge badge-red">{{ c.job_status }} ({{ c.failed_count }})</span></td>
         </tr>
         {% endfor %}
       </table>
       {% else %}
-      <p style="color:#34d399;font-size:12px;"><i class="fas fa-check-circle"></i> No failed campaigns.</p>
+      <div style="text-align:center;padding:20px 0;">
+        <i class="fas fa-check-circle" style="color:#10b981;font-size:18px;"></i>
+        <p style="color:#10b981;font-size:12px;font-weight:600;margin-top:6px;">All campaigns healthy</p>
+      </div>
       {% endif %}
     </div>
   </div>
@@ -158,41 +182,40 @@ a{color:#818cf8;text-decoration:none;}a:hover{color:#a5b4fc;}
   <!-- Bottom Row -->
   <div class="grid-2">
     <div class="panel">
-      <div class="panel-title"><i class="fas fa-building"></i> Top Workspaces by Volume</div>
+      <div class="panel-title"><i class="fas fa-building"></i> Top Workspaces</div>
       <table class="tbl">
         <tr><th>Workspace</th><th>Plan</th><th>Contacts</th><th>Sent</th></tr>
         {% for w in top_workspaces %}
         <tr>
-          <td><a href="/admin/tenant/{{ w.id }}">{{ w.name }}</a></td>
+          <td><a href="/admin/tenant/{{ w.id }}" style="font-weight:600;color:#1e293b;">{{ w.name }}</a></td>
           <td><span class="badge badge-blue">{{ w.plan }}</span></td>
           <td>{{ '{:,}'.format(w.contact_count) }}</td>
-          <td>{{ '{:,}'.format(w.send_count) }}</td>
+          <td style="font-weight:600;">{{ '{:,}'.format(w.send_count) }}</td>
         </tr>
         {% endfor %}
       </table>
     </div>
 
     <div class="panel">
-      <div class="panel-title"><i class="fas fa-terminal"></i> Recent System Logs</div>
-      <div style="max-height:220px;overflow-y:auto;">
+      <div class="panel-title"><i class="fas fa-terminal"></i> System Logs</div>
+      <div style="max-height:240px;overflow-y:auto;">
         {% for log in sys_logs %}
         <div class="log-line">
-          <span class="lvl-{{ log.level }}">[{{ log.level|upper }}]</span> {{ log.message[:80] }}
+          <span class="lvl-{{ log.level }}">{{ log.level|upper }}</span> {{ log.message[:70] }}{{ '...' if log.message|length > 70 }}
         </div>
         {% endfor %}
         {% if not sys_logs %}
-        <p style="color:#64748b;font-size:12px;">No recent logs.</p>
+        <p style="color:#94a3b8;font-size:12px;text-align:center;padding:20px 0;">No recent logs</p>
         {% endif %}
       </div>
-      <a href="/live-logs" style="font-size:11px;margin-top:10px;display:block;"><i class="fas fa-external-link-alt"></i> Open Live Logs</a>
+      <a href="/live-logs" style="font-size:11px;margin-top:12px;display:block;color:#6366f1;font-weight:600;"><i class="fas fa-external-link-alt" style="margin-right:4px;"></i>Open Live Logs</a>
     </div>
   </div>
 
 </div>
 
 <script>
-// Auto-refresh stats every 30s
-setInterval(()=>{ fetch('/admin/api/stats').then(r=>r.json()).then(d=>{ /* could update DOM */ }); }, 30000);
+setInterval(()=>{ fetch('/admin/api/stats').then(r=>r.json()).then(d=>{}); }, 30000);
 </script>
 </body>
 </html>
