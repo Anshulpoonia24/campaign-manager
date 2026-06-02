@@ -59,13 +59,12 @@ def get_hot_leads(limit=20):
                COALESCE(c.lead_score, 0) as lead_score,
                c.status,
                MAX(es.sent_at) as last_activity,
-               t.status as thread_status,
-               t.id as thread_id
+               (SELECT t2.status FROM threads t2 WHERE t2.contact_id = c.id ORDER BY t2.last_message_at DESC LIMIT 1) as thread_status,
+               (SELECT t3.id FROM threads t3 WHERE t3.contact_id = c.id ORDER BY t3.last_message_at DESC LIMIT 1) as thread_id
         FROM contacts c
         LEFT JOIN emails_sent es ON es.contact_id = c.id AND es.status = 'sent'
-        LEFT JOIN threads t ON t.contact_id = c.id
         WHERE COALESCE(c.lead_score, 0) > 0
-        GROUP BY c.id
+        GROUP BY c.id, c.name, c.company, c.email, c.lead_score, c.status
         ORDER BY c.lead_score DESC
         LIMIT ?
     """, (limit,)).fetchall()
@@ -93,7 +92,7 @@ def get_click_analytics():
                COALESCE(c.lead_score, 0) as lead_score
         FROM email_clicks ec
         JOIN contacts c ON ec.contact_id = c.id
-        GROUP BY ec.contact_id
+        GROUP BY c.id, c.name, c.company, c.email, c.lead_score
         ORDER BY clicks DESC
         LIMIT 10
     """).fetchall()

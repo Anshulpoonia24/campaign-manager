@@ -105,7 +105,7 @@ def admin_dashboard():
         FROM workspaces w
         LEFT JOIN emails_sent es ON es.workspace_id = w.id
         LEFT JOIN contacts c ON c.workspace_id = w.id
-        GROUP BY w.id ORDER BY send_count DESC LIMIT 10
+        GROUP BY w.id, w.name, w.plan ORDER BY send_count DESC LIMIT 10
     """).fetchall()
 
     # System logs (last 20)

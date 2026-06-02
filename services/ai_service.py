@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
 import requests as http_requests
-from utils.db import get_setting, get_db, DB_PATH
+from utils.db import get_setting, get_db
 from utils.logger import app_logger, error_logger
 
 # Groq key rotation
@@ -108,11 +108,11 @@ USE the above context to write a SPECIFIC opening line. Do NOT write generic ema
 
         # Track usage
         try:
-            conn = sqlite3.connect(DB_PATH, timeout=5)
-            conn.execute("INSERT INTO ai_usage (provider, purpose, success) VALUES (?,?,?)",
+            uconn = get_db()
+            uconn.execute("INSERT INTO ai_usage (provider, purpose, success) VALUES (?,?,?)",
                 (provider, 'email', 1 if body else 0))
-            conn.commit()
-            conn.close()
+            uconn.commit()
+            uconn.close()
         except:
             pass
 

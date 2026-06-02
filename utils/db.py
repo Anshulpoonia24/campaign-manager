@@ -161,6 +161,8 @@ class PgCursor:
         sql = re.sub(r'INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT', 'SERIAL PRIMARY KEY', sql, flags=re.IGNORECASE)
         # datetime('now') → CURRENT_TIMESTAMP
         sql = re.sub(r"datetime\('now'\)", 'CURRENT_TIMESTAMP', sql, flags=re.IGNORECASE)
+        # DATE('now') → CURRENT_DATE
+        sql = re.sub(r"DATE\('now'\)", 'CURRENT_DATE', sql, flags=re.IGNORECASE)
         # datetime('now', '-X minutes') → NOW() - INTERVAL 'X minutes'
         sql = re.sub(r"datetime\('now',\s*%s\)", "NOW() + CAST(%s || ' minutes' AS INTERVAL)", sql, flags=re.IGNORECASE)
         return sql
