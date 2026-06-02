@@ -1,0 +1,518 @@
+"""
+routes/copilot.py — AI SDR Copilot API Endpoints
+==================================================
+Replaces the old /api/copilot/chat and /api/copilot/action in app.py.
+Register: app.register_blueprint(copilot_bp)
+"""
+from flask import Blueprint, request, jsonify
+from flask_login import login_required, current_user
+
+copilot_bp = Blueprint('copilot', __name__)
+
+
+def _get_wid():
+    return getattr(current_user, 'workspace_id', 1)
+
+
+def _get_role():
+    return getattr(current_user, 'role', 'user')
+
+
+# ── CHAT ──────────────────────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/chat', methods=['POST'])
+@login_required
+def copilot_chat():
+    """Main conversational endpoint."""
+    from services.copilot.orchestrator import CopilotOrchestrator
+    data = request.json or {}
+    message = data.get('message', '').strip()
+    page_type = data.get('page_type', '')
+    page_id = int(data.get('page_id', 0))
+
+    if not message:
+        return jsonify({'success': False, 'error': 'Empty message'})
+
+    orchestrator = CopilotOrchestrator(
+        workspace_id=_get_wid(),
+        user_id=current_user.id,
+        role=_get_role()
+    )
+    result = orchestrator.chat(message, page_type, page_id)
+    return jsonify(result)
+
+
+# ── ACTION EXECUTION ──────────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/action', methods=['POST'])
+@login_required
+def copilot_action():
+    """Execute a confirmed copilot action."""
+    from services.copilot.orchestrator import CopilotOrchestrator
+    data = request.json or {}
+    action_type = data.get('action_type', '')
+    params = data.get('params', {})
+    session_id = data.get('session_id', '')
+
+    if not action_type:
+        return jsonify({'success': False, 'error': 'No action_type'})
+
+    orchestrator = CopilotOrchestrator(
+        workspace_id=_get_wid(),
+        user_id=current_user.id,
+        role=_get_role()
+    )
+    result = orchestrator.execute_action(action_type, params, session_id)
+    return jsonify(result)
+
+
+# ── PROACTIVE SUGGESTIONS ────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/suggestions')
+@login_required
+def copilot_suggestions():
+    """Get proactive suggestions for the current page."""
+    from services.copilot.orchestrator import CopilotOrchestrator
+    page_type = request.args.get('page_type', '')
+    page_id = int(request.args.get('page_id', 0))
+
+    orchestrator = CopilotOrchestrator(
+        workspace_id=_get_wid(),
+        user_id=current_user.id,
+        role=_get_role()
+    )
+    suggestions = orchestrator.get_suggestions(page_type, page_id)
+    return jsonify({'suggestions': suggestions})
+
+
+# ── ALERTS ────────────────────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/alerts')
+@login_required
+def copilot_alerts():
+    """Get active alerts for workspace."""
+    from services.copilot.context_builder import ContextBuilder
+    builder = ContextBuilder(_get_wid(), current_user.id)
+    alerts = builder._active_alerts()
+    return jsonify({'alerts': alerts})
+
+
+@copilot_bp.route('/api/copilot/alerts/dismiss', methods=['POST'])
+@login_required
+def copilot_dismiss_alert():
+    """Dismiss an alert."""
+    from utils.db import get_db
+    from datetime import datetime
+    alert_id = (request.json or {}).get('alert_id')
+    if alert_id:
+        conn = get_db()
+        conn.execute("UPDATE copilot_alerts SET dismissed=1, dismissed_at=? WHERE id=? AND workspace_id=?",
+                     (datetime.now(), alert_id, _get_wid()))
+        conn.commit()
+        conn.close()
+    return jsonify({'success': True})
+
+
+# ── AUDIT LOG ─────────────────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/audit')
+@login_required
+def copilot_audit():
+    """Get action audit log."""
+    from utils.db import get_db
+    limit = int(request.args.get('limit', 50))
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, action_type, action_params, risk_level, status,
+               error_message, execution_time_ms, created_at
+        FROM copilot_actions WHERE workspace_id=?
+        ORDER BY created_at DESC LIMIT ?
+    """, (_get_wid(), limit)).fetchall()
+    conn.close()
+    return jsonify({'actions': [dict(r) for r in rows]})
+
+
+# ── USAGE STATS ───────────────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/usage')
+@login_required
+def copilot_usage():
+    """AI usage stats for copilot."""
+    from utils.db import get_db
+    conn = get_db()
+    total_chats = conn.execute(
+        "SELECT COUNT(*) FROM copilot_logs WHERE workspace_id=?", (_get_wid(),)
+    ).fetchone()[0]
+    total_actions = conn.execute(
+        "SELECT COUNT(*) FROM copilot_actions WHERE workspace_id=?", (_get_wid(),)
+    ).fetchone()[0]
+    successful = conn.execute(
+        "SELECT COUNT(*) FROM copilot_actions WHERE workspace_id=? AND status='completed'", (_get_wid(),)
+    ).fetchone()[0]
+    conn.close()
+    return jsonify({
+        'total_chats': total_chats,
+        'total_actions': total_actions,
+        'successful_actions': successful,
+        'success_rate': round(successful / max(1, total_actions) * 100, 1),
+    })
+
+
+# ── PHASE 2: MEMORY ───────────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/memory/clear', methods=['POST'])
+@login_required
+def copilot_memory_clear():
+    """Clear conversation memory for current user."""
+    from services.copilot.memory import clear_history
+    clear_history(_get_wid(), current_user.id)
+    return jsonify({'success': True})
+
+
+@copilot_bp.route('/api/copilot/memory/preference', methods=['POST'])
+@login_required
+def copilot_set_preference():
+    """Set a user preference for copilot personalization."""
+    from services.copilot.memory import set_preference
+    data = request.json or {}
+    key = data.get('key', '').strip()
+    value = data.get('value', '').strip()
+    if not key:
+        return jsonify({'success': False, 'error': 'key required'})
+    set_preference(_get_wid(), current_user.id, key, value)
+    return jsonify({'success': True})
+
+
+# ── PHASE 2: INTENT DEBUG ────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/intent', methods=['POST'])
+@login_required
+def copilot_detect_intent():
+    """Debug endpoint — test intent detection without AI call."""
+    from services.copilot.intent_detector import detect_intent
+    data = request.json or {}
+    message = data.get('message', '')
+    page_type = data.get('page_type', '')
+    result = detect_intent(message, page_type)
+    return jsonify(result)
+
+
+# ── PHASE 2: ALERT COUNT (for badge) ─────────────────────────
+
+@copilot_bp.route('/api/copilot/alert_count')
+@login_required
+def copilot_alert_count():
+    """Quick alert count for UI badge."""
+    from services.copilot.alerts import get_alert_count
+    return jsonify({'count': get_alert_count(_get_wid())})
+
+
+# ── PHASE 3: MULTI-AGENT SYSTEM ───────────────────────────────
+
+@copilot_bp.route('/api/copilot/agents')
+@login_required
+def copilot_list_agents():
+    """List all available agents."""
+    from services.copilot.agents.router import list_agents
+    return jsonify({'agents': list_agents()})
+
+
+@copilot_bp.route('/api/copilot/agents/<agent_type>/run', methods=['POST'])
+@login_required
+def copilot_run_agent(agent_type):
+    """Run a specific agent task directly."""
+    from services.copilot.agents.router import get_agent
+    data = request.json or {}
+    task_type = data.get('task_type', '')
+    input_data = data.get('input', {})
+
+    if not task_type:
+        return jsonify({'success': False, 'error': 'task_type required'})
+
+    agent = get_agent(agent_type, _get_wid())
+    if not agent:
+        return jsonify({'success': False, 'error': f'Agent {agent_type} not found'})
+
+    result = agent.run(task_type, input_data)
+    return jsonify(result)
+
+
+@copilot_bp.route('/api/copilot/agents/<agent_type>/analyze')
+@login_required
+def copilot_agent_analyze(agent_type):
+    """Get quick analysis from a specific agent (no AI call)."""
+    from services.copilot.agents.router import get_agent
+    agent = get_agent(agent_type, _get_wid())
+    if not agent:
+        return jsonify({'success': False, 'error': f'Agent {agent_type} not found'})
+    return jsonify({'success': True, 'analysis': agent.analyze()})
+
+
+@copilot_bp.route('/api/copilot/health')
+@login_required
+def copilot_workspace_health():
+    """Get workspace health from all agents."""
+    from services.copilot.agents.router import get_workspace_health
+    return jsonify({'health': get_workspace_health(_get_wid())})
+
+
+@copilot_bp.route('/api/copilot/agents/route', methods=['POST'])
+@login_required
+def copilot_route_intent():
+    """Route an intent to the right agent(s)."""
+    from services.copilot.agents.router import route_to_agent
+    data = request.json or {}
+    intent = data.get('intent', '')
+    input_data = data.get('input', {})
+    if not intent:
+        return jsonify({'success': False, 'error': 'intent required'})
+    result = route_to_agent(intent, _get_wid(), input_data)
+    return jsonify(result)
+
+
+# ── PHASE 6: BATCH OPERATIONS & SCHEDULED ACTIONS ────────────
+
+@copilot_bp.route('/api/copilot/feedback', methods=['POST'])
+@login_required
+def copilot_feedback():
+    """Submit feedback (thumbs up/down) on a response."""
+    from services.copilot.learning import track_feedback
+    data = request.json or {}
+    message_id = data.get('message_id', '')
+    rating = data.get('rating', '')  # 'up' or 'down'
+    response_text = data.get('response_text', '')
+    if rating not in ('up', 'down'):
+        return jsonify({'success': False, 'error': 'rating must be up or down'})
+    track_feedback(_get_wid(), current_user.id, message_id, rating, response_text)
+    return jsonify({'success': True})
+
+
+@copilot_bp.route('/api/copilot/learning/profile')
+@login_required
+def copilot_learning_profile():
+    """Get user's learning profile (what copilot has learned)."""
+    from services.copilot.learning import get_user_learning_profile
+    return jsonify({'profile': get_user_learning_profile(_get_wid(), current_user.id)})
+
+
+@copilot_bp.route('/api/copilot/learning/reset', methods=['POST'])
+@login_required
+def copilot_learning_reset():
+    """Reset learned preferences."""
+    from services.copilot.learning import reset_learning
+    reset_learning(_get_wid(), current_user.id)
+    return jsonify({'success': True})
+
+
+@copilot_bp.route('/api/copilot/learning/suggestions')
+@login_required
+def copilot_personalized_suggestions():
+    """Get personalized suggestions based on user behavior."""
+    from services.copilot.learning import get_personalized_suggestions
+    page_type = request.args.get('page_type', '')
+    suggestions = get_personalized_suggestions(_get_wid(), current_user.id, page_type)
+    return jsonify({'suggestions': suggestions})
+
+
+# ── PHASE 8: A/B TESTING ──────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/ab/create', methods=['POST'])
+@login_required
+def copilot_ab_create():
+    """Create an A/B test."""
+    from services.copilot.ab_testing import create_ab_test
+    data = request.json or {}
+    result = create_ab_test(_get_wid(), data.get('campaign_id', 0),
+                           data.get('test_type', 'subject'), data.get('variants', []), data.get('split_pct', 50))
+    return jsonify({'success': True, **result})
+
+
+@copilot_bp.route('/api/copilot/ab/<int:test_id>/results')
+@login_required
+def copilot_ab_results(test_id):
+    """Get A/B test results."""
+    from services.copilot.ab_testing import get_test_results
+    return jsonify(get_test_results(_get_wid(), test_id))
+
+
+@copilot_bp.route('/api/copilot/ab/<int:test_id>/end', methods=['POST'])
+@login_required
+def copilot_ab_end(test_id):
+    """End an A/B test."""
+    from services.copilot.ab_testing import end_test
+    return jsonify(end_test(_get_wid(), test_id))
+
+
+@copilot_bp.route('/api/copilot/ab/list')
+@login_required
+def copilot_ab_list():
+    """List all A/B tests."""
+    from services.copilot.ab_testing import list_tests
+    return jsonify({'tests': list_tests(_get_wid())})
+
+
+# ── PHASE 9: RBAC & TEAM ─────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/team')
+@login_required
+def copilot_team_list():
+    """Get team members."""
+    from services.copilot.rbac import get_team_members
+    return jsonify({'members': get_team_members(_get_wid())})
+
+
+@copilot_bp.route('/api/copilot/team/invite', methods=['POST'])
+@login_required
+def copilot_team_invite():
+    """Invite a team member."""
+    from services.copilot.rbac import invite_team_member
+    data = request.json or {}
+    result = invite_team_member(_get_wid(), data.get('email', ''), data.get('role', 'sdr'), current_user.id)
+    return jsonify(result)
+
+
+@copilot_bp.route('/api/copilot/team/<int:user_id>/role', methods=['POST'])
+@login_required
+def copilot_team_role(user_id):
+    """Change member role."""
+    from services.copilot.rbac import update_member_role
+    data = request.json or {}
+    result = update_member_role(_get_wid(), user_id, data.get('role', 'sdr'), current_user.id)
+    return jsonify(result)
+
+
+@copilot_bp.route('/api/copilot/team/<int:user_id>/remove', methods=['POST'])
+@login_required
+def copilot_team_remove(user_id):
+    """Remove team member."""
+    from services.copilot.rbac import remove_member
+    return jsonify(remove_member(_get_wid(), user_id, current_user.id))
+
+
+@copilot_bp.route('/api/copilot/team/roles')
+@login_required
+def copilot_team_roles():
+    """Get available roles."""
+    from services.copilot.rbac import get_roles_list
+    return jsonify({'roles': get_roles_list()})
+
+
+@copilot_bp.route('/api/copilot/team/activity')
+@login_required
+def copilot_team_activity():
+    """Get team activity log."""
+    from services.copilot.rbac import get_activity_log
+    limit = int(request.args.get('limit', 50))
+    return jsonify({'activity': get_activity_log(_get_wid(), limit)})
+
+
+# ── PHASE 10: OBSERVABILITY ───────────────────────────────────
+
+@copilot_bp.route('/api/copilot/monitoring')
+@login_required
+def copilot_monitoring():
+    """Get AI monitoring dashboard data."""
+    from services.copilot.observability import get_overview
+    return jsonify(get_overview(_get_wid()))
+
+
+@copilot_bp.route('/api/copilot/monitoring/costs')
+@login_required
+def copilot_monitoring_costs():
+    """Get cost history."""
+    from services.copilot.observability import get_cost_history
+    days = int(request.args.get('days', 7))
+    return jsonify({'costs': get_cost_history(days)})
+
+
+@copilot_bp.route('/api/copilot/monitoring/latency')
+@login_required
+def copilot_monitoring_latency():
+    """Get latency histogram."""
+    from services.copilot.observability import get_latency_histogram
+    return jsonify({'histogram': get_latency_histogram()})
+
+
+@copilot_bp.route('/api/copilot/monitoring/health')
+@login_required
+def copilot_health_check():
+    """System health check."""
+    from services.copilot.observability import health_check
+    return jsonify(health_check())
+
+
+@copilot_bp.route('/api/copilot/batch/pause', methods=['POST'])
+@login_required
+def copilot_batch_pause():
+    """Batch pause campaigns."""
+    from services.copilot.function_caller import batch_pause_campaigns
+    data = request.json or {}
+    result = batch_pause_campaigns(_get_wid(), current_user.id, data.get('campaign_ids'))
+    return jsonify({'success': True, **result})
+
+
+@copilot_bp.route('/api/copilot/batch/test_smtp', methods=['POST'])
+@login_required
+def copilot_batch_test_smtp():
+    """Test all SMTP connections."""
+    from services.copilot.function_caller import batch_test_smtp
+    result = batch_test_smtp(_get_wid(), current_user.id)
+    return jsonify({'success': True, **result})
+
+
+@copilot_bp.route('/api/copilot/batch/enrich', methods=['POST'])
+@login_required
+def copilot_batch_enrich():
+    """Batch enrich contacts."""
+    from services.copilot.function_caller import batch_enrich_contacts
+    data = request.json or {}
+    result = batch_enrich_contacts(_get_wid(), current_user.id, data.get('limit', 50))
+    return jsonify({'success': True, **result})
+
+
+@copilot_bp.route('/api/copilot/batch/mark_threads', methods=['POST'])
+@login_required
+def copilot_batch_mark_threads():
+    """Batch mark threads."""
+    from services.copilot.function_caller import batch_mark_threads
+    data = request.json or {}
+    result = batch_mark_threads(_get_wid(), current_user.id, data.get('thread_ids'), data.get('status', 'closed'))
+    return jsonify({'success': True, **result})
+
+
+@copilot_bp.route('/api/copilot/scheduled')
+@login_required
+def copilot_scheduled_actions():
+    """Get pending scheduled actions."""
+    from services.copilot.function_caller import get_scheduled_actions
+    return jsonify({'actions': get_scheduled_actions(_get_wid())})
+
+
+# ── PHASE 4: AUTONOMOUS WORKFLOWS ────────────────────────────
+
+@copilot_bp.route('/api/copilot/workflows')
+@login_required
+def copilot_workflow_status():
+    """Get status of all autonomous workflows."""
+    from services.copilot.autonomous import get_workflow_status
+    return jsonify({'workflows': get_workflow_status()})
+
+
+@copilot_bp.route('/api/copilot/workflows/<name>/toggle', methods=['POST'])
+@login_required
+def copilot_toggle_workflow(name):
+    """Enable/disable an autonomous workflow."""
+    from services.copilot.autonomous import toggle_workflow
+    data = request.json or {}
+    enabled = data.get('enabled', True)
+    toggle_workflow(name, enabled)
+    return jsonify({'success': True, 'workflow': name, 'enabled': enabled})
+
+
+@copilot_bp.route('/api/copilot/workflows/<name>/run', methods=['POST'])
+@login_required
+def copilot_run_workflow(name):
+    """Manually trigger an autonomous workflow."""
+    from services.copilot.autonomous import run_workflow_now
+    result = run_workflow_now(name, _get_wid())
+    return jsonify(result)
