@@ -174,19 +174,32 @@ def log_event(event_type: str, workspace_id: int, contact_id: int = None,
     Log a tracking event to tracking_events table.
     Returns event id or None on failure.
     """
+    from utils.db import USE_POSTGRES
     conn = get_db()
     try:
         meta_json = json.dumps(metadata or {})
-        conn.execute("""
-            INSERT INTO tracking_events
-              (workspace_id, contact_id, campaign_id, thread_id, email_sent_id,
-               event_type, metadata, ip_address, user_agent, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-        """, (workspace_id, contact_id, campaign_id, thread_id, email_sent_id,
-              event_type, meta_json, ip_address, user_agent, datetime.now()))
-        conn.commit()
-        row = conn.execute("SELECT last_insert_rowid()").fetchone()
-        event_id = row[0] if row else None
+        if USE_POSTGRES and hasattr(conn, 'raw'):
+            row = conn.execute("""
+                INSERT INTO tracking_events
+                  (workspace_id, contact_id, campaign_id, thread_id, email_sent_id,
+                   event_type, metadata, ip_address, user_agent, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                RETURNING id
+            """, (workspace_id, contact_id, campaign_id, thread_id, email_sent_id,
+                  event_type, meta_json, ip_address, user_agent, datetime.now())).fetchone()
+            conn.commit()
+            event_id = row[0] if row else None
+        else:
+            conn.execute("""
+                INSERT INTO tracking_events
+                  (workspace_id, contact_id, campaign_id, thread_id, email_sent_id,
+                   event_type, metadata, ip_address, user_agent, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+            """, (workspace_id, contact_id, campaign_id, thread_id, email_sent_id,
+                  event_type, meta_json, ip_address, user_agent, datetime.now()))
+            conn.commit()
+            row = conn.execute("SELECT last_insert_rowid()").fetchone()
+            event_id = row[0] if row else None
         app_logger.info(f'[TRACK] {event_type} | workspace={workspace_id} contact={contact_id}')
         return event_id
     except Exception as e:
@@ -588,37 +601,56 @@ def get_engagement_stats(workspace_id: int, days: int = 30) -> dict:
 
 def ensure_tracking_table():
     """Create tracking_events table if not exists. Called from init_db."""
+    from utils.db import USE_POSTGRES
     conn = get_db()
     try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS tracking_events (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                workspace_id  INTEGER DEFAULT 1,
-                contact_id    INTEGER,
-                campaign_id   INTEGER,
-                thread_id     INTEGER,
-                email_sent_id INTEGER,
-                event_type    TEXT NOT NULL,
-                metadata      TEXT DEFAULT '{}',
-                ip_address    TEXT,
-                user_agent    TEXT,
-                created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        # Indexes for fast queries
-        for idx_sql in [
-            "CREATE INDEX IF NOT EXISTS idx_te_workspace  ON tracking_events(workspace_id)",
-            "CREATE INDEX IF NOT EXISTS idx_te_contact    ON tracking_events(contact_id)",
-            "CREATE INDEX IF NOT EXISTS idx_te_campaign   ON tracking_events(campaign_id)",
-            "CREATE INDEX IF NOT EXISTS idx_te_event_type ON tracking_events(event_type)",
-            "CREATE INDEX IF NOT EXISTS idx_te_created    ON tracking_events(created_at DESC)",
+        if USE_POSTGRES and hasattr(conn, 'raw'):
+            # PG schema already creates this table via pg_schema.py
+            # Just ensure indexes + email_clicks column
+            for idx_sql in [
+                "CREATE INDEX IF NOT EXISTS idx_te_workspace  ON tracking_events(workspace_id)",
+                "CREATE INDEX IF NOT EXISTS idx_te_contact    ON tracking_events(contact_id)",
+                "CREATE INDEX IF NOT EXISTS idx_te_campaign   ON tracking_events(campaign_id)",
+                "CREATE INDEX IF NOT EXISTS idx_te_event_type ON tracking_events(event_type)",
+                "CREATE INDEX IF NOT EXISTS idx_te_created    ON tracking_events(created_at DESC)",
+            ]:
+                try:
+                    conn.execute(idx_sql)
+                except Exception:
+                    pass
             # Add workspace_id to email_clicks if missing
-            "ALTER TABLE email_clicks ADD COLUMN workspace_id INTEGER DEFAULT 1",
-        ]:
             try:
-                conn.execute(idx_sql)
+                conn.execute("ALTER TABLE email_clicks ADD COLUMN workspace_id INTEGER DEFAULT 1")
             except Exception:
                 pass
+        else:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS tracking_events (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace_id  INTEGER DEFAULT 1,
+                    contact_id    INTEGER,
+                    campaign_id   INTEGER,
+                    thread_id     INTEGER,
+                    email_sent_id INTEGER,
+                    event_type    TEXT NOT NULL,
+                    metadata      TEXT DEFAULT '{}',
+                    ip_address    TEXT,
+                    user_agent    TEXT,
+                    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            for idx_sql in [
+                "CREATE INDEX IF NOT EXISTS idx_te_workspace  ON tracking_events(workspace_id)",
+                "CREATE INDEX IF NOT EXISTS idx_te_contact    ON tracking_events(contact_id)",
+                "CREATE INDEX IF NOT EXISTS idx_te_campaign   ON tracking_events(campaign_id)",
+                "CREATE INDEX IF NOT EXISTS idx_te_event_type ON tracking_events(event_type)",
+                "CREATE INDEX IF NOT EXISTS idx_te_created    ON tracking_events(created_at DESC)",
+                "ALTER TABLE email_clicks ADD COLUMN workspace_id INTEGER DEFAULT 1",
+            ]:
+                try:
+                    conn.execute(idx_sql)
+                except Exception:
+                    pass
         conn.commit()
     except Exception as e:
         error_logger.error(f'[TRACK] ensure_tracking_table error: {e}')

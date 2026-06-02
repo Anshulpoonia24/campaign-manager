@@ -285,6 +285,20 @@ CREATE TABLE IF NOT EXISTS send_reservations (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (workspace_id, contact_id, campaign_id, send_key)
 );
+
+CREATE TABLE IF NOT EXISTS tracking_events (
+    id SERIAL PRIMARY KEY,
+    workspace_id INTEGER DEFAULT 1,
+    contact_id INTEGER,
+    campaign_id INTEGER,
+    thread_id INTEGER,
+    email_sent_id INTEGER,
+    event_type TEXT NOT NULL,
+    metadata TEXT DEFAULT '{}',
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 PG_INDEXES = """
@@ -309,6 +323,11 @@ CREATE INDEX IF NOT EXISTS idx_contacts_workspace_industry ON contacts(workspace
 CREATE INDEX IF NOT EXISTS idx_cl_campaign ON campaign_logs(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_cl_created ON campaign_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sr_lookup ON send_reservations(workspace_id, contact_id, campaign_id, send_key);
+CREATE INDEX IF NOT EXISTS idx_te_workspace ON tracking_events(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_te_contact ON tracking_events(contact_id);
+CREATE INDEX IF NOT EXISTS idx_te_campaign ON tracking_events(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_te_event_type ON tracking_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_te_created ON tracking_events(created_at DESC);
 """
 
 

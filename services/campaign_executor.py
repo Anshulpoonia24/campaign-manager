@@ -109,14 +109,23 @@ def check_stalled_campaigns():
     for STALL_TIMEOUT_SECONDS. Mark them as 'stalled'.
     Called as side-effect from the polling endpoint.
     """
+    from utils.db import USE_POSTGRES
     try:
         conn = get_db()
-        stalled = conn.execute("""
-            SELECT id, job_status, last_heartbeat FROM campaigns
-            WHERE job_status IN ('queued', 'running')
-              AND last_heartbeat IS NOT NULL
-              AND (strftime('%s','now') - strftime('%s', last_heartbeat)) > ?
-        """, (STALL_TIMEOUT_SECONDS,)).fetchall()
+        if USE_POSTGRES and hasattr(conn, 'raw'):
+            stalled = conn.execute("""
+                SELECT id, job_status, last_heartbeat FROM campaigns
+                WHERE job_status IN ('queued', 'running')
+                  AND last_heartbeat IS NOT NULL
+                  AND EXTRACT(EPOCH FROM (NOW() - last_heartbeat)) > ?
+            """, (STALL_TIMEOUT_SECONDS,)).fetchall()
+        else:
+            stalled = conn.execute("""
+                SELECT id, job_status, last_heartbeat FROM campaigns
+                WHERE job_status IN ('queued', 'running')
+                  AND last_heartbeat IS NOT NULL
+                  AND (strftime('%s','now') - strftime('%s', last_heartbeat)) > ?
+            """, (STALL_TIMEOUT_SECONDS,)).fetchall()
         for camp in stalled:
             try:
                 hb = datetime.fromisoformat(str(camp['last_heartbeat'])[:19])

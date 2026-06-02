@@ -3537,9 +3537,9 @@ def api_send_reply(thread_id):
         # Log message in thread
         conn.execute("""
             INSERT INTO messages (thread_id, direction, body, sender_email, created_at)
-            VALUES (?, 'outgoing', ?, ?, datetime('now'))
+            VALUES (?, 'outgoing', ?, ?, CURRENT_TIMESTAMP)
         """, (thread_id, full_body, smtp_email))
-        conn.execute("UPDATE threads SET last_message_at=datetime('now') WHERE id=?", (thread_id,))
+        conn.execute("UPDATE threads SET last_message_at=CURRENT_TIMESTAMP WHERE id=?", (thread_id,))
         conn.commit()
         conn.close()
         return jsonify({'success': True})
@@ -4323,20 +4323,23 @@ def bounced():
 @login_required
 def export_data(export_type):
     from services.workspace_service import get_wid
+    from utils.db import USE_POSTGRES
     wid = get_wid()
     conn = get_db()
     # pandas needs raw connection for PostgreSQL
     db_conn = conn.raw if hasattr(conn, 'raw') else conn
+    # Use %s for PG raw connection, ? for SQLite
+    ph = '%s' if (USE_POSTGRES and hasattr(conn, 'raw')) else '?'
     if export_type == 'sent':
-        df = pd.read_sql("SELECT c.name, c.company, es.email, es.subject, es.status, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status='sent' AND es.workspace_id=?", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.subject, es.status, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status='sent' AND es.workspace_id={ph}", db_conn, params=(wid,))
     elif export_type == 'bounced':
-        df = pd.read_sql("SELECT c.name, c.company, es.email, es.bounce_reason, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status IN ('bounced','failed') AND es.workspace_id=?", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.bounce_reason, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status IN ('bounced','failed') AND es.workspace_id={ph}", db_conn, params=(wid,))
     elif export_type == 'follow_ups':
-        df = pd.read_sql("SELECT * FROM follow_ups WHERE workspace_id=?", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT * FROM follow_ups WHERE workspace_id={ph}", db_conn, params=(wid,))
     elif export_type == 'invalid':
-        df = pd.read_sql("SELECT name, company, email, validation_reason FROM contacts WHERE email_valid=0 AND workspace_id=?", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT name, company, email, validation_reason FROM contacts WHERE email_valid=0 AND workspace_id={ph}", db_conn, params=(wid,))
     else:
-        df = pd.read_sql("SELECT * FROM contacts WHERE workspace_id=?", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT * FROM contacts WHERE workspace_id={ph}", db_conn, params=(wid,))
 
     conn.close()
     import tempfile
