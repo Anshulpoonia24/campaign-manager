@@ -59,22 +59,16 @@ DATA_DIR = _resolve_data_dir()
 DB_PATH = os.path.join(DATA_DIR, 'campaigns.db')
 
 # ── POSTGRES CONFIG ───────────────────────────────────────────
-_pg_pool = None
 
 def _build_pg_dsn():
     if DATABASE_URL:
-        # Handle Azure/Heroku style postgres:// URLs
         url = DATABASE_URL
         if url.startswith('postgres://'):
             url = 'postgresql://' + url[len('postgres://'):]
-        # Add sslmode if not present (required for Supabase/cloud)
+        # Add sslmode if not present
         if 'sslmode' not in url:
             sep = '&' if '?' in url else '?'
             url += sep + 'sslmode=require'
-        # Disable strict cert verification to avoid SSL decryption errors
-        if 'sslrootcert' not in url:
-            sep = '&' if '?' in url else '?'
-            url += sep + 'sslrootcert=system'
         return url
     return (
         f"host={os.getenv('DB_HOST','localhost')} "
@@ -87,25 +81,11 @@ def _build_pg_dsn():
     )
 
 
-def _get_pg_pool():
-    global _pg_pool
-    if _pg_pool is None:
-        try:
-            from psycopg2 import pool as pg_pool
-            dsn = _build_pg_dsn()
-            print(f'[DB] Connecting to PostgreSQL... (dsn length={len(dsn)})')
-            _pg_pool = pg_pool.ThreadedConnectionPool(
-                minconn=1,
-                maxconn=10,
-                dsn=dsn
-            )
-            print('[DB] PostgreSQL pool OK')
-            logger.info('[DB] PostgreSQL connection pool initialized (1–10 connections)')
-        except Exception as e:
-            print(f'[DB] PostgreSQL pool FAILED: {e}')
-            logger.error(f'[DB] PostgreSQL pool init failed: {e}')
-            raise
-    return _pg_pool
+def _connect_pg():
+    """Create a fresh PostgreSQL connection (no pooling)."""
+    import psycopg2
+    dsn = _build_pg_dsn()
+    return psycopg2.connect(dsn)
 
 
 # ── ROW WRAPPER ───────────────────────────────────────────────
@@ -255,15 +235,11 @@ class PgConnection:
         self._conn.rollback()
 
     def close(self):
-        """Return connection to pool instead of closing."""
+        """Close the connection."""
         try:
-            pool = _get_pg_pool()
-            pool.putconn(self._conn)
+            self._conn.close()
         except Exception:
-            try:
-                self._conn.close()
-            except Exception:
-                pass
+            pass
 
     def __enter__(self):
         return self
@@ -285,32 +261,14 @@ def get_db():
     """
     if USE_POSTGRES:
         try:
-            pool = _get_pg_pool()
-            raw = pool.getconn()
-            # Validate connection is alive (fixes SSL stale connection errors)
-            try:
-                raw.cursor().execute('SELECT 1')
-            except Exception:
-                # Connection is dead/stale — close and get fresh one
-                try:
-                    pool.putconn(raw, close=True)
-                except Exception:
-                    try:
-                        raw.close()
-                    except Exception:
-                        pass
-                # Reset pool if all connections are broken
-                global _pg_pool
-                _pg_pool = None
-                pool = _get_pg_pool()
-                raw = pool.getconn()
+            raw = _connect_pg()
             return PgConnection(raw)
         except Exception as e:
             print(f'[DB] PostgreSQL FAILED: {e}')
             logger.error(f'[DB] PostgreSQL connection failed: {e}')
-            # In production (Render/Azure), do NOT fall back to SQLite — it won't work
+            # In production (Render/Azure), do NOT fall back to SQLite
             if os.getenv('RENDER') or os.getenv('WEBSITE_HOSTNAME') or os.getenv('PORT'):
-                raise RuntimeError(f'PostgreSQL unavailable and no SQLite fallback in production: {e}')
+                raise RuntimeError(f'PostgreSQL unavailable in production: {e}')
 
     # SQLite fallback (local dev only)
     conn = sqlite3.connect(DB_PATH, timeout=60, check_same_thread=False)
