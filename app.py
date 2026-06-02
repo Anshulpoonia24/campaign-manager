@@ -4655,6 +4655,8 @@ if __name__ == '__main__':
     start_imap_checker()
     start_daily_reset()
     start_automation_worker()
+    from services.copilot.autonomous import start_autonomous_worker
+    start_autonomous_worker()
     print(f"\n=== Email Campaign Manager ===")
     print(f"Open: http://localhost:{port}")
     print(f"Debug: {debug}")
@@ -4667,6 +4669,8 @@ else:
         start_imap_checker()
         start_daily_reset()
         start_automation_worker()
+        from services.copilot.autonomous import start_autonomous_worker
+        start_autonomous_worker()
         print('[STARTUP] Background workers started (gunicorn mode)')
     except Exception as _e:
         print(f'[STARTUP] Background worker start failed: {_e}')

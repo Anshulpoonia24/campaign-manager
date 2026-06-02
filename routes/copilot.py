@@ -268,3 +268,33 @@ def copilot_route_intent():
         return jsonify({'success': False, 'error': 'intent required'})
     result = route_to_agent(intent, _get_wid(), input_data)
     return jsonify(result)
+
+
+# ── PHASE 4: AUTONOMOUS WORKFLOWS ────────────────────────────
+
+@copilot_bp.route('/api/copilot/workflows')
+@login_required
+def copilot_workflow_status():
+    """Get status of all autonomous workflows."""
+    from services.copilot.autonomous import get_workflow_status
+    return jsonify({'workflows': get_workflow_status()})
+
+
+@copilot_bp.route('/api/copilot/workflows/<name>/toggle', methods=['POST'])
+@login_required
+def copilot_toggle_workflow(name):
+    """Enable/disable an autonomous workflow."""
+    from services.copilot.autonomous import toggle_workflow
+    data = request.json or {}
+    enabled = data.get('enabled', True)
+    toggle_workflow(name, enabled)
+    return jsonify({'success': True, 'workflow': name, 'enabled': enabled})
+
+
+@copilot_bp.route('/api/copilot/workflows/<name>/run', methods=['POST'])
+@login_required
+def copilot_run_workflow(name):
+    """Manually trigger an autonomous workflow."""
+    from services.copilot.autonomous import run_workflow_now
+    result = run_workflow_now(name, _get_wid())
+    return jsonify(result)
