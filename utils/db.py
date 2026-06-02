@@ -17,8 +17,8 @@ load_dotenv()
 logger = logging.getLogger('campaign')
 
 # ── DETECT BACKEND ────────────────────────────────────────────
-DATABASE_URL = os.getenv('DATABASE_URL', '')
-DB_HOST      = os.getenv('DB_HOST', '')
+DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+DB_HOST      = os.getenv('DB_HOST', '').strip()
 USE_POSTGRES = bool(DATABASE_URL or DB_HOST)
 print(f'[DB] USE_POSTGRES={USE_POSTGRES} | DATABASE_URL={"set" if DATABASE_URL else "empty"} | DB_HOST={"set" if DB_HOST else "empty"}')
 
