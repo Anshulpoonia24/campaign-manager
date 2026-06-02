@@ -14,6 +14,7 @@ from services.copilot.executor import ActionExecutor
 from services.copilot.intent_detector import detect_intent
 from services.copilot.memory import add_turn, get_history_prompt, get_user_context
 from services.copilot.alerts import generate_alerts
+from services.copilot.function_caller import should_auto_execute, auto_execute_action, parse_schedule_time, schedule_action
 
 try:
     from utils.logger import app_logger, error_logger
@@ -108,6 +109,35 @@ class CopilotOrchestrator:
             add_turn(self.wid, self.uid, 'assistant', resp['message'])
             self._log_conversation(message, resp, page_type, page_id, session_id)
             return {'success': True, **resp}
+
+        # 2.5 Phase 6: Check for scheduled actions
+        schedule_time = parse_schedule_time(message)
+        if schedule_time and intent_name in ('pause_campaign', 'resume_campaign', 'generate_report'):
+            params = intent_result.get('entities', {})
+            result = schedule_action(self.wid, self.uid, intent_name, params, schedule_time)
+            add_turn(self.wid, self.uid, 'user', message)
+            add_turn(self.wid, self.uid, 'assistant', result['message'])
+            return {'success': True, 'message': result['message'], 'actions': [], 'intent': intent_name}
+
+        # 2.6 Phase 6: Auto-execute safe actions when user confirms
+        if should_auto_execute(message, intent_name, confidence):
+            from services.copilot.function_caller import SAFE_AUTO_EXECUTE
+            # Map intent to action
+            intent_action_map = {
+                'smtp_diagnose': 'diagnose_deliverability',
+                'diagnose_campaign': 'diagnose_campaign',
+                'report': 'generate_report',
+                'best_send_time': 'predict_best_send_time',
+            }
+            action_type = intent_action_map.get(intent_name)
+            if action_type and action_type in SAFE_AUTO_EXECUTE:
+                params = intent_result.get('entities', {})
+                result = auto_execute_action(self.wid, self.uid, action_type, params)
+                if result.get('auto_executed') and result.get('success'):
+                    msg = result.get('message', 'Done')
+                    add_turn(self.wid, self.uid, 'user', message)
+                    add_turn(self.wid, self.uid, 'assistant', msg)
+                    return {'success': True, 'message': msg, 'actions': [], 'intent': intent_name, 'auto_executed': True}
 
         # 3. Build context
         builder = ContextBuilder(self.wid, self.uid)

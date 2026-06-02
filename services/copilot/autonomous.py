@@ -92,6 +92,13 @@ def _tick():
     """Single tick — check which workflows are due and run them."""
     now = datetime.now()
 
+    # Phase 6: Check scheduled actions
+    try:
+        from services.copilot.function_caller import check_scheduled_actions
+        check_scheduled_actions()
+    except Exception:
+        pass
+
     # Get all workspaces
     conn = get_db()
     workspaces = conn.execute("SELECT id FROM workspaces").fetchall()

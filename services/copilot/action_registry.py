@@ -265,3 +265,39 @@ register('show_info',
     params_schema={'info': {'type': 'string', 'required': True}},
     handler_path='services.copilot.handlers.navigation.show_info',
     page_types=[])
+
+# ── BATCH OPERATIONS (Phase 6) ────────────────────────────────
+register('batch_pause_campaigns',
+    description='Pause all running campaigns at once',
+    category='campaign', risk_level=RISK_HIGH,
+    requires_confirmation=True,
+    params_schema={'campaign_ids': {'type': 'array', 'required': False}},
+    handler_path='services.copilot.function_caller.batch_pause_campaigns',
+    page_types=['dashboard', 'campaigns'])
+
+register('batch_test_smtp',
+    description='Test connectivity of all active SMTP accounts',
+    category='smtp', risk_level=RISK_SAFE,
+    requires_confirmation=False,
+    params_schema={},
+    handler_path='services.copilot.function_caller.batch_test_smtp',
+    page_types=['deliverability', 'dashboard', 'settings'])
+
+register('batch_enrich',
+    description='Enrich all unenriched contacts in bulk (up to 50)',
+    category='contacts', risk_level=RISK_LOW,
+    requires_confirmation=True,
+    params_schema={'limit': {'type': 'integer', 'default': 50}},
+    handler_path='services.copilot.function_caller.batch_enrich_contacts',
+    page_types=['contacts', 'dashboard'])
+
+register('batch_mark_threads',
+    description='Mark multiple inbox threads with a status',
+    category='inbox', risk_level=RISK_MEDIUM,
+    requires_confirmation=True,
+    params_schema={
+        'thread_ids': {'type': 'array', 'required': True},
+        'status': {'type': 'string', 'required': True},
+    },
+    handler_path='services.copilot.function_caller.batch_mark_threads',
+    page_types=['inbox'])

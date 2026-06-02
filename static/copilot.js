@@ -389,9 +389,22 @@
       });
       const d = await r.json();
       if (d.success) {
+        // Handle navigation
+        if (actionData.type === 'navigate' && d.url) {
+          window.location.href = d.url;
+          return;
+        }
+        // Handle draft_reply
         if (actionData.type === 'draft_reply' && d.draft) {
           const ta = document.getElementById('replyDraft');
           if (ta) ta.value = d.draft;
+        }
+        // Inline result: show in chat if message is detailed
+        if (d.message && d.message.length > 40) {
+          const body = document.getElementById('cp-body');
+          body.innerHTML += `<div class="cp-msg cp-msg-ai"><div class="cp-bubble" style="border-color:#bbf7d0;">✅ ${formatMsg(d.message)}</div></div>`;
+          body.scrollTop = body.scrollHeight;
+          saveHistory();
         }
         btnEl.textContent = '✓ ' + (d.message ? d.message.substring(0, 30) : 'Done');
         btnEl.style.borderColor = '#bbf7d0'; btnEl.style.color = '#15803d'; btnEl.style.background = '#f0fdf4';

@@ -270,6 +270,55 @@ def copilot_route_intent():
     return jsonify(result)
 
 
+# ── PHASE 6: BATCH OPERATIONS & SCHEDULED ACTIONS ────────────
+
+@copilot_bp.route('/api/copilot/batch/pause', methods=['POST'])
+@login_required
+def copilot_batch_pause():
+    """Batch pause campaigns."""
+    from services.copilot.function_caller import batch_pause_campaigns
+    data = request.json or {}
+    result = batch_pause_campaigns(_get_wid(), current_user.id, data.get('campaign_ids'))
+    return jsonify({'success': True, **result})
+
+
+@copilot_bp.route('/api/copilot/batch/test_smtp', methods=['POST'])
+@login_required
+def copilot_batch_test_smtp():
+    """Test all SMTP connections."""
+    from services.copilot.function_caller import batch_test_smtp
+    result = batch_test_smtp(_get_wid(), current_user.id)
+    return jsonify({'success': True, **result})
+
+
+@copilot_bp.route('/api/copilot/batch/enrich', methods=['POST'])
+@login_required
+def copilot_batch_enrich():
+    """Batch enrich contacts."""
+    from services.copilot.function_caller import batch_enrich_contacts
+    data = request.json or {}
+    result = batch_enrich_contacts(_get_wid(), current_user.id, data.get('limit', 50))
+    return jsonify({'success': True, **result})
+
+
+@copilot_bp.route('/api/copilot/batch/mark_threads', methods=['POST'])
+@login_required
+def copilot_batch_mark_threads():
+    """Batch mark threads."""
+    from services.copilot.function_caller import batch_mark_threads
+    data = request.json or {}
+    result = batch_mark_threads(_get_wid(), current_user.id, data.get('thread_ids'), data.get('status', 'closed'))
+    return jsonify({'success': True, **result})
+
+
+@copilot_bp.route('/api/copilot/scheduled')
+@login_required
+def copilot_scheduled_actions():
+    """Get pending scheduled actions."""
+    from services.copilot.function_caller import get_scheduled_actions
+    return jsonify({'actions': get_scheduled_actions(_get_wid())})
+
+
 # ── PHASE 4: AUTONOMOUS WORKFLOWS ────────────────────────────
 
 @copilot_bp.route('/api/copilot/workflows')
