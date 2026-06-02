@@ -82,10 +82,20 @@ def _build_pg_dsn():
 
 
 def _connect_pg():
-    """Create a fresh PostgreSQL connection (no pooling)."""
+    """Create a fresh PostgreSQL connection with retry."""
     import psycopg2
     dsn = _build_pg_dsn()
-    return psycopg2.connect(dsn)
+    last_err = None
+    for attempt in range(3):
+        try:
+            conn = psycopg2.connect(dsn, connect_timeout=10)
+            return conn
+        except Exception as e:
+            last_err = e
+            print(f'[DB] Connect attempt {attempt+1} failed: {e}')
+            import time
+            time.sleep(1)
+    raise last_err
 
 
 # ── ROW WRAPPER ───────────────────────────────────────────────

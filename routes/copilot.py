@@ -44,7 +44,7 @@ def copilot_chat():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'success': True, 'message': f'Copilot error: {str(e)[:200]}', 'actions': []})
+        return jsonify({'success': True, 'message': f'Error: {str(e)[:200]}', 'actions': []})
 
 
 # ── ACTION EXECUTION ──────────────────────────────────────────
