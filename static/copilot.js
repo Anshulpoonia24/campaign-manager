@@ -74,8 +74,10 @@
     .cp-quick-btn{font-size:11px;padding:5px 10px;border-radius:99px;border:1px solid #e5e7eb;background:#f8fafc;color:#475569;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
     .cp-quick-btn:hover{background:#eef2ff;border-color:#6366f1;color:#4338ca;}
 
-    .cp-fb-btn{border:none;background:none;cursor:pointer;font-size:12px;padding:2px 6px;border-radius:6px;opacity:0.5;transition:all 0.15s;}
-    .cp-fb-btn:hover{opacity:1;background:#f1f5f9;}
+    .cp-feedback{opacity:0;transition:opacity 0.2s;}
+    .cp-msg-ai:hover .cp-feedback{opacity:1;}
+    .cp-fb-btn{border:none;background:none;cursor:pointer;font-size:9px;padding:1px 3px;border-radius:4px;opacity:0.4;transition:all 0.15s;line-height:1;}
+    .cp-fb-btn:hover{opacity:0.9;background:#f1f5f9;}
     .cp-fb-btn.selected{opacity:1;background:#eef2ff;}
 
     /* Alerts view */
