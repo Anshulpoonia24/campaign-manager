@@ -20,6 +20,7 @@ logger = logging.getLogger('campaign')
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 DB_HOST      = os.getenv('DB_HOST', '')
 USE_POSTGRES = bool(DATABASE_URL or DB_HOST)
+print(f'[DB] USE_POSTGRES={USE_POSTGRES} | DATABASE_URL={"set" if DATABASE_URL else "empty"} | DB_HOST={"set" if DB_HOST else "empty"}')
 
 # ── SQLITE FALLBACK CONFIG ────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -87,13 +88,17 @@ def _get_pg_pool():
     if _pg_pool is None:
         try:
             from psycopg2 import pool as pg_pool
+            dsn = _build_pg_dsn()
+            print(f'[DB] Connecting to PostgreSQL... (dsn length={len(dsn)})')
             _pg_pool = pg_pool.ThreadedConnectionPool(
                 minconn=2,
                 maxconn=20,
-                dsn=_build_pg_dsn()
+                dsn=dsn
             )
+            print('[DB] PostgreSQL pool OK')
             logger.info('[DB] PostgreSQL connection pool initialized (2–20 connections)')
         except Exception as e:
+            print(f'[DB] PostgreSQL pool FAILED: {e}')
             logger.error(f'[DB] PostgreSQL pool init failed: {e}')
             raise
     return _pg_pool
@@ -276,8 +281,8 @@ def get_db():
             raw = pool.getconn()
             return PgConnection(raw)
         except Exception as e:
+            print(f'[DB] PostgreSQL FAILED: {e}')
             logger.error(f'[DB] PostgreSQL connection failed, falling back to SQLite: {e}')
-            # Fall through to SQLite
 
     # SQLite fallback
     conn = sqlite3.connect(DB_PATH, timeout=60, check_same_thread=False)

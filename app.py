@@ -750,13 +750,29 @@ except Exception as _be:
     print(f'[STARTUP] Backup skipped: {_be}')
 
 try:
+    from utils.db import USE_POSTGRES, DATABASE_URL, _build_pg_dsn
+    print(f'[STARTUP] USE_POSTGRES={USE_POSTGRES}')
+    print(f'[STARTUP] DATABASE_URL set={bool(DATABASE_URL)} len={len(DATABASE_URL)}')
+    if USE_POSTGRES:
+        # Test PG connection directly to surface errors
+        try:
+            from utils.db import _get_pg_pool
+            _get_pg_pool()
+            print('[STARTUP] PostgreSQL pool created successfully')
+        except Exception as pg_err:
+            print(f'[STARTUP] PostgreSQL pool FAILED: {pg_err}')
     init_db()
     # Ensure tracking_events table exists
     from services.tracking import ensure_tracking_table
     ensure_tracking_table()
-    print(f'[STARTUP] DB initialized at: {DB_PATH}')
+    if USE_POSTGRES:
+        print('[STARTUP] DB initialized: PostgreSQL (Supabase)')
+    else:
+        print(f'[STARTUP] DB initialized at: {DB_PATH}')
 except Exception as e:
+    import traceback
     print(f'[STARTUP] DB init failed: {e}')
+    traceback.print_exc()
 
 
 # ==============================
