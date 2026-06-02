@@ -24,22 +24,27 @@ def _get_role():
 @login_required
 def copilot_chat():
     """Main conversational endpoint."""
-    from services.copilot.orchestrator import CopilotOrchestrator
-    data = request.json or {}
-    message = data.get('message', '').strip()
-    page_type = data.get('page_type', '')
-    page_id = int(data.get('page_id', 0))
+    try:
+        from services.copilot.orchestrator import CopilotOrchestrator
+        data = request.json or {}
+        message = data.get('message', '').strip()
+        page_type = data.get('page_type', '')
+        page_id = int(data.get('page_id', 0))
 
-    if not message:
-        return jsonify({'success': False, 'error': 'Empty message'})
+        if not message:
+            return jsonify({'success': False, 'error': 'Empty message'})
 
-    orchestrator = CopilotOrchestrator(
-        workspace_id=_get_wid(),
-        user_id=current_user.id,
-        role=_get_role()
-    )
-    result = orchestrator.chat(message, page_type, page_id)
-    return jsonify(result)
+        orchestrator = CopilotOrchestrator(
+            workspace_id=_get_wid(),
+            user_id=current_user.id,
+            role=_get_role()
+        )
+        result = orchestrator.chat(message, page_type, page_id)
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': True, 'message': f'Copilot error: {str(e)[:200]}', 'actions': []})
 
 
 # ── ACTION EXECUTION ──────────────────────────────────────────
