@@ -83,6 +83,44 @@ CREATE TABLE IF NOT EXISTS copilot_alerts (
     dismissed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS ab_tests (
+    id {pk},
+    workspace_id INTEGER NOT NULL,
+    campaign_id INTEGER NOT NULL,
+    test_type TEXT NOT NULL,
+    variants TEXT DEFAULT '[]',
+    split_pct INTEGER DEFAULT 50,
+    status TEXT DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ab_test_events (
+    id {pk},
+    test_id INTEGER NOT NULL,
+    variant_index INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS team_invites (
+    id {pk},
+    workspace_id INTEGER NOT NULL,
+    email TEXT NOT NULL,
+    role TEXT NOT NULL,
+    invited_by INTEGER NOT NULL,
+    status TEXT DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS activity_log (
+    id {pk},
+    workspace_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    details TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 INDEXES_SQL = """

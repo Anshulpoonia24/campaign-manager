@@ -314,6 +314,133 @@ def copilot_personalized_suggestions():
     return jsonify({'suggestions': suggestions})
 
 
+# ── PHASE 8: A/B TESTING ──────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/ab/create', methods=['POST'])
+@login_required
+def copilot_ab_create():
+    """Create an A/B test."""
+    from services.copilot.ab_testing import create_ab_test
+    data = request.json or {}
+    result = create_ab_test(_get_wid(), data.get('campaign_id', 0),
+                           data.get('test_type', 'subject'), data.get('variants', []), data.get('split_pct', 50))
+    return jsonify({'success': True, **result})
+
+
+@copilot_bp.route('/api/copilot/ab/<int:test_id>/results')
+@login_required
+def copilot_ab_results(test_id):
+    """Get A/B test results."""
+    from services.copilot.ab_testing import get_test_results
+    return jsonify(get_test_results(_get_wid(), test_id))
+
+
+@copilot_bp.route('/api/copilot/ab/<int:test_id>/end', methods=['POST'])
+@login_required
+def copilot_ab_end(test_id):
+    """End an A/B test."""
+    from services.copilot.ab_testing import end_test
+    return jsonify(end_test(_get_wid(), test_id))
+
+
+@copilot_bp.route('/api/copilot/ab/list')
+@login_required
+def copilot_ab_list():
+    """List all A/B tests."""
+    from services.copilot.ab_testing import list_tests
+    return jsonify({'tests': list_tests(_get_wid())})
+
+
+# ── PHASE 9: RBAC & TEAM ─────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/team')
+@login_required
+def copilot_team_list():
+    """Get team members."""
+    from services.copilot.rbac import get_team_members
+    return jsonify({'members': get_team_members(_get_wid())})
+
+
+@copilot_bp.route('/api/copilot/team/invite', methods=['POST'])
+@login_required
+def copilot_team_invite():
+    """Invite a team member."""
+    from services.copilot.rbac import invite_team_member
+    data = request.json or {}
+    result = invite_team_member(_get_wid(), data.get('email', ''), data.get('role', 'sdr'), current_user.id)
+    return jsonify(result)
+
+
+@copilot_bp.route('/api/copilot/team/<int:user_id>/role', methods=['POST'])
+@login_required
+def copilot_team_role(user_id):
+    """Change member role."""
+    from services.copilot.rbac import update_member_role
+    data = request.json or {}
+    result = update_member_role(_get_wid(), user_id, data.get('role', 'sdr'), current_user.id)
+    return jsonify(result)
+
+
+@copilot_bp.route('/api/copilot/team/<int:user_id>/remove', methods=['POST'])
+@login_required
+def copilot_team_remove(user_id):
+    """Remove team member."""
+    from services.copilot.rbac import remove_member
+    return jsonify(remove_member(_get_wid(), user_id, current_user.id))
+
+
+@copilot_bp.route('/api/copilot/team/roles')
+@login_required
+def copilot_team_roles():
+    """Get available roles."""
+    from services.copilot.rbac import get_roles_list
+    return jsonify({'roles': get_roles_list()})
+
+
+@copilot_bp.route('/api/copilot/team/activity')
+@login_required
+def copilot_team_activity():
+    """Get team activity log."""
+    from services.copilot.rbac import get_activity_log
+    limit = int(request.args.get('limit', 50))
+    return jsonify({'activity': get_activity_log(_get_wid(), limit)})
+
+
+# ── PHASE 10: OBSERVABILITY ───────────────────────────────────
+
+@copilot_bp.route('/api/copilot/monitoring')
+@login_required
+def copilot_monitoring():
+    """Get AI monitoring dashboard data."""
+    from services.copilot.observability import get_overview
+    return jsonify(get_overview(_get_wid()))
+
+
+@copilot_bp.route('/api/copilot/monitoring/costs')
+@login_required
+def copilot_monitoring_costs():
+    """Get cost history."""
+    from services.copilot.observability import get_cost_history
+    days = int(request.args.get('days', 7))
+    return jsonify({'costs': get_cost_history(days)})
+
+
+@copilot_bp.route('/api/copilot/monitoring/latency')
+@login_required
+def copilot_monitoring_latency():
+    """Get latency histogram."""
+    from services.copilot.observability import get_latency_histogram
+    return jsonify({'histogram': get_latency_histogram()})
+
+
+@copilot_bp.route('/api/copilot/monitoring/health')
+@login_required
+def copilot_health_check():
+    """System health check."""
+    from services.copilot.observability import health_check
+    return jsonify(health_check())
+
+
 @copilot_bp.route('/api/copilot/batch/pause', methods=['POST'])
 @login_required
 def copilot_batch_pause():

@@ -259,6 +259,8 @@ class CopilotOrchestrator:
         """Call Groq/Gemini with the assembled prompt."""
         import requests as http_requests
         from utils.db import get_db
+        from services.copilot.observability import record_ai_call, record_error
+        import time as _time
 
         def _get_setting(key):
             conn = get_db()
@@ -280,6 +282,7 @@ class CopilotOrchestrator:
 
         for key in keys:
             try:
+                _start = _time.time()
                 r = http_requests.post(
                     'https://api.groq.com/openai/v1/chat/completions',
                     headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
@@ -295,11 +298,17 @@ class CopilotOrchestrator:
                     },
                     timeout=30,
                 )
+                _elapsed = int((_time.time() - _start) * 1000)
                 if r.status_code == 200:
+                    record_ai_call(model, _elapsed, len(system_prompt + user_message) // 4, True)
                     return r.json()['choices'][0]['message']['content'].strip()
                 elif r.status_code == 429:
+                    record_ai_call(model, _elapsed, 0, False)
                     continue
+                else:
+                    record_ai_call(model, _elapsed, 0, False)
             except Exception as e:
+                record_error('groq', str(e))
                 error_logger.error(f'[COPILOT] Groq error: {e}')
                 continue
 
@@ -308,15 +317,21 @@ class CopilotOrchestrator:
         if gemini_key:
             gemini_model = _get_setting('copilot_model_gemini') or 'gemini-2.0-flash'
             try:
+                _start = _time.time()
                 full_prompt = f"{system_prompt}\n\nUSER: {user_message}\n\nRespond with valid JSON only."
                 r = http_requests.post(
                     f'https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}',
                     json={'contents': [{'parts': [{'text': full_prompt}]}]},
                     timeout=30,
                 )
+                _elapsed = int((_time.time() - _start) * 1000)
                 if r.status_code == 200:
+                    record_ai_call(gemini_model, _elapsed, len(full_prompt) // 4, True)
                     return r.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+                else:
+                    record_ai_call(gemini_model, _elapsed, 0, False)
             except Exception as e:
+                record_error('gemini', str(e))
                 error_logger.error(f'[COPILOT] Gemini error: {e}')
 
         return json.dumps({'message': 'AI temporarily unavailable. Please try again.', 'actions': []})

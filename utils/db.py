@@ -286,9 +286,12 @@ def get_db():
             return PgConnection(raw)
         except Exception as e:
             print(f'[DB] PostgreSQL FAILED: {e}')
-            logger.error(f'[DB] PostgreSQL connection failed, falling back to SQLite: {e}')
+            logger.error(f'[DB] PostgreSQL connection failed: {e}')
+            # In production (Render/Azure), do NOT fall back to SQLite — it won't work
+            if os.getenv('RENDER') or os.getenv('WEBSITE_HOSTNAME') or os.getenv('PORT'):
+                raise RuntimeError(f'PostgreSQL unavailable and no SQLite fallback in production: {e}')
 
-    # SQLite fallback
+    # SQLite fallback (local dev only)
     conn = sqlite3.connect(DB_PATH, timeout=60, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     # WAL mode: allows concurrent readers + 1 writer, eliminates most lock contention
