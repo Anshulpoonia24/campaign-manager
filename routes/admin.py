@@ -303,6 +303,70 @@ def delete_tenant(wid):
     return redirect(url_for('admin.tenant_list'))
 
 
+# ── AI CONFIG (Global) ────────────────────────────────────────
+@admin_bp.route('/ai-config', methods=['GET', 'POST'])
+@admin_required
+def ai_config():
+    conn = get_db()
+    if request.method == 'POST':
+        data = request.get_json() if request.is_json else request.form
+        for key in ('groq_api_keys', 'gemini_api_key', 'ai_priority'):
+            val = data.get(key)
+            if val is not None:
+                existing = conn.execute("SELECT id FROM settings WHERE key=? AND workspace_id=1", (key,)).fetchone()
+                if existing:
+                    conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=1", (val.strip(), key))
+                else:
+                    conn.execute("INSERT INTO settings (key, value, workspace_id) VALUES (?,?,1)", (key, val.strip()))
+        conn.commit()
+        conn.close()
+        if request.is_json:
+            return jsonify({'success': True})
+        flash('AI Config saved.', 'success')
+        return redirect(url_for('admin.ai_config'))
+    # GET
+    settings = {}
+    for key in ('groq_api_keys', 'gemini_api_key', 'ai_priority'):
+        row = conn.execute("SELECT value FROM settings WHERE key=? AND workspace_id=1", (key,)).fetchone()
+        settings[key] = row[0] if row else ''
+    conn.close()
+    return render_template('admin/ai_config.html', settings=settings)
+
+
+@admin_bp.route('/ai-config/test', methods=['POST'])
+@admin_required
+def ai_config_test():
+    """Test AI keys from admin panel."""
+    import requests as http_requests
+    data = request.get_json()
+    provider = data.get('provider', 'groq')
+    key = data.get('key', '').strip()
+    if not key:
+        return jsonify({'success': False, 'error': 'No key provided'})
+    if provider == 'groq':
+        try:
+            r = http_requests.post('https://api.groq.com/openai/v1/chat/completions',
+                headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
+                json={'model': 'llama-3.3-70b-versatile', 'messages': [{'role': 'user', 'content': 'Say OK'}], 'max_tokens': 5},
+                timeout=15)
+            if r.status_code == 200:
+                return jsonify({'success': True, 'message': 'Groq API working ✓'})
+            return jsonify({'success': False, 'error': f'Status {r.status_code}: {r.text[:100]}'})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)[:100]})
+    elif provider == 'gemini':
+        try:
+            r = http_requests.post(
+                f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}',
+                json={'contents': [{'parts': [{'text': 'Say OK'}]}]}, timeout=15)
+            if r.status_code == 200:
+                return jsonify({'success': True, 'message': 'Gemini API working ✓'})
+            return jsonify({'success': False, 'error': f'Status {r.status_code}: {r.text[:100]}'})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)[:100]})
+    return jsonify({'success': False, 'error': 'Unknown provider'})
+
+
 # ── API: TENANT STATS ─────────────────────────────────────────
 @admin_bp.route('/api/stats')
 @admin_required

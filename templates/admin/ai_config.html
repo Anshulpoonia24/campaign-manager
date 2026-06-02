@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Config — Platform Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;}
+a{color:#818cf8;text-decoration:none;}a:hover{color:#a5b4fc;}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;background:#1e293b;border-bottom:1px solid #334155;position:sticky;top:0;z-index:100;}
+.nav-brand{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700;}.nav-brand i{color:#6366f1;}
+.nav-links{display:flex;gap:6px;}
+.nav-link{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;color:#94a3b8;transition:all .15s;}.nav-link:hover,.nav-link.active{background:#334155;color:#e2e8f0;}
+.nav-right{display:flex;align-items:center;gap:12px;}
+.btn-sm{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid #334155;background:transparent;color:#94a3b8;cursor:pointer;}.btn-sm:hover{background:#334155;color:#e2e8f0;}
+.container{padding:24px 28px;max-width:900px;margin:0 auto;}
+.panel{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;margin-bottom:20px;}
+.panel-title{font-size:14px;font-weight:700;color:#e2e8f0;margin-bottom:16px;display:flex;align-items:center;gap:8px;}.panel-title i{color:#6366f1;}
+.form-label{display:block;font-size:12px;font-weight:600;color:#94a3b8;margin-bottom:6px;}
+.form-control{width:100%;padding:10px 14px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:13px;font-family:inherit;}.form-control:focus{outline:none;border-color:#6366f1;}
+textarea.form-control{resize:vertical;min-height:80px;}
+.form-hint{font-size:11px;color:#64748b;margin-top:4px;}
+.form-group{margin-bottom:16px;}
+.btn{padding:8px 18px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer;transition:all .15s;}
+.btn-primary{background:#6366f1;color:#fff;}.btn-primary:hover{background:#4f46e5;}
+.btn-outline{background:transparent;border:1px solid #334155;color:#94a3b8;}.btn-outline:hover{background:#334155;color:#e2e8f0;}
+.btn-row{display:flex;gap:10px;align-items:center;margin-top:16px;}
+.status-msg{font-size:12px;margin-left:10px;}.status-ok{color:#34d399;}.status-err{color:#f87171;}
+.flash{padding:10px 16px;border-radius:8px;margin-bottom:16px;font-size:12px;font-weight:500;}
+.flash-success{background:#064e3b;color:#34d399;border:1px solid #065f46;}
+.flash-error{background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;}
+.divider{border:0;border-top:1px solid #334155;margin:20px 0;}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-brand"><i class="fas fa-shield-halved"></i> OutreachOS Platform Admin</div>
+  <div class="nav-links">
+    <a href="/admin/" class="nav-link"><i class="fas fa-chart-line"></i> Dashboard</a>
+    <a href="/admin/workspaces" class="nav-link"><i class="fas fa-building"></i> Workspaces</a>
+    <a href="/admin/ai-config" class="nav-link active"><i class="fas fa-robot"></i> AI Config</a>
+    <a href="/admin/create" class="nav-link"><i class="fas fa-plus"></i> New Tenant</a>
+  </div>
+  <div class="nav-right">
+    <span style="font-size:11px;color:#64748b;">{{ session.get('admin_username','admin') }}</span>
+    <a href="/admin/logout" class="btn-sm"><i class="fas fa-sign-out-alt"></i> Logout</a>
+  </div>
+</div>
+
+<div class="container">
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="flash flash-{{ cat }}">{{ msg }}</div>
+  {% endfor %}
+  {% endwith %}
+
+  <h2 style="font-size:18px;font-weight:800;margin-bottom:6px;"><i class="fas fa-robot" style="color:#6366f1;"></i> AI Copilot Configuration</h2>
+  <p style="color:#64748b;font-size:12px;margin-bottom:24px;">Global AI keys used by Copilot across all workspaces. These are the default keys — tenants can override in their own Settings.</p>
+
+  <!-- Groq -->
+  <div class="panel">
+    <div class="panel-title"><i class="fas fa-bolt" style="color:#3b82f6;"></i> Groq API (Primary — Free 14,400 req/day)</div>
+    <div class="form-group">
+      <label class="form-label">API Keys <span style="color:#64748b;font-weight:400;">(comma separated for rotation)</span></label>
+      <textarea class="form-control" id="groqKeys" placeholder="gsk_abc123..., gsk_def456...">{{ settings.groq_api_keys }}</textarea>
+      <div class="form-hint">Get from: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> · Auto-rotates when rate limited</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="testKey('groq')"><i class="fas fa-plug"></i> Test Connection</button>
+      <span id="groqStatus" class="status-msg"></span>
+    </div>
+  </div>
+
+  <!-- Gemini -->
+  <div class="panel">
+    <div class="panel-title"><i class="fas fa-star" style="color:#8b5cf6;"></i> Gemini API (Fallback)</div>
+    <div class="form-group">
+      <label class="form-label">Gemini API Key</label>
+      <input type="password" class="form-control" id="geminiKey" value="{{ settings.gemini_api_key }}" placeholder="AIzaSy...">
+      <div class="form-hint">Get from: <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="testKey('gemini')"><i class="fas fa-plug"></i> Test Connection</button>
+      <button class="btn btn-outline" onclick="document.getElementById('geminiKey').type = document.getElementById('geminiKey').type==='password'?'text':'password'"><i class="fas fa-eye"></i> Toggle</button>
+      <span id="geminiStatus" class="status-msg"></span>
+    </div>
+  </div>
+
+  <!-- Priority -->
+  <div class="panel">
+    <div class="panel-title"><i class="fas fa-sort-amount-down"></i> AI Priority Order</div>
+    <div class="form-group">
+      <label class="form-label">Priority (comma separated)</label>
+      <input type="text" class="form-control" id="aiPriority" value="{{ settings.ai_priority or 'groq,gemini' }}" placeholder="groq,gemini">
+      <div class="form-hint">Order in which AI providers are tried. First available key wins.</div>
+    </div>
+  </div>
+
+  <!-- Save -->
+  <div class="btn-row">
+    <button class="btn btn-primary" onclick="saveAll()"><i class="fas fa-save"></i> Save All AI Config</button>
+    <span id="saveStatus" class="status-msg"></span>
+  </div>
+
+</div>
+
+<script>
+function testKey(provider) {
+  const statusEl = document.getElementById(provider === 'groq' ? 'groqStatus' : 'geminiStatus');
+  let key = '';
+  if (provider === 'groq') {
+    const keys = document.getElementById('groqKeys').value.trim();
+    key = keys.split(',')[0].trim();
+  } else {
+    key = document.getElementById('geminiKey').value.trim();
+  }
+  if (!key) { statusEl.innerHTML = '<span class="status-err">No key entered</span>'; return; }
+  statusEl.innerHTML = '<span style="color:#fbbf24;">Testing...</span>';
+  fetch('/admin/ai-config/test', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({provider, key})
+  }).then(r => r.json()).then(d => {
+    statusEl.innerHTML = d.success
+      ? `<span class="status-ok">${d.message}</span>`
+      : `<span class="status-err">${d.error}</span>`;
+  }).catch(() => { statusEl.innerHTML = '<span class="status-err">Network error</span>'; });
+}
+
+function saveAll() {
+  const saveStatus = document.getElementById('saveStatus');
+  saveStatus.innerHTML = '<span style="color:#fbbf24;">Saving...</span>';
+  fetch('/admin/ai-config', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      groq_api_keys: document.getElementById('groqKeys').value,
+      gemini_api_key: document.getElementById('geminiKey').value,
+      ai_priority: document.getElementById('aiPriority').value
+    })
+  }).then(r => r.json()).then(d => {
+    saveStatus.innerHTML = d.success
+      ? '<span class="status-ok"><i class="fas fa-check-circle"></i> Saved!</span>'
+      : '<span class="status-err">Save failed</span>';
+    setTimeout(() => { saveStatus.innerHTML = ''; }, 3000);
+  }).catch(() => { saveStatus.innerHTML = '<span class="status-err">Network error</span>'; });
+}
+</script>
+</body>
+</html>
