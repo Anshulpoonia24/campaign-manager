@@ -113,6 +113,14 @@ class CopilotOrchestrator:
         builder = ContextBuilder(self.wid, self.uid)
         ctx = builder.build(page_type, page_id)
 
+        # 3.5 Multi-agent routing for high-confidence known intents
+        agent_context = ''
+        if confidence >= 0.8 and intent_name in ('diagnose_campaign', 'smtp_diagnose', 'report', 'best_send_time'):
+            from services.copilot.agents.router import route_to_agent
+            agent_result = route_to_agent(intent_name, self.wid, intent_result.get('entities', {}))
+            if agent_result.get('success') or agent_result.get('multi_agent'):
+                agent_context = f"\nAGENT ANALYSIS:\n{json.dumps(agent_result, default=str)[:1500]}"
+
         # 4. Get conversation history + preferences
         history_block = get_history_prompt(self.wid, self.uid)
         preferences_block = get_user_context(self.wid, self.uid)
@@ -121,7 +129,7 @@ class CopilotOrchestrator:
         tools = get_tools_json(page_type)
         system_prompt = SYSTEM_PROMPT_BASE.format(
             page_type=page_type,
-            history_block=history_block,
+            history_block=history_block + agent_context,
             preferences_block=preferences_block,
             context_json=json.dumps(ctx.get('page', {}), default=str, indent=2)[:2000],
             workspace_json=json.dumps(ctx.get('workspace', {}), default=str),

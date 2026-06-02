@@ -205,3 +205,66 @@ def copilot_alert_count():
     """Quick alert count for UI badge."""
     from services.copilot.alerts import get_alert_count
     return jsonify({'count': get_alert_count(_get_wid())})
+
+
+# ── PHASE 3: MULTI-AGENT SYSTEM ───────────────────────────────
+
+@copilot_bp.route('/api/copilot/agents')
+@login_required
+def copilot_list_agents():
+    """List all available agents."""
+    from services.copilot.agents.router import list_agents
+    return jsonify({'agents': list_agents()})
+
+
+@copilot_bp.route('/api/copilot/agents/<agent_type>/run', methods=['POST'])
+@login_required
+def copilot_run_agent(agent_type):
+    """Run a specific agent task directly."""
+    from services.copilot.agents.router import get_agent
+    data = request.json or {}
+    task_type = data.get('task_type', '')
+    input_data = data.get('input', {})
+
+    if not task_type:
+        return jsonify({'success': False, 'error': 'task_type required'})
+
+    agent = get_agent(agent_type, _get_wid())
+    if not agent:
+        return jsonify({'success': False, 'error': f'Agent {agent_type} not found'})
+
+    result = agent.run(task_type, input_data)
+    return jsonify(result)
+
+
+@copilot_bp.route('/api/copilot/agents/<agent_type>/analyze')
+@login_required
+def copilot_agent_analyze(agent_type):
+    """Get quick analysis from a specific agent (no AI call)."""
+    from services.copilot.agents.router import get_agent
+    agent = get_agent(agent_type, _get_wid())
+    if not agent:
+        return jsonify({'success': False, 'error': f'Agent {agent_type} not found'})
+    return jsonify({'success': True, 'analysis': agent.analyze()})
+
+
+@copilot_bp.route('/api/copilot/health')
+@login_required
+def copilot_workspace_health():
+    """Get workspace health from all agents."""
+    from services.copilot.agents.router import get_workspace_health
+    return jsonify({'health': get_workspace_health(_get_wid())})
+
+
+@copilot_bp.route('/api/copilot/agents/route', methods=['POST'])
+@login_required
+def copilot_route_intent():
+    """Route an intent to the right agent(s)."""
+    from services.copilot.agents.router import route_to_agent
+    data = request.json or {}
+    intent = data.get('intent', '')
+    input_data = data.get('input', {})
+    if not intent:
+        return jsonify({'success': False, 'error': 'intent required'})
+    result = route_to_agent(intent, _get_wid(), input_data)
+    return jsonify(result)
