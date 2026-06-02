@@ -15,6 +15,7 @@ from services.copilot.intent_detector import detect_intent
 from services.copilot.memory import add_turn, get_history_prompt, get_user_context
 from services.copilot.alerts import generate_alerts
 from services.copilot.function_caller import should_auto_execute, auto_execute_action, parse_schedule_time, schedule_action
+from services.copilot.learning import track_message, track_action, get_personalization_prompt, get_personalized_suggestions
 
 try:
     from utils.logger import app_logger, error_logger
@@ -139,6 +140,9 @@ class CopilotOrchestrator:
                     add_turn(self.wid, self.uid, 'assistant', msg)
                     return {'success': True, 'message': msg, 'actions': [], 'intent': intent_name, 'auto_executed': True}
 
+        # 2.7 Phase 7: Track user behavior
+        track_message(self.wid, self.uid, message, page_type)
+
         # 3. Build context
         builder = ContextBuilder(self.wid, self.uid)
         ctx = builder.build(page_type, page_id)
@@ -151,15 +155,16 @@ class CopilotOrchestrator:
             if agent_result.get('success') or agent_result.get('multi_agent'):
                 agent_context = f"\nAGENT ANALYSIS:\n{json.dumps(agent_result, default=str)[:1500]}"
 
-        # 4. Get conversation history + preferences
+        # 4. Get conversation history + preferences + personalization
         history_block = get_history_prompt(self.wid, self.uid)
         preferences_block = get_user_context(self.wid, self.uid)
+        personalization_block = get_personalization_prompt(self.wid, self.uid)
 
         # 5. Build prompt
         tools = get_tools_json(page_type)
         system_prompt = SYSTEM_PROMPT_BASE.format(
             page_type=page_type,
-            history_block=history_block + agent_context,
+            history_block=history_block + agent_context + personalization_block,
             preferences_block=preferences_block,
             context_json=json.dumps(ctx.get('page', {}), default=str, indent=2)[:2000],
             workspace_json=json.dumps(ctx.get('workspace', {}), default=str),

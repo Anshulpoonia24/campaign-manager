@@ -272,6 +272,48 @@ def copilot_route_intent():
 
 # ── PHASE 6: BATCH OPERATIONS & SCHEDULED ACTIONS ────────────
 
+@copilot_bp.route('/api/copilot/feedback', methods=['POST'])
+@login_required
+def copilot_feedback():
+    """Submit feedback (thumbs up/down) on a response."""
+    from services.copilot.learning import track_feedback
+    data = request.json or {}
+    message_id = data.get('message_id', '')
+    rating = data.get('rating', '')  # 'up' or 'down'
+    response_text = data.get('response_text', '')
+    if rating not in ('up', 'down'):
+        return jsonify({'success': False, 'error': 'rating must be up or down'})
+    track_feedback(_get_wid(), current_user.id, message_id, rating, response_text)
+    return jsonify({'success': True})
+
+
+@copilot_bp.route('/api/copilot/learning/profile')
+@login_required
+def copilot_learning_profile():
+    """Get user's learning profile (what copilot has learned)."""
+    from services.copilot.learning import get_user_learning_profile
+    return jsonify({'profile': get_user_learning_profile(_get_wid(), current_user.id)})
+
+
+@copilot_bp.route('/api/copilot/learning/reset', methods=['POST'])
+@login_required
+def copilot_learning_reset():
+    """Reset learned preferences."""
+    from services.copilot.learning import reset_learning
+    reset_learning(_get_wid(), current_user.id)
+    return jsonify({'success': True})
+
+
+@copilot_bp.route('/api/copilot/learning/suggestions')
+@login_required
+def copilot_personalized_suggestions():
+    """Get personalized suggestions based on user behavior."""
+    from services.copilot.learning import get_personalized_suggestions
+    page_type = request.args.get('page_type', '')
+    suggestions = get_personalized_suggestions(_get_wid(), current_user.id, page_type)
+    return jsonify({'suggestions': suggestions})
+
+
 @copilot_bp.route('/api/copilot/batch/pause', methods=['POST'])
 @login_required
 def copilot_batch_pause():

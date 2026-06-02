@@ -74,6 +74,10 @@
     .cp-quick-btn{font-size:11px;padding:5px 10px;border-radius:99px;border:1px solid #e5e7eb;background:#f8fafc;color:#475569;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
     .cp-quick-btn:hover{background:#eef2ff;border-color:#6366f1;color:#4338ca;}
 
+    .cp-fb-btn{border:none;background:none;cursor:pointer;font-size:12px;padding:2px 6px;border-radius:6px;opacity:0.5;transition:all 0.15s;}
+    .cp-fb-btn:hover{opacity:1;background:#f1f5f9;}
+    .cp-fb-btn.selected{opacity:1;background:#eef2ff;}
+
     /* Alerts view */
     .cp-alert-card{padding:10px 14px;margin:0 14px 8px;border-radius:10px;border:1px solid #fecaca;background:#fef7f7;display:flex;align-items:flex-start;gap:8px;animation:cp-fade 0.3s;}
     .cp-alert-card.warn{border-color:#fde68a;background:#fffdf5;}
@@ -300,10 +304,17 @@
 
   function appendBubble(type, text, actions, isError) {
     const body = document.getElementById('cp-body');
+    const msgId = 'msg-' + Date.now();
     if (type === 'user') {
       body.innerHTML += `<div class="cp-msg cp-msg-user"><div class="cp-bubble">${esc(text)}</div></div>`;
     } else {
-      let html = `<div class="cp-msg cp-msg-ai"><div class="cp-bubble" ${isError?'style="color:#dc2626;border-color:#fecaca;"':''}>${formatMsg(text)}</div>`;
+      let html = `<div class="cp-msg cp-msg-ai" id="${msgId}"><div class="cp-bubble" ${isError?'style="color:#dc2626;border-color:#fecaca;"':''}>${formatMsg(text)}</div>`;
+      if (!isError) {
+        html += `<div class="cp-feedback" style="margin-top:4px;display:flex;gap:4px;">`;
+        html += `<button class="cp-fb-btn" data-rating="up" data-msg-id="${msgId}" title="Helpful">👍</button>`;
+        html += `<button class="cp-fb-btn" data-rating="down" data-msg-id="${msgId}" title="Not helpful">👎</button>`;
+        html += `</div>`;
+      }
       if (actions && actions.length) {
         html += '<div class="cp-actions">';
         actions.forEach(a => {
@@ -365,6 +376,24 @@
   // Load alerts on page load
   setTimeout(loadAlerts, 2000);
   setInterval(loadAlerts, 60000);
+
+  // ── FEEDBACK HANDLER ──
+  document.body.addEventListener('click', function(e) {
+    const fbBtn = e.target.closest('.cp-fb-btn');
+    if (!fbBtn) return;
+    const rating = fbBtn.getAttribute('data-rating');
+    const msgId = fbBtn.getAttribute('data-msg-id');
+    const msgEl = document.getElementById(msgId);
+    const responseText = msgEl ? msgEl.querySelector('.cp-bubble')?.textContent || '' : '';
+    // Mark selected
+    fbBtn.parentElement.querySelectorAll('.cp-fb-btn').forEach(b => b.classList.remove('selected'));
+    fbBtn.classList.add('selected');
+    // Send to server
+    fetch('/api/copilot/feedback', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({message_id: msgId, rating, response_text: responseText.substring(0, 200)})
+    }).catch(()=>{});
+  });
 
   // ── ACTION EXECUTION ──
   document.body.addEventListener('click', async function(e) {

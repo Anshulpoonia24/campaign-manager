@@ -75,6 +75,12 @@ class ActionExecutor:
             elapsed_ms = int((time.time() - start) * 1000)
             self._log_complete(audit_id, result, elapsed_ms)
             app_logger.info(f'[COPILOT] Action {action_name} executed in {elapsed_ms}ms')
+            # Phase 7: Track action usage
+            try:
+                from services.copilot.learning import track_action
+                track_action(self.wid, self.uid, action_name)
+            except Exception:
+                pass
             return {'success': True, **(result or {})}
         except Exception as e:
             elapsed_ms = int((time.time() - start) * 1000)
