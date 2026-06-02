@@ -1,17 +1,26 @@
 """
-services/copilot/orchestrator.py — Main AI Orchestration Layer
-================================================================
+services/copilot/orchestrator.py — Main AI Orchestration Layer (Phase 2)
+=========================================================================
 Routes user messages through:
-  Intent Detection → Context Build → Prompt Compose → AI Call → Parse → Execute
+  Intent Detection → Memory Recall → Context Build → Prompt Compose → AI Call → Parse → Execute → Memory Store
 """
 import json
 import time
 from datetime import datetime
 from utils.db import get_db
-from utils.logger import app_logger, error_logger
 from services.copilot.context_builder import ContextBuilder
 from services.copilot.action_registry import get_tools_json
 from services.copilot.executor import ActionExecutor
+from services.copilot.intent_detector import detect_intent
+from services.copilot.memory import add_turn, get_history_prompt, get_user_context
+from services.copilot.alerts import generate_alerts
+
+try:
+    from utils.logger import app_logger, error_logger
+except Exception:
+    import logging
+    app_logger = logging.getLogger('campaign')
+    error_logger = logging.getLogger('errors')
 
 
 # ── SYSTEM PROMPT ─────────────────────────────────────────────
@@ -24,6 +33,8 @@ IDENTITY:
 - You are proactive — surface issues before they escalate
 
 CURRENT PAGE: {page_type}
+{history_block}
+{preferences_block}
 
 PAGE CONTEXT:
 {context_json}
@@ -33,6 +44,8 @@ WORKSPACE STATE:
 
 ACTIVE ALERTS:
 {alerts_json}
+
+DETECTED INTENT: {detected_intent} (confidence: {intent_confidence})
 
 AVAILABLE ACTIONS (suggest these when appropriate):
 {tools_json}
@@ -54,7 +67,23 @@ RULES:
 - If the user asks something unrelated to OutreachOS, politely redirect
 - Return EMPTY actions array if no action is needed
 - Never suggest actions not in AVAILABLE ACTIONS list
+- Use DETECTED INTENT to focus your response appropriately
+- Reference CONVERSATION HISTORY to maintain continuity
 """
+
+
+# ── FAST-PATH RESPONSES (no AI call needed) ───────────────────
+
+FAST_RESPONSES = {
+    'greeting': {
+        'message': "Hey! I'm your OutreachOS copilot. I can help with campaigns, leads, inbox, deliverability — what do you need?",
+        'actions': [],
+    },
+    'help': {
+        'message': "I can: **pause/resume campaigns**, **draft replies**, **diagnose deliverability**, **enrich contacts**, **generate reports**, and more. Just ask naturally!",
+        'actions': [],
+    },
+}
 
 
 class CopilotOrchestrator:
@@ -67,36 +96,62 @@ class CopilotOrchestrator:
         """Main entry point for copilot chat."""
         start = time.time()
 
-        # 1. Build context
+        # 1. Detect intent locally (fast)
+        intent_result = detect_intent(message, page_type)
+        intent_name = intent_result['intent']
+        confidence = intent_result['confidence']
+
+        # 2. Fast-path for simple intents (no AI call)
+        if intent_name in FAST_RESPONSES and confidence >= 0.8:
+            resp = FAST_RESPONSES[intent_name]
+            add_turn(self.wid, self.uid, 'user', message)
+            add_turn(self.wid, self.uid, 'assistant', resp['message'])
+            self._log_conversation(message, resp, page_type, page_id, session_id)
+            return {'success': True, **resp}
+
+        # 3. Build context
         builder = ContextBuilder(self.wid, self.uid)
         ctx = builder.build(page_type, page_id)
 
-        # 2. Build prompt
+        # 4. Get conversation history + preferences
+        history_block = get_history_prompt(self.wid, self.uid)
+        preferences_block = get_user_context(self.wid, self.uid)
+
+        # 5. Build prompt
         tools = get_tools_json(page_type)
         system_prompt = SYSTEM_PROMPT_BASE.format(
             page_type=page_type,
+            history_block=history_block,
+            preferences_block=preferences_block,
             context_json=json.dumps(ctx.get('page', {}), default=str, indent=2)[:2000],
             workspace_json=json.dumps(ctx.get('workspace', {}), default=str),
             alerts_json=json.dumps(ctx.get('alerts', []), default=str),
+            detected_intent=intent_name,
+            intent_confidence=f"{confidence:.0%}",
             tools_json=json.dumps(tools, indent=2)[:3000],
         )
 
-        # 3. Call AI
+        # 6. Call AI
         response = self._call_ai(system_prompt, message)
 
-        # 4. Parse response
+        # 7. Parse response
         parsed = self._parse_response(response)
 
-        # 5. Log conversation
+        # 8. Store in memory
+        add_turn(self.wid, self.uid, 'user', message)
+        add_turn(self.wid, self.uid, 'assistant', parsed.get('message', ''))
+
+        # 9. Log conversation
         self._log_conversation(message, parsed, page_type, page_id, session_id)
 
         elapsed = int((time.time() - start) * 1000)
-        app_logger.info(f'[COPILOT] Chat processed in {elapsed}ms | page={page_type}')
+        app_logger.info(f'[COPILOT] Chat in {elapsed}ms | intent={intent_name} conf={confidence:.0%} | page={page_type}')
 
         return {
             'success': True,
             'message': parsed.get('message', ''),
             'actions': parsed.get('actions', []),
+            'intent': intent_name,
         }
 
     def execute_action(self, action_type: str, params: dict, session_id: str = '') -> dict:
@@ -106,57 +161,79 @@ class CopilotOrchestrator:
 
     def get_suggestions(self, page_type: str, page_id: int) -> list:
         """Get proactive suggestions without user asking."""
-        builder = ContextBuilder(self.wid, self.uid)
-        ctx = builder.build(page_type, page_id)
         suggestions = []
 
-        alerts = ctx.get('alerts', [])
+        # Get alerts
+        alerts = generate_alerts(self.wid)
         for alert in alerts[:3]:
             suggestions.append({
                 'type': 'alert',
                 'severity': alert.get('severity', 'info'),
                 'message': alert.get('message', ''),
+                'action': alert.get('action'),
             })
 
         # Page-specific suggestions
+        builder = ContextBuilder(self.wid, self.uid)
+        ctx = builder.build(page_type, page_id)
         page_ctx = ctx.get('page', {})
+
         if page_type == 'contacts':
-            enriched = page_ctx.get('enriched', 0)
             total = page_ctx.get('total', 0)
+            enriched = page_ctx.get('enriched', 0)
             if total > 0 and enriched < total * 0.5:
                 suggestions.append({
                     'type': 'tip',
                     'message': f'{total - enriched} contacts unenriched — bulk enrich for better AI emails',
-                    'action': {'type': 'bulk_enrich', 'label': 'Enrich All', 'params': {}}
+                    'action': {'type': 'bulk_enrich', 'label': 'Enrich All', 'params': {}},
                 })
         elif page_type == 'campaign_status':
             camp = page_ctx.get('campaign', {})
             if camp.get('failed_count', 0) > 5:
                 suggestions.append({
                     'type': 'tip',
-                    'message': f'{camp["failed_count"]} emails failed — check SMTP or retry',
-                    'action': {'type': 'diagnose_campaign', 'label': 'Diagnose',
-                               'params': {'campaign_id': camp.get('id', 0)}}
+                    'message': f'{camp["failed_count"]} emails failed — diagnose SMTP or retry',
+                    'action': {'type': 'diagnose_campaign', 'label': 'Diagnose', 'params': {'campaign_id': camp.get('id', 0)}},
+                })
+        elif page_type == 'inbox':
+            unread = page_ctx.get('unread', 0)
+            if unread > 5:
+                suggestions.append({
+                    'type': 'tip',
+                    'message': f'{unread} unread threads — want me to summarize the important ones?',
+                    'action': {'type': 'summarize_thread', 'label': 'Summarize', 'params': {}},
                 })
 
         return suggestions
+
+    def get_alerts(self) -> list:
+        """Get all active alerts for workspace."""
+        return generate_alerts(self.wid)
 
     # ── AI CALL ───────────────────────────────────────────────
 
     def _call_ai(self, system_prompt: str, user_message: str) -> str:
         """Call Groq/Gemini with the assembled prompt."""
         import requests as http_requests
-        from utils.db import get_setting
+        from utils.db import get_db
+
+        def _get_setting(key):
+            conn = get_db()
+            try:
+                row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+                return row[0] if row else ''
+            finally:
+                conn.close()
 
         # Try copilot-specific keys first, then email keys as fallback
         def _get(key):
-            val = get_setting(f'copilot_{key}')
-            return val if val else get_setting(f'email_{key}')
+            val = _get_setting(f'copilot_{key}')
+            return val if val else _get_setting(f'email_{key}')
 
         # Groq
         keys_str = _get('groq_keys') or ''
         keys = [k.strip() for k in keys_str.split(',') if k.strip()]
-        model = get_setting('copilot_model_groq') or 'llama-3.3-70b-versatile'
+        model = _get_setting('copilot_model_groq') or 'llama-3.3-70b-versatile'
 
         for key in keys:
             try:
@@ -186,7 +263,7 @@ class CopilotOrchestrator:
         # Gemini fallback
         gemini_key = _get('gemini_key')
         if gemini_key:
-            gemini_model = get_setting('copilot_model_gemini') or 'gemini-2.0-flash'
+            gemini_model = _get_setting('copilot_model_gemini') or 'gemini-2.0-flash'
             try:
                 full_prompt = f"{system_prompt}\n\nUSER: {user_message}\n\nRespond with valid JSON only."
                 r = http_requests.post(

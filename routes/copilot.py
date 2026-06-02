@@ -156,3 +156,52 @@ def copilot_usage():
         'successful_actions': successful,
         'success_rate': round(successful / max(1, total_actions) * 100, 1),
     })
+
+
+# ── PHASE 2: MEMORY ───────────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/memory/clear', methods=['POST'])
+@login_required
+def copilot_memory_clear():
+    """Clear conversation memory for current user."""
+    from services.copilot.memory import clear_history
+    clear_history(_get_wid(), current_user.id)
+    return jsonify({'success': True})
+
+
+@copilot_bp.route('/api/copilot/memory/preference', methods=['POST'])
+@login_required
+def copilot_set_preference():
+    """Set a user preference for copilot personalization."""
+    from services.copilot.memory import set_preference
+    data = request.json or {}
+    key = data.get('key', '').strip()
+    value = data.get('value', '').strip()
+    if not key:
+        return jsonify({'success': False, 'error': 'key required'})
+    set_preference(_get_wid(), current_user.id, key, value)
+    return jsonify({'success': True})
+
+
+# ── PHASE 2: INTENT DEBUG ────────────────────────────────────
+
+@copilot_bp.route('/api/copilot/intent', methods=['POST'])
+@login_required
+def copilot_detect_intent():
+    """Debug endpoint — test intent detection without AI call."""
+    from services.copilot.intent_detector import detect_intent
+    data = request.json or {}
+    message = data.get('message', '')
+    page_type = data.get('page_type', '')
+    result = detect_intent(message, page_type)
+    return jsonify(result)
+
+
+# ── PHASE 2: ALERT COUNT (for badge) ─────────────────────────
+
+@copilot_bp.route('/api/copilot/alert_count')
+@login_required
+def copilot_alert_count():
+    """Quick alert count for UI badge."""
+    from services.copilot.alerts import get_alert_count
+    return jsonify({'count': get_alert_count(_get_wid())})
