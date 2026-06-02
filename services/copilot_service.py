@@ -191,19 +191,23 @@ def call_ai(system_prompt: str, user_msg: str, context: dict, workspace_id: int 
         val = get_workspace_only_setting(key, workspace_id)
         return val if val else _fallback_setting(key)
 
+    def _copilot_setting(key):
+        """Get copilot-specific setting, fallback to legacy."""
+        val = _get_setting(f'copilot_{key}')
+        if val:
+            return val
+        legacy_map = {'groq_keys': 'groq_api_keys', 'gemini_key': 'gemini_api_key'}
+        return _get_setting(legacy_map.get(key, key))
+
     # Build the full prompt
     context_str = json.dumps(context, default=str, indent=2)
-    full_prompt = f"""{system_prompt}
 
-PAGE CONTEXT:
-{context_str}
-
-USER QUESTION: {user_msg}
-
-Respond with valid JSON only. No markdown wrapping."""
+    # Get models
+    groq_model = _get_setting('copilot_model_groq') or 'llama-3.3-70b-versatile'
+    gemini_model = _get_setting('copilot_model_gemini') or 'gemini-2.0-flash'
 
     # Try Groq first
-    keys_str = _get_setting('groq_api_keys') or ''
+    keys_str = _copilot_setting('groq_keys') or ''
     keys = [k.strip() for k in keys_str.split(',') if k.strip()]
 
     for key in keys:
@@ -212,7 +216,7 @@ Respond with valid JSON only. No markdown wrapping."""
                 'https://api.groq.com/openai/v1/chat/completions',
                 headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
                 json={
-                    'model': 'llama-3.3-70b-versatile',
+                    'model': groq_model,
                     'messages': [
                         {'role': 'system', 'content': system_prompt},
                         {'role': 'user', 'content': f"PAGE CONTEXT:\n{context_str}\n\nUSER: {user_msg}"}
@@ -233,11 +237,12 @@ Respond with valid JSON only. No markdown wrapping."""
             continue
 
     # Fallback: Gemini
-    gemini_key = _get_setting('gemini_api_key')
+    gemini_key = _copilot_setting('gemini_key')
     if gemini_key:
         try:
+            full_prompt = f"{system_prompt}\n\nPAGE CONTEXT:\n{context_str}\n\nUSER QUESTION: {user_msg}\n\nRespond with valid JSON only. No markdown wrapping."
             r = http_requests.post(
-                f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}',
+                f'https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}',
                 json={'contents': [{'parts': [{'text': full_prompt}]}]},
                 timeout=30
             )

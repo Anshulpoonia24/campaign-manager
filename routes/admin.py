@@ -304,13 +304,21 @@ def delete_tenant(wid):
 
 
 # ── AI CONFIG (Global) ────────────────────────────────────────
+AI_CONFIG_KEYS = (
+    'email_groq_keys', 'email_gemini_key', 'email_model_groq',
+    'email_model_gemini', 'email_ai_priority',
+    'copilot_groq_keys', 'copilot_gemini_key',
+    'copilot_model_groq', 'copilot_model_gemini',
+)
+
+
 @admin_bp.route('/ai-config', methods=['GET', 'POST'])
 @admin_required
 def ai_config():
     conn = get_db()
     if request.method == 'POST':
         data = request.get_json() if request.is_json else request.form
-        for key in ('groq_api_keys', 'gemini_api_key', 'ai_priority'):
+        for key in AI_CONFIG_KEYS:
             val = data.get(key)
             if val is not None:
                 existing = conn.execute("SELECT id FROM settings WHERE key=? AND workspace_id=1", (key,)).fetchone()
@@ -326,7 +334,7 @@ def ai_config():
         return redirect(url_for('admin.ai_config'))
     # GET
     settings = {}
-    for key in ('groq_api_keys', 'gemini_api_key', 'ai_priority'):
+    for key in AI_CONFIG_KEYS:
         row = conn.execute("SELECT value FROM settings WHERE key=? AND workspace_id=1", (key,)).fetchone()
         settings[key] = row[0] if row else ''
     conn.close()

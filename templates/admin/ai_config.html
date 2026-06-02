@@ -15,12 +15,13 @@ a{color:#818cf8;text-decoration:none;}a:hover{color:#a5b4fc;}
 .nav-link{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;color:#94a3b8;transition:all .15s;}.nav-link:hover,.nav-link.active{background:#334155;color:#e2e8f0;}
 .nav-right{display:flex;align-items:center;gap:12px;}
 .btn-sm{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid #334155;background:transparent;color:#94a3b8;cursor:pointer;}.btn-sm:hover{background:#334155;color:#e2e8f0;}
-.container{padding:24px 28px;max-width:900px;margin:0 auto;}
+.container{padding:24px 28px;max-width:1000px;margin:0 auto;}
 .panel{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;margin-bottom:20px;}
-.panel-title{font-size:14px;font-weight:700;color:#e2e8f0;margin-bottom:16px;display:flex;align-items:center;gap:8px;}.panel-title i{color:#6366f1;}
+.panel-title{font-size:14px;font-weight:700;color:#e2e8f0;margin-bottom:16px;display:flex;align-items:center;gap:8px;}.panel-title i{font-size:13px;}
 .form-label{display:block;font-size:12px;font-weight:600;color:#94a3b8;margin-bottom:6px;}
 .form-control{width:100%;padding:10px 14px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:13px;font-family:inherit;}.form-control:focus{outline:none;border-color:#6366f1;}
-textarea.form-control{resize:vertical;min-height:80px;}
+select.form-control{cursor:pointer;}
+textarea.form-control{resize:vertical;min-height:70px;}
 .form-hint{font-size:11px;color:#64748b;margin-top:4px;}
 .form-group{margin-bottom:16px;}
 .btn{padding:8px 18px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer;transition:all .15s;}
@@ -32,6 +33,11 @@ textarea.form-control{resize:vertical;min-height:80px;}
 .flash-success{background:#064e3b;color:#34d399;border:1px solid #065f46;}
 .flash-error{background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;}
 .divider{border:0;border-top:1px solid #334155;margin:20px 0;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.section-badge{display:inline-block;padding:3px 10px;border-radius:99px;font-size:10px;font-weight:700;margin-left:10px;}
+.badge-blue{background:#1e3a5f;color:#7dd3fc;border:1px solid #0c4a6e;}
+.badge-purple{background:#3b0764;color:#d8b4fe;border:1px solid #581c87;}
+@media(max-width:768px){.grid-2{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -58,67 +64,138 @@ textarea.form-control{resize:vertical;min-height:80px;}
   {% endfor %}
   {% endwith %}
 
-  <h2 style="font-size:18px;font-weight:800;margin-bottom:6px;"><i class="fas fa-robot" style="color:#6366f1;"></i> AI Copilot Configuration</h2>
-  <p style="color:#64748b;font-size:12px;margin-bottom:24px;">Global AI keys used by Copilot across all workspaces. These are the default keys — tenants can override in their own Settings.</p>
+  <h2 style="font-size:18px;font-weight:800;margin-bottom:6px;"><i class="fas fa-brain" style="color:#6366f1;"></i> AI Configuration</h2>
+  <p style="color:#64748b;font-size:12px;margin-bottom:24px;">Separate AI configs for Email Personalization and Copilot. Each has its own keys and model selection.</p>
 
-  <!-- Groq -->
+  <!-- ═══════════════════════════════════
+       EMAIL AI CONFIG
+  ═══════════════════════════════════ -->
   <div class="panel">
-    <div class="panel-title"><i class="fas fa-bolt" style="color:#3b82f6;"></i> Groq API (Primary — Free 14,400 req/day)</div>
+    <div class="panel-title"><i class="fas fa-envelope" style="color:#3b82f6;"></i> Email Personalization AI <span class="section-badge badge-blue">Campaign Emails</span></div>
+    <p style="font-size:11.5px;color:#64748b;margin-bottom:18px;">Used for: Campaign email generation, follow-ups, automation replies, contact enrichment, industry detection</p>
+
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Groq Model</label>
+        <select class="form-control" id="email_model_groq">
+          <option value="llama-3.3-70b-versatile" {{ 'selected' if settings.email_model_groq == 'llama-3.3-70b-versatile' or not settings.email_model_groq }}>llama-3.3-70b-versatile (Best)</option>
+          <option value="llama-3.1-8b-instant" {{ 'selected' if settings.email_model_groq == 'llama-3.1-8b-instant' }}>llama-3.1-8b-instant (Fast)</option>
+          <option value="mixtral-8x7b-32768" {{ 'selected' if settings.email_model_groq == 'mixtral-8x7b-32768' }}>mixtral-8x7b-32768</option>
+          <option value="gemma2-9b-it" {{ 'selected' if settings.email_model_groq == 'gemma2-9b-it' }}>gemma2-9b-it</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Gemini Model</label>
+        <select class="form-control" id="email_model_gemini">
+          <option value="gemini-2.0-flash" {{ 'selected' if settings.email_model_gemini == 'gemini-2.0-flash' or not settings.email_model_gemini }}>gemini-2.0-flash (Recommended)</option>
+          <option value="gemini-2.5-flash" {{ 'selected' if settings.email_model_gemini == 'gemini-2.5-flash' }}>gemini-2.5-flash</option>
+          <option value="gemini-1.5-flash" {{ 'selected' if settings.email_model_gemini == 'gemini-1.5-flash' }}>gemini-1.5-flash</option>
+        </select>
+      </div>
+    </div>
+
     <div class="form-group">
-      <label class="form-label">API Keys <span style="color:#64748b;font-weight:400;">(comma separated for rotation)</span></label>
-      <textarea class="form-control" id="groqKeys" placeholder="gsk_abc123..., gsk_def456...">{{ settings.groq_api_keys }}</textarea>
-      <div class="form-hint">Get from: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> · Auto-rotates when rate limited</div>
+      <label class="form-label">Groq API Keys <span style="color:#64748b;font-weight:400;">(comma separated for rotation)</span></label>
+      <textarea class="form-control" id="email_groq_keys" rows="3" placeholder="gsk_abc123..., gsk_def456...">{{ settings.email_groq_keys }}</textarea>
+      <div class="form-hint">Get from: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> · Auto-rotates on rate limit</div>
     </div>
-    <div class="btn-row">
-      <button class="btn btn-outline" onclick="testKey('groq')"><i class="fas fa-plug"></i> Test Connection</button>
-      <span id="groqStatus" class="status-msg"></span>
-    </div>
-  </div>
 
-  <!-- Gemini -->
-  <div class="panel">
-    <div class="panel-title"><i class="fas fa-star" style="color:#8b5cf6;"></i> Gemini API (Fallback)</div>
     <div class="form-group">
       <label class="form-label">Gemini API Key</label>
-      <input type="password" class="form-control" id="geminiKey" value="{{ settings.gemini_api_key }}" placeholder="AIzaSy...">
+      <div style="display:flex;gap:8px;">
+        <input type="password" class="form-control" id="email_gemini_key" value="{{ settings.email_gemini_key }}" placeholder="AIzaSy..." style="flex:1;">
+        <button class="btn btn-outline" onclick="toggleVis('email_gemini_key')"><i class="fas fa-eye"></i></button>
+      </div>
       <div class="form-hint">Get from: <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a></div>
     </div>
-    <div class="btn-row">
-      <button class="btn btn-outline" onclick="testKey('gemini')"><i class="fas fa-plug"></i> Test Connection</button>
-      <button class="btn btn-outline" onclick="document.getElementById('geminiKey').type = document.getElementById('geminiKey').type==='password'?'text':'password'"><i class="fas fa-eye"></i> Toggle</button>
-      <span id="geminiStatus" class="status-msg"></span>
-    </div>
-  </div>
 
-  <!-- Priority -->
-  <div class="panel">
-    <div class="panel-title"><i class="fas fa-sort-amount-down"></i> AI Priority Order</div>
     <div class="form-group">
-      <label class="form-label">Priority (comma separated)</label>
-      <input type="text" class="form-control" id="aiPriority" value="{{ settings.ai_priority or 'groq,gemini' }}" placeholder="groq,gemini">
-      <div class="form-hint">Order in which AI providers are tried. First available key wins.</div>
+      <label class="form-label">Priority Order</label>
+      <input type="text" class="form-control" id="email_ai_priority" value="{{ settings.email_ai_priority or 'groq,gemini' }}" placeholder="groq,gemini" style="max-width:300px;">
+      <div class="form-hint">Comma separated. Tried in order until one succeeds.</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="testKey('groq','email_groq_keys','emailGroqStatus')"><i class="fas fa-plug"></i> Test Groq</button>
+      <button class="btn btn-outline" onclick="testKey('gemini','email_gemini_key','emailGeminiStatus')"><i class="fas fa-plug"></i> Test Gemini</button>
+      <span id="emailGroqStatus" class="status-msg"></span>
+      <span id="emailGeminiStatus" class="status-msg"></span>
     </div>
   </div>
 
-  <!-- Save -->
-  <div class="btn-row">
-    <button class="btn btn-primary" onclick="saveAll()"><i class="fas fa-save"></i> Save All AI Config</button>
+  <!-- ═══════════════════════════════════
+       COPILOT AI CONFIG
+  ═══════════════════════════════════ -->
+  <div class="panel">
+    <div class="panel-title"><i class="fas fa-robot" style="color:#8b5cf6;"></i> Copilot AI <span class="section-badge badge-purple">AI Assistant</span></div>
+    <p style="font-size:11.5px;color:#64748b;margin-bottom:18px;">Used for: In-app Copilot chat, campaign diagnostics, reply drafting, suggestions</p>
+
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Groq Model</label>
+        <select class="form-control" id="copilot_model_groq">
+          <option value="llama-3.3-70b-versatile" {{ 'selected' if settings.copilot_model_groq == 'llama-3.3-70b-versatile' or not settings.copilot_model_groq }}>llama-3.3-70b-versatile (Best)</option>
+          <option value="llama-3.1-8b-instant" {{ 'selected' if settings.copilot_model_groq == 'llama-3.1-8b-instant' }}>llama-3.1-8b-instant (Fast)</option>
+          <option value="mixtral-8x7b-32768" {{ 'selected' if settings.copilot_model_groq == 'mixtral-8x7b-32768' }}>mixtral-8x7b-32768</option>
+          <option value="gemma2-9b-it" {{ 'selected' if settings.copilot_model_groq == 'gemma2-9b-it' }}>gemma2-9b-it</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Gemini Model</label>
+        <select class="form-control" id="copilot_model_gemini">
+          <option value="gemini-2.0-flash" {{ 'selected' if settings.copilot_model_gemini == 'gemini-2.0-flash' or not settings.copilot_model_gemini }}>gemini-2.0-flash (Recommended)</option>
+          <option value="gemini-2.5-flash" {{ 'selected' if settings.copilot_model_gemini == 'gemini-2.5-flash' }}>gemini-2.5-flash</option>
+          <option value="gemini-1.5-flash" {{ 'selected' if settings.copilot_model_gemini == 'gemini-1.5-flash' }}>gemini-1.5-flash</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Groq API Keys <span style="color:#64748b;font-weight:400;">(comma separated)</span></label>
+      <textarea class="form-control" id="copilot_groq_keys" rows="3" placeholder="gsk_xyz789...">{{ settings.copilot_groq_keys }}</textarea>
+      <div class="form-hint">Can use same keys as Email AI, or separate keys for rate limit isolation</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Gemini API Key</label>
+      <div style="display:flex;gap:8px;">
+        <input type="password" class="form-control" id="copilot_gemini_key" value="{{ settings.copilot_gemini_key }}" placeholder="AIzaSy..." style="flex:1;">
+        <button class="btn btn-outline" onclick="toggleVis('copilot_gemini_key')"><i class="fas fa-eye"></i></button>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="testKey('groq','copilot_groq_keys','copilotGroqStatus')"><i class="fas fa-plug"></i> Test Groq</button>
+      <button class="btn btn-outline" onclick="testKey('gemini','copilot_gemini_key','copilotGeminiStatus')"><i class="fas fa-plug"></i> Test Gemini</button>
+      <span id="copilotGroqStatus" class="status-msg"></span>
+      <span id="copilotGeminiStatus" class="status-msg"></span>
+    </div>
+  </div>
+
+  <!-- SAVE ALL -->
+  <div class="btn-row" style="margin-bottom:40px;">
+    <button class="btn btn-primary" onclick="saveAll()" style="padding:10px 28px;font-size:13px;"><i class="fas fa-save"></i> Save All AI Config</button>
     <span id="saveStatus" class="status-msg"></span>
   </div>
 
 </div>
 
 <script>
-function testKey(provider) {
-  const statusEl = document.getElementById(provider === 'groq' ? 'groqStatus' : 'geminiStatus');
+function toggleVis(id) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+function testKey(provider, fieldId, statusId) {
+  const statusEl = document.getElementById(statusId);
+  const el = document.getElementById(fieldId);
   let key = '';
-  if (provider === 'groq') {
-    const keys = document.getElementById('groqKeys').value.trim();
-    key = keys.split(',')[0].trim();
+  if (el.tagName === 'TEXTAREA') {
+    key = el.value.trim().split(',')[0].trim();
   } else {
-    key = document.getElementById('geminiKey').value.trim();
+    key = el.value.trim();
   }
-  if (!key) { statusEl.innerHTML = '<span class="status-err">No key entered</span>'; return; }
+  if (!key) { statusEl.innerHTML = '<span class="status-err">No key</span>'; return; }
   statusEl.innerHTML = '<span style="color:#fbbf24;">Testing...</span>';
   fetch('/admin/ai-config/test', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -133,16 +210,25 @@ function testKey(provider) {
 function saveAll() {
   const saveStatus = document.getElementById('saveStatus');
   saveStatus.innerHTML = '<span style="color:#fbbf24;">Saving...</span>';
+
+  const data = {
+    email_groq_keys: document.getElementById('email_groq_keys').value,
+    email_gemini_key: document.getElementById('email_gemini_key').value,
+    email_model_groq: document.getElementById('email_model_groq').value,
+    email_model_gemini: document.getElementById('email_model_gemini').value,
+    email_ai_priority: document.getElementById('email_ai_priority').value,
+    copilot_groq_keys: document.getElementById('copilot_groq_keys').value,
+    copilot_gemini_key: document.getElementById('copilot_gemini_key').value,
+    copilot_model_groq: document.getElementById('copilot_model_groq').value,
+    copilot_model_gemini: document.getElementById('copilot_model_gemini').value,
+  };
+
   fetch('/admin/ai-config', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      groq_api_keys: document.getElementById('groqKeys').value,
-      gemini_api_key: document.getElementById('geminiKey').value,
-      ai_priority: document.getElementById('aiPriority').value
-    })
+    body: JSON.stringify(data)
   }).then(r => r.json()).then(d => {
     saveStatus.innerHTML = d.success
-      ? '<span class="status-ok"><i class="fas fa-check-circle"></i> Saved!</span>'
+      ? '<span class="status-ok"><i class="fas fa-check-circle"></i> All saved!</span>'
       : '<span class="status-err">Save failed</span>';
     setTimeout(() => { saveStatus.innerHTML = ''; }, 3000);
   }).catch(() => { saveStatus.innerHTML = '<span class="status-err">Network error</span>'; });

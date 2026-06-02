@@ -9,6 +9,16 @@ groq_key_index = 0
 groq_rate_limits = {}
 
 
+def _email_setting(key):
+    """Get email-specific AI setting, fallback to legacy keys."""
+    val = get_setting(f'email_{key}')
+    if val:
+        return val
+    # Fallback to old keys for backward compat
+    legacy_map = {'groq_keys': 'groq_api_keys', 'gemini_key': 'gemini_api_key', 'ai_priority': 'ai_priority'}
+    return get_setting(legacy_map.get(key, key))
+
+
 def call_ollama(prompt):
     url = get_setting('ollama_url') or 'http://localhost:11434'
     model = get_setting('ollama_model') or 'phi3:mini'
@@ -25,17 +35,19 @@ def call_ollama(prompt):
 
 def call_groq(prompt):
     global groq_key_index, groq_rate_limits
-    keys_str = get_setting('groq_api_keys') or ''
+    keys_str = _email_setting('groq_keys') or ''
     keys = [k.strip() for k in keys_str.split(',') if k.strip()]
     if not keys:
         return None, 'No Groq keys'
+
+    model = get_setting('email_model_groq') or 'llama-3.3-70b-versatile'
 
     for i in range(len(keys)):
         key = keys[(groq_key_index + i) % len(keys)]
         try:
             r = http_requests.post('https://api.groq.com/openai/v1/chat/completions',
                 headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
-                json={'model': 'llama-3.3-70b-versatile', 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': 1000},
+                json={'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': 1000},
                 timeout=30)
             groq_rate_limits[key[-8:]] = {
                 'limit_requests': r.headers.get('x-ratelimit-limit-requests', '?'),
@@ -59,12 +71,13 @@ def call_groq(prompt):
 
 
 def call_gemini(prompt):
-    api_key = get_setting('gemini_api_key')
+    api_key = _email_setting('gemini_key')
     if not api_key:
         return None, 'No Gemini key'
+    model = get_setting('email_model_gemini') or 'gemini-2.0-flash'
     try:
         r = http_requests.post(
-            f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}',
+            f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}',
             json={'contents': [{'parts': [{'text': prompt}]}]}, timeout=30)
         if r.status_code == 200:
             return r.json()['candidates'][0]['content']['parts'][0]['text'].strip(), None
@@ -85,7 +98,7 @@ USE the above context to write a SPECIFIC opening line. Do NOT write generic ema
 
 """ + prompt
 
-    priority = (get_setting('ai_priority') or 'ollama,groq,gemini').split(',')
+    priority = (_email_setting('ai_priority') or 'groq,gemini').split(',')
 
     for provider in priority:
         provider = provider.strip().lower()
