@@ -196,6 +196,15 @@ login_manager.login_message = 'Please login to access this page.'
 login_manager.login_message_category = 'error'
 
 
+@login_manager.unauthorized_handler
+def unauthorized_api():
+    """Return JSON 401 for API requests instead of redirect."""
+    from flask import request as req, jsonify, redirect, url_for
+    if req.path.startswith('/api/'):
+        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+    return redirect(url_for('login', next=req.path))
+
+
 class User(UserMixin):
     def __init__(self, id, username, role='admin', workspace_id=1):
         self.id = id

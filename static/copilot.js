@@ -281,8 +281,10 @@
       const r = await fetch('/api/copilot/chat', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
         body: JSON.stringify({message: msg, page_type: PAGE_TYPE, page_id: PAGE_ID})
       });
+      if (r.status === 401) { appendBubble('ai', 'Session expired. Please refresh the page.', null, true); sending=false; sendBtn.disabled=false; return; }
       const d = await r.json();
       const typing = document.getElementById(typingId);
       if (typing) typing.remove();
@@ -416,8 +418,10 @@
       const r = await fetch('/api/copilot/action', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
         body: JSON.stringify({action_type: actionData.type, params: actionData.params || {}, page_type: PAGE_TYPE, page_id: PAGE_ID})
       });
+      if (r.status === 401) { btnEl.textContent = '✗ Session expired'; return; }
       const d = await r.json();
       if (d.success) {
         // Handle navigation — any action that returns url
