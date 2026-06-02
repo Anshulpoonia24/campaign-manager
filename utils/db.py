@@ -71,6 +71,10 @@ def _build_pg_dsn():
         if 'sslmode' not in url:
             sep = '&' if '?' in url else '?'
             url += sep + 'sslmode=require'
+        # Disable strict cert verification to avoid SSL decryption errors
+        if 'sslrootcert' not in url:
+            sep = '&' if '?' in url else '?'
+            url += sep + 'sslrootcert=system'
         return url
     return (
         f"host={os.getenv('DB_HOST','localhost')} "
@@ -91,12 +95,12 @@ def _get_pg_pool():
             dsn = _build_pg_dsn()
             print(f'[DB] Connecting to PostgreSQL... (dsn length={len(dsn)})')
             _pg_pool = pg_pool.ThreadedConnectionPool(
-                minconn=2,
-                maxconn=20,
+                minconn=1,
+                maxconn=10,
                 dsn=dsn
             )
             print('[DB] PostgreSQL pool OK')
-            logger.info('[DB] PostgreSQL connection pool initialized (2–20 connections)')
+            logger.info('[DB] PostgreSQL connection pool initialized (1–10 connections)')
         except Exception as e:
             print(f'[DB] PostgreSQL pool FAILED: {e}')
             logger.error(f'[DB] PostgreSQL pool init failed: {e}')
@@ -283,6 +287,23 @@ def get_db():
         try:
             pool = _get_pg_pool()
             raw = pool.getconn()
+            # Validate connection is alive (fixes SSL stale connection errors)
+            try:
+                raw.cursor().execute('SELECT 1')
+            except Exception:
+                # Connection is dead/stale — close and get fresh one
+                try:
+                    pool.putconn(raw, close=True)
+                except Exception:
+                    try:
+                        raw.close()
+                    except Exception:
+                        pass
+                # Reset pool if all connections are broken
+                global _pg_pool
+                _pg_pool = None
+                pool = _get_pg_pool()
+                raw = pool.getconn()
             return PgConnection(raw)
         except Exception as e:
             print(f'[DB] PostgreSQL FAILED: {e}')
