@@ -53,22 +53,25 @@ def copilot_chat():
 @login_required
 def copilot_action():
     """Execute a confirmed copilot action."""
-    from services.copilot.orchestrator import CopilotOrchestrator
-    data = request.json or {}
-    action_type = data.get('action_type', '')
-    params = data.get('params', {})
-    session_id = data.get('session_id', '')
+    try:
+        from services.copilot.orchestrator import CopilotOrchestrator
+        data = request.json or {}
+        action_type = data.get('action_type', '')
+        params = data.get('params', {})
+        session_id = data.get('session_id', '')
 
-    if not action_type:
-        return jsonify({'success': False, 'error': 'No action_type'})
+        if not action_type:
+            return jsonify({'success': False, 'error': 'No action_type'})
 
-    orchestrator = CopilotOrchestrator(
-        workspace_id=_get_wid(),
-        user_id=current_user.id,
-        role=_get_role()
-    )
-    result = orchestrator.execute_action(action_type, params, session_id)
-    return jsonify(result)
+        orchestrator = CopilotOrchestrator(
+            workspace_id=_get_wid(),
+            user_id=current_user.id,
+            role=_get_role()
+        )
+        result = orchestrator.execute_action(action_type, params, session_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)[:200]})
 
 
 # ── PROACTIVE SUGGESTIONS ────────────────────────────────────

@@ -266,6 +266,46 @@ register('show_info',
     handler_path='services.copilot.handlers.navigation.show_info',
     page_types=[])
 
+register('create_campaign',
+    description='Navigate to campaign creation page',
+    category='navigation', risk_level=RISK_SAFE,
+    requires_confirmation=False,
+    params_schema={},
+    handler_path='services.copilot.handlers.navigation.create_campaign',
+    page_types=['dashboard', 'campaigns'])
+
+register('add_smtp',
+    description='Navigate to SMTP account setup page',
+    category='navigation', risk_level=RISK_SAFE,
+    requires_confirmation=False,
+    params_schema={},
+    handler_path='services.copilot.handlers.navigation.add_smtp',
+    page_types=['dashboard', 'settings', 'deliverability'])
+
+register('upload_contacts',
+    description='Navigate to contacts upload page',
+    category='navigation', risk_level=RISK_SAFE,
+    requires_confirmation=False,
+    params_schema={},
+    handler_path='services.copilot.handlers.navigation.upload_contacts',
+    page_types=['dashboard', 'contacts'])
+
+register('view_analytics',
+    description='Navigate to analytics page',
+    category='navigation', risk_level=RISK_SAFE,
+    requires_confirmation=False,
+    params_schema={},
+    handler_path='services.copilot.handlers.navigation.view_analytics',
+    page_types=['dashboard'])
+
+register('open_settings',
+    description='Navigate to settings page',
+    category='navigation', risk_level=RISK_SAFE,
+    requires_confirmation=False,
+    params_schema={},
+    handler_path='services.copilot.handlers.navigation.open_settings',
+    page_types=[])
+
 # ── BATCH OPERATIONS (Phase 6) ────────────────────────────────
 register('batch_pause_campaigns',
     description='Pause all running campaigns at once',

@@ -420,8 +420,8 @@
       });
       const d = await r.json();
       if (d.success) {
-        // Handle navigation
-        if (actionData.type === 'navigate' && d.url) {
+        // Handle navigation — any action that returns url
+        if (d.url) {
           window.location.href = d.url;
           return;
         }
