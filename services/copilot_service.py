@@ -192,12 +192,8 @@ def call_ai(system_prompt: str, user_msg: str, context: dict, workspace_id: int 
         return val if val else _fallback_setting(key)
 
     def _copilot_setting(key):
-        """Get copilot-specific setting, fallback to legacy."""
-        val = _get_setting(f'copilot_{key}')
-        if val:
-            return val
-        legacy_map = {'groq_keys': 'groq_api_keys', 'gemini_key': 'gemini_api_key'}
-        return _get_setting(legacy_map.get(key, key))
+        """Get copilot-specific setting."""
+        return _get_setting(f'copilot_{key}')
 
     # Build the full prompt
     context_str = json.dumps(context, default=str, indent=2)

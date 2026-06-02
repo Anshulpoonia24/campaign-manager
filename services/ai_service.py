@@ -10,13 +10,8 @@ groq_rate_limits = {}
 
 
 def _email_setting(key):
-    """Get email-specific AI setting, fallback to legacy keys."""
-    val = get_setting(f'email_{key}')
-    if val:
-        return val
-    # Fallback to old keys for backward compat
-    legacy_map = {'groq_keys': 'groq_api_keys', 'gemini_key': 'gemini_api_key', 'ai_priority': 'ai_priority'}
-    return get_setting(legacy_map.get(key, key))
+    """Get email-specific AI setting."""
+    return get_setting(f'email_{key}')
 
 
 def call_ollama(prompt):
