@@ -139,7 +139,7 @@ def admin_dashboard():
 def tenant_list():
     conn = get_db()
     workspaces = conn.execute("""
-        SELECT w.*,
+        SELECT w.id, w.name, w.slug, w.plan, w.created_at, w.updated_at,
             COUNT(DISTINCT u.id)  as user_count,
             COUNT(DISTINCT c.id)  as contact_count,
             COUNT(DISTINCT ca.id) as campaign_count,
@@ -149,7 +149,7 @@ def tenant_list():
         LEFT JOIN contacts c      ON c.workspace_id  = w.id
         LEFT JOIN campaigns ca    ON ca.workspace_id = w.id
         LEFT JOIN smtp_accounts s ON s.workspace_id  = w.id
-        GROUP BY w.id
+        GROUP BY w.id, w.name, w.slug, w.plan, w.created_at, w.updated_at
         ORDER BY w.created_at DESC
     """).fetchall()
     conn.close()
