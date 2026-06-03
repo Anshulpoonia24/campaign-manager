@@ -14,7 +14,7 @@ auth_bp = Blueprint('auth', __name__)
 def register():
     """Self-serve signup — creates user + workspace automatically."""
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('dash.dashboard'))
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
@@ -60,7 +60,7 @@ def register():
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('dash.dashboard'))
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
@@ -75,7 +75,7 @@ def login():
             login_user(user, remember=True)
             app_logger.info(f'Login successful: {username}')
             next_page = request.args.get('next')
-            return redirect(next_page or url_for('dashboard'))
+            return redirect(next_page or url_for('dash.dashboard'))
         app_logger.warning(f'Login failed: {username} from {request.remote_addr}')
         flash('Invalid username or password!', 'error')
     return render_template('login.html')
@@ -97,23 +97,23 @@ def change_password():
     confirm_pw = request.form.get('confirm_password', '')
     if not current_pw or not new_pw:
         flash('All fields required!', 'error')
-        return redirect(url_for('settings_page'))
+        return redirect(url_for('settings_routes.settings_page'))
     if new_pw != confirm_pw:
         flash('New passwords do not match!', 'error')
-        return redirect(url_for('settings_page'))
+        return redirect(url_for('settings_routes.settings_page'))
     if len(new_pw) < 6:
         flash('Password must be at least 6 characters!', 'error')
-        return redirect(url_for('settings_page'))
+        return redirect(url_for('settings_routes.settings_page'))
     from app import get_db
     conn = get_db()
     user_row = conn.execute("SELECT * FROM users WHERE id=?", (current_user.id,)).fetchone()
     if not check_password_hash(user_row['password_hash'], current_pw):
         flash('Current password is wrong!', 'error')
         conn.close()
-        return redirect(url_for('settings_page'))
+        return redirect(url_for('settings_routes.settings_page'))
     conn.execute("UPDATE users SET password_hash=? WHERE id=?",
                  (generate_password_hash(new_pw), current_user.id))
     conn.commit()
     conn.close()
-    flash('Password changed successfully! 🔒', 'success')
-    return redirect(url_for('settings_page'))
+    flash('Password changed successfully!', 'success')
+    return redirect(url_for('settings_routes.settings_page'))
