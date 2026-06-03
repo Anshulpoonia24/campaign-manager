@@ -99,13 +99,27 @@ app.secret_key = os.getenv('SECRET_KEY', 'CHANGE-ME-generate-with-python-secrets
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB upload limit
 DB_PATH = os.path.join(DATA_DIR, 'campaigns.db')
 
-# Register admin blueprint
+# Register blueprints
 from routes.admin import admin_bp
 app.register_blueprint(admin_bp)
 
-# Register AI SDR Copilot blueprint (Phase 1+2)
 from routes.copilot import copilot_bp
 app.register_blueprint(copilot_bp)
+
+from routes.auth import auth_bp
+app.register_blueprint(auth_bp)
+
+from routes.tracking import tracking_bp
+app.register_blueprint(tracking_bp)
+
+from routes.inbox import inbox_bp
+app.register_blueprint(inbox_bp)
+
+from routes.automations import automations_bp
+app.register_blueprint(automations_bp)
+
+from routes.analytics import analytics_bp
+app.register_blueprint(analytics_bp)
 
 # ==============================
 # LOGGING (production-safe, rotating)
@@ -191,7 +205,7 @@ def file_too_large(e):
 # ==============================
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login'
+login_manager.login_view = 'auth.login'
 login_manager.login_message = 'Please login to access this page.'
 login_manager.login_message_category = 'error'
 
@@ -202,7 +216,7 @@ def unauthorized_api():
     from flask import request as req, jsonify, redirect, url_for
     if req.path.startswith('/api/'):
         return jsonify({'success': False, 'error': 'Not authenticated'}), 401
-    return redirect(url_for('login', next=req.path))
+    return redirect(url_for('auth.login', next=req.path))
 
 
 class User(UserMixin):
@@ -944,68 +958,16 @@ def inject_tracking_pixel(body, tracking_id, contact_id=None, campaign_id=None, 
     return body
 
 
-@app.route('/track/<tracking_id>.png')
-def track_open(tracking_id):
-    """1x1 transparent pixel — marks email as opened, logs event, updates lead score."""
-    from services.tracking import process_open
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
-    ua = request.headers.get('User-Agent', '')
-    process_open(tracking_id, ip, ua)
-    return Response(
-        TRACKING_PIXEL, mimetype='image/png',
-        headers={'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache'}
-    )
 
 
-@app.route('/click/<token>')
-def track_click(token):
-    """Click tracking redirect — logs event, updates lead score, redirects safely."""
-    from services.tracking import process_click, is_safe_url
-    original_url = request.args.get('url', '')
-    tracking_id  = request.args.get('tid', '')
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
-    ua = request.headers.get('User-Agent', '')
-
-    if not original_url:
-        return redirect('https://shikshainfotech.com')
-
-    redirect_url = process_click(token, original_url, tracking_id, ip, ua)
-    if redirect_url:
-        return redirect(redirect_url)
-    return redirect('https://shikshainfotech.com')
 
 
-@app.route('/unsubscribe/<tracking_id>', methods=['GET', 'POST'])
-def unsubscribe(tracking_id):
-    """Public unsubscribe page — no login needed"""
-    conn = get_db()
-    record = conn.execute("SELECT email FROM emails_sent WHERE tracking_id=?", (tracking_id,)).fetchone()
-    if not record:
-        conn.close()
-        return render_template('unsubscribe.html', success=False, error='Invalid link')
-
-    email = record['email']
-
-    if request.method == 'POST':
-        reason = request.form.get('reason', '')
-        existing = conn.execute("SELECT id FROM unsubscribes WHERE email=?", (email,)).fetchone()
-        if not existing:
-            conn.execute("INSERT INTO unsubscribes (email, reason) VALUES (?,?)", (email, reason))
-            conn.commit()
-        conn.close()
-        return render_template('unsubscribe.html', success=True, email=email)
-
-    conn.close()
-    return render_template('unsubscribe.html', success=None, email=email, tracking_id=tracking_id)
 
 
-@app.route('/api/unsubscribes')
-@login_required
-def api_unsubscribes():
-    conn = get_db()
-    rows = conn.execute("SELECT * FROM unsubscribes ORDER BY unsubscribed_at DESC").fetchall()
-    conn.close()
-    return jsonify({'unsubscribes': [{'email': r['email'], 'reason': r['reason'], 'date': r['unsubscribed_at']} for r in rows]})
+
+
+
+
 
 
 def is_unsubscribed(email):
@@ -1246,116 +1208,18 @@ def start_imap_checker():
 
 
 # ==============================
-# AUTH ROUTES
+# AUTH ROUTES (handled by routes/auth.py blueprint)
 # ==============================
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    """Self-serve signup — creates user + workspace automatically."""
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    if request.method == 'POST':
-        username    = request.form.get('username', '').strip()
-        password    = request.form.get('password', '')
-        workspace_n = request.form.get('workspace_name', '').strip() or f"{username}'s Workspace"
-        if not username or not password:
-            flash('Username and password required.', 'error')
-            return render_template('register.html')
-        if len(password) < 6:
-            flash('Password must be at least 6 characters.', 'error')
-            return render_template('register.html')
-        conn = get_db()
-        if conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone():
-            conn.close()
-            flash('Username already taken.', 'error')
-            return render_template('register.html')
-        # Create workspace
-        from services.workspace_service import create_workspace
-        wid = create_workspace(workspace_n)
-        # Create user
-        conn.execute(
-            "INSERT INTO users (username, password_hash, role, workspace_id) VALUES (?,?,?,?)",
-            (username, generate_password_hash(password), 'admin', wid)
-        )
-        conn.commit()
-        # Copy default settings for new workspace
-        for k, v in DEFAULT_SETTINGS.items():
-            conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)", (k, v, wid))
-        # Copy default automation rules
-        for rule_key, enabled, delay_days, max_followups in [
-            ('no_reply_followup',1,2,3),('opened_multiple_times',1,1,2),
-            ('interested_pause',1,0,0),('ooo_retry',1,7,1),('bounce_pause',1,0,0)
-        ]:
-            conn.execute(
-                "INSERT OR IGNORE INTO automation_settings (rule_key,enabled,delay_days,max_followups,workspace_id) VALUES (?,?,?,?,?)",
-                (rule_key, enabled, delay_days, max_followups, wid)
-            )
-        conn.commit()
-        conn.close()
-        app_logger.info(f'New user registered: {username} workspace_id={wid}')
-        flash('Account created! Please log in.', 'success')
-        return redirect(url_for('login'))
-    return render_template('register.html')
 
 
-@app.route('/login', methods=['GET', 'POST'])
-@limiter.limit("10 per minute")
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '')
-        conn = get_db()
-        user_row = conn.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-        conn.close()
-        if user_row and check_password_hash(user_row['password_hash'], password):
-            wid = user_row['workspace_id'] if 'workspace_id' in user_row.keys() else 1
-            user = User(user_row['id'], user_row['username'], user_row['role'], wid)
-            login_user(user, remember=True)
-            app_logger.info(f'Login successful: {username}')
-            next_page = request.args.get('next')
-            return redirect(next_page or url_for('dashboard'))
-        app_logger.warning(f'Login failed: {username} from {request.remote_addr}')
-        flash('Invalid username or password!', 'error')
-    return render_template('login.html')
 
 
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    flash('Logged out successfully!', 'success')
-    return redirect(url_for('login'))
 
 
-@app.route('/change_password', methods=['POST'])
-@login_required
-@limiter.limit("5 per minute")
-def change_password():
-    current_pw = request.form.get('current_password', '')
-    new_pw = request.form.get('new_password', '')
-    confirm_pw = request.form.get('confirm_password', '')
-    if not current_pw or not new_pw:
-        flash('All fields required!', 'error')
-        return redirect(url_for('settings_page'))
-    if new_pw != confirm_pw:
-        flash('New passwords do not match!', 'error')
-        return redirect(url_for('settings_page'))
-    if len(new_pw) < 6:
-        flash('Password must be at least 6 characters!', 'error')
-        return redirect(url_for('settings_page'))
-    conn = get_db()
-    user_row = conn.execute("SELECT * FROM users WHERE id=?", (current_user.id,)).fetchone()
-    if not check_password_hash(user_row['password_hash'], current_pw):
-        flash('Current password is wrong!', 'error')
-        conn.close()
-        return redirect(url_for('settings_page'))
-    conn.execute("UPDATE users SET password_hash=? WHERE id=?",
-                 (generate_password_hash(new_pw), current_user.id))
-    conn.commit()
-    conn.close()
-    flash('Password changed successfully! 🔒', 'success')
-    return redirect(url_for('settings_page'))
+
+
+
+
 
 
 # ==============================
@@ -2314,25 +2178,7 @@ def api_verify_status():
     })
 
 
-@app.route('/api/ai_usage')
-@login_required
-def api_ai_usage():
-    conn = get_db()
-    # By provider
-    by_provider = conn.execute("""
-        SELECT provider, COUNT(*) as total, SUM(success) as success 
-        FROM ai_usage GROUP BY provider
-    """).fetchall()
-    # By date
-    by_date = conn.execute("""
-        SELECT DATE(created_at) as day, provider, COUNT(*) as total 
-        FROM ai_usage GROUP BY day, provider ORDER BY day
-    """).fetchall()
-    conn.close()
-    return jsonify({
-        'by_provider': [{'provider': r['provider'], 'total': r['total'], 'success': r['success']} for r in by_provider],
-        'by_date': [{'day': r['day'], 'provider': r['provider'], 'total': r['total']} for r in by_date]
-    })
+
 
 
 @app.route('/campaigns')
@@ -3116,45 +2962,10 @@ def campaign_status_page(campaign_id):
 # ==============================
 
 
-@app.route('/follow_ups')
-@login_required
-def follow_ups():
-    conn = get_db()
-    rows = conn.execute("SELECT * FROM follow_ups ORDER BY replied_at DESC").fetchall()
-    conn.close()
-    return render_template('follow_ups.html', follow_ups=rows)
 
 
-@app.route('/api/check_replies', methods=['POST'])
-@login_required
-@limiter.limit("3 per minute")
-def api_check_replies():
-    """Manually trigger IMAP reply check. Uses Celery if available."""
-    try:
-        task_id = queue_check_replies()
-        if task_id:
-            return jsonify({'success': True, 'logged': 0, 'queued': True, 'task_id': task_id})
-        # Fallback: direct call
-        logged = check_replies()
-        return jsonify({'success': True, 'logged': logged})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)[:100]})
 
 
-@app.route('/api/imap_status')
-@login_required
-def api_imap_status():
-    """Check if IMAP checker is configured and running"""
-    imap_server = get_setting('imap_server')
-    imap_username = get_setting('imap_username')
-    configured = bool(imap_server and imap_username)
-    return jsonify({
-        'configured': configured,
-        'running': imap_checker_running,
-        'server': imap_server or 'Not set',
-        'username': imap_username or 'Not set',
-        'interval': get_setting('imap_check_interval') or '180'
-    })
 
 
 @app.route('/api/smtp_test')
@@ -3324,421 +3135,46 @@ def fix_tracking_host():
     return jsonify({'success': True, 'tracking_host': 'https://ertyui.online'})
 
 
-@app.route('/api/tracking/timeline')
-@login_required
-def api_tracking_timeline():
-    """Get workspace activity timeline."""
-    from services.tracking import get_workspace_timeline
-    from services.workspace_service import get_wid
-    wid = get_wid()
-    limit = int(request.args.get('limit', 50))
-    timeline = get_workspace_timeline(wid, limit)
-    return jsonify({'timeline': timeline})
 
 
-@app.route('/api/tracking/contact/<int:contact_id>')
-@login_required
-def api_contact_timeline(contact_id):
-    """Get engagement timeline for a specific contact."""
-    from services.tracking import get_contact_timeline
-    from services.workspace_service import get_wid
-    wid = get_wid()
-    timeline = get_contact_timeline(contact_id, wid)
-    return jsonify({'timeline': timeline})
 
 
-@app.route('/api/tracking/stats')
-@login_required
-def api_tracking_stats():
-    """Get engagement stats for workspace."""
-    from services.tracking import get_engagement_stats
-    from services.workspace_service import get_wid
-    wid = get_wid()
-    days = int(request.args.get('days', 30))
-    return jsonify(get_engagement_stats(wid, days))
 
 
-@app.route('/api/tracking/hot_leads')
-@login_required
-def api_tracking_hot_leads():
-    """Get hot leads with temperature scores."""
-    from services.tracking import get_temperature, get_temperature_color
-    from services.workspace_service import get_wid
-    wid = get_wid()
-    conn = get_db()
-    leads = conn.execute("""
-        SELECT c.id, c.name, c.company, c.email,
-               COALESCE(c.lead_score, 0) as lead_score, c.status,
-               MAX(es.sent_at) as last_activity,
-               (SELECT t2.status FROM threads t2 WHERE t2.contact_id = c.id ORDER BY t2.last_message_at DESC LIMIT 1) as thread_status,
-               (SELECT t3.id FROM threads t3 WHERE t3.contact_id = c.id ORDER BY t3.last_message_at DESC LIMIT 1) as thread_id
-        FROM contacts c
-        LEFT JOIN emails_sent es ON es.contact_id = c.id AND es.status='sent'
-        WHERE c.workspace_id = ? AND COALESCE(c.lead_score, 0) > 0
-        GROUP BY c.id, c.name, c.company, c.email, c.lead_score, c.status
-        ORDER BY c.lead_score DESC
-        LIMIT 20
-    """, (wid,)).fetchall()
-    conn.close()
-    result = []
-    for l in leads:
-        score = l['lead_score']
-        temp  = get_temperature(score)
-        result.append({
-            'id': l['id'], 'name': l['name'], 'company': l['company'],
-            'email': l['email'], 'lead_score': score,
-            'temperature': temp, 'temperature_color': get_temperature_color(temp),
-            'status': l['status'], 'thread_id': l['thread_id'],
-            'last_activity': l['last_activity'],
-        })
-    return jsonify({'leads': result})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # ==============================
-# INBOX ROUTES
-# ==============================
-@app.route('/inbox')
-@login_required
-def inbox():
-    from services.workspace_service import get_wid, ws_threads
-    wid = get_wid()
-    status_filter = request.args.get('status', None)
-    threads = ws_threads(wid, status_filter)
-    return render_template('inbox.html', threads=threads, status_filter=status_filter)
-
-
-@app.route('/inbox/<int:thread_id>')
-@login_required
-def inbox_thread(thread_id):
-    from services.inbox_service import get_thread_messages, mark_thread_read
-    conn = get_db()
-    thread = conn.execute("""
-        SELECT t.*, c.name as contact_name, c.company as contact_company,
-               c.email as contact_email, c.context as contact_context,
-               camp.name as campaign_name
-        FROM threads t
-        LEFT JOIN contacts c ON t.contact_id = c.id
-        LEFT JOIN campaigns camp ON t.campaign_id = camp.id
-        WHERE t.id = ?
-    """, (thread_id,)).fetchone()
-    conn.close()
-    if not thread:
-        flash('Thread not found', 'error')
-        return redirect(url_for('inbox'))
-    messages = get_thread_messages(thread_id)
-    mark_thread_read(thread_id)
-    return render_template('inbox_thread.html', thread=thread, messages=messages)
-
-
-@app.route('/api/inbox/thread/<int:thread_id>/status', methods=['POST'])
-@login_required
-def api_update_thread_status(thread_id):
-    from services.inbox_service import update_thread_status
-    status = request.json.get('status')
-    if status not in ['active', 'interested', 'meeting', 'closed', 'booked', 'ignored']:
-        return jsonify({'success': False, 'error': 'Invalid status'})
-    update_thread_status(thread_id, status)
-    return jsonify({'success': True})
-
-
-@app.route('/api/inbox/thread/<int:thread_id>/ai_reply', methods=['POST'])
-@login_required
-def api_generate_inbox_reply(thread_id):
-    from services.inbox_service import generate_ai_reply_draft
-    from services.workspace_service import get_wid
-    wid = get_wid()
-    conn = get_db()
-    thread = conn.execute("""
-        SELECT t.*, c.name as contact_name, c.company as contact_company, c.context as contact_context
-        FROM threads t LEFT JOIN contacts c ON t.contact_id = c.id WHERE t.id = ? AND t.workspace_id=?
-    """, (thread_id, wid)).fetchone()
-    conn.close()
-    if not thread:
-        return jsonify({'success': False, 'error': 'Thread not found'}), 404
-    draft = generate_ai_reply_draft(
-        thread_id,
-        thread['contact_name'] or 'there',
-        thread['contact_company'] or '',
-        thread['contact_context'] or ''
-    )
-    if draft:
-        return jsonify({'success': True, 'draft': draft})
-    return jsonify({'success': False, 'error': 'AI generation failed'})
-
-
-@app.route('/api/inbox/thread_data/<int:thread_id>')
-@login_required
-def api_thread_data(thread_id):
-    from services.inbox_service import get_thread_messages, mark_thread_read
-    conn = get_db()
-    thread = conn.execute("""
-        SELECT t.*, c.name as contact_name, c.company as contact_company,
-               c.email as contact_email, c.context as contact_context
-        FROM threads t LEFT JOIN contacts c ON t.contact_id = c.id WHERE t.id=?
-    """, (thread_id,)).fetchone()
-    conn.close()
-    if not thread:
-        return jsonify({'error':'Not found'}), 404
-    messages = get_thread_messages(thread_id)
-    mark_thread_read(thread_id)
-    return jsonify({
-        'thread': dict(thread),
-        'messages': [dict(m) for m in messages],
-        'thread_status': thread['status']
-    })
-
-
-@app.route('/api/contact_by_thread/<int:thread_id>')
-@login_required
-def api_contact_by_thread(thread_id):
-    conn = get_db()
-    thread = conn.execute('SELECT * FROM threads WHERE id=?', (thread_id,)).fetchone()
-    if not thread:
-        conn.close()
-        return jsonify({'error':'Not found'}), 404
-    contact = conn.execute('SELECT * FROM contacts WHERE id=?', (thread['contact_id'],)).fetchone() if thread['contact_id'] else None
-    # Build simple timeline
-    timeline = []
-    emails = conn.execute("""
-        SELECT status, sent_at, opened, replied FROM emails_sent
-        WHERE contact_id=? ORDER BY sent_at DESC LIMIT 5
-    """, (thread['contact_id'],)).fetchall() if thread['contact_id'] else []
-    for e in emails:
-        if e['replied']: timeline.append({'text':'Reply received','color':'#10b981','time':e['sent_at'][:16] if e['sent_at'] else ''})
-        if e['opened']:  timeline.append({'text':'Email opened','color':'#6366f1','time':e['sent_at'][:16] if e['sent_at'] else ''})
-        if e['status']=='sent': timeline.append({'text':'Email sent','color':'#9CA3AF','time':e['sent_at'][:16] if e['sent_at'] else ''})
-    conn.close()
-    return jsonify({
-        'contact': dict(contact) if contact else None,
-        'thread_status': thread['status'],
-        'timeline': timeline[:6]
-    })
-
-
-@app.route('/api/inbox/thread/<int:thread_id>/mark_read', methods=['POST'])
-@login_required
-def api_mark_thread_read(thread_id):
-    from services.inbox_service import mark_thread_read
-    mark_thread_read(thread_id)
-    return jsonify({'success': True})
-
-
-@app.route('/api/inbox/thread/<int:thread_id>/send', methods=['POST'])
-@login_required
-def api_send_reply(thread_id):
-    """Send a reply email from inbox via SMTP."""
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    body = request.json.get('body', '').strip()
-    if not body:
-        return jsonify({'success': False, 'error': 'Empty reply'})
-    conn = get_db()
-    thread = conn.execute("""
-        SELECT t.*, c.email as contact_email, c.name as contact_name
-        FROM threads t LEFT JOIN contacts c ON t.contact_id = c.id WHERE t.id=?
-    """, (thread_id,)).fetchone()
-    if not thread:
-        conn.close()
-        return jsonify({'success': False, 'error': 'Thread not found'})
-    to_email = thread['contact_email']
-    subject = thread['subject'] or '(no subject)'
-    if not subject.lower().startswith('re:'):
-        subject = 'Re: ' + subject
-    # Get SMTP account
-    smtp_row = conn.execute("SELECT * FROM smtp_accounts WHERE active=1 ORDER BY id LIMIT 1").fetchone()
-    if not smtp_row:
-        conn.close()
-        return jsonify({'success': False, 'error': 'No active SMTP account'})
-    # Append signature if available
-    full_body = body
-    smtp_keys = smtp_row.keys()
-    sig = smtp_row['signature'] if 'signature' in smtp_keys else ''
-    if sig:
-        full_body += '\n\n' + sig
-    from_name = smtp_row['from_name'] if 'from_name' in smtp_keys else ''
-    smtp_email = smtp_row['email']
-    login_user = smtp_row['login_username'] if 'login_username' in smtp_keys and smtp_row['login_username'] else smtp_email
-    try:
-        msg = MIMEMultipart('alternative')
-        msg['From'] = f"{from_name} <{smtp_email}>" if from_name else smtp_email
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        html_body = full_body.replace('\n', '<br>')
-        msg.attach(MIMEText(html_body, 'html'))
-        server = smtplib.SMTP(smtp_row['smtp_server'], int(smtp_row['smtp_port']))
-        server.starttls()
-        server.login(login_user, smtp_row['password'])
-        server.sendmail(smtp_email, to_email, msg.as_string())
-        server.quit()
-        # Log message in thread
-        conn.execute("""
-            INSERT INTO messages (thread_id, direction, body, sender_email, created_at)
-            VALUES (?, 'outgoing', ?, ?, CURRENT_TIMESTAMP)
-        """, (thread_id, full_body, smtp_email))
-        conn.execute("UPDATE threads SET last_message_at=CURRENT_TIMESTAMP WHERE id=?", (thread_id,))
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True})
-    except Exception as e:
-        conn.close()
-        return jsonify({'success': False, 'error': str(e)[:150]})
-
-
-@app.route('/api/inbox/stats')
-@login_required
-def api_inbox_stats():
-    conn = get_db()
-    total = conn.execute("SELECT COUNT(*) FROM threads").fetchone()[0]
-    unread = conn.execute("SELECT COUNT(*) FROM threads WHERE unread_count > 0").fetchone()[0]
-    interested = conn.execute("SELECT COUNT(*) FROM threads WHERE status='interested'").fetchone()[0]
-    meeting = conn.execute("SELECT COUNT(*) FROM threads WHERE status='meeting'").fetchone()[0]
-    conn.close()
-    return jsonify({'total': total, 'unread': unread, 'interested': interested, 'meeting': meeting})
-
-
-# ==============================
-# AUTOMATION ROUTES
-# ==============================
-@app.route('/automations')
-@login_required
-def automations_page():
-    from services.automation_service import get_rule_settings, get_automation_stats, RULE_META
-    rules = get_rule_settings()
-    stats = get_automation_stats()
-    return render_template('automations.html', rules=rules, stats=stats, rule_meta=RULE_META)
-
-
-@app.route('/api/automations/save', methods=['POST'])
-@login_required
-def api_save_automation():
-    from services.automation_service import update_rule
-    data = request.json
-    rule_key = data.get('rule_key')
-    enabled = data.get('enabled', True)
-    delay_days = int(data.get('delay_days', 2))
-    max_followups = int(data.get('max_followups', 3))
-    if not rule_key:
-        return jsonify({'success': False, 'error': 'rule_key required'})
-    update_rule(rule_key, enabled, delay_days, max_followups)
-    app_logger.info(f'Automation rule updated: {rule_key} enabled={enabled}')
-    return jsonify({'success': True})
-
-
-@app.route('/api/automations/run', methods=['POST'])
-@login_required
-@limiter.limit("3 per minute")
-def api_run_automations():
-    from services.automation_service import process_automation_rules
-    stats = process_automation_rules()
-    return jsonify({'success': True, 'stats': stats})
-
-
-@app.route('/api/automations/stats')
-@login_required
-def api_automation_stats():
-    from services.automation_service import get_automation_stats
-    return jsonify(get_automation_stats())
-
-
-@app.route('/api/automations/followup_draft', methods=['POST'])
-@login_required
-def api_followup_draft():
-    from services.automation_service import generate_followup_email
-    data = request.json
-    draft = generate_followup_email(
-        data.get('contact_name', ''),
-        data.get('company', ''),
-        data.get('context', ''),
-        data.get('previous_subject', '')
-    )
-    if draft:
-        return jsonify({'success': True, 'draft': draft})
-    return jsonify({'success': False, 'error': 'AI generation failed'})
-
-
-@app.route('/analytics')
-@login_required
-def analytics_page():
-    conn = get_db()
-    total_sent = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
-    total_opened = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE opened=1").fetchone()[0]
-    total_replied = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE replied=1").fetchone()[0]
-    total_clicks = conn.execute("SELECT COUNT(*) FROM email_clicks").fetchone()[0]
-    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed')").fetchone()[0]
-
-    # By date
-    from collections import defaultdict
-    by_date_sent = defaultdict(int)
-    by_date_opened = defaultdict(int)
-    logs = conn.execute("SELECT status, opened, sent_at FROM emails_sent ORDER BY sent_at").fetchall()
-    for l in logs:
-        if l['sent_at']:
-            day = l['sent_at'][:10]
-            if l['status'] == 'sent': by_date_sent[day] += 1
-            if l['opened']: by_date_opened[day] += 1
-    all_days = sorted(set(list(by_date_sent.keys()) + list(by_date_opened.keys())))
-    time_data = {'labels': all_days, 'sent': [by_date_sent[d] for d in all_days], 'opened': [by_date_opened[d] for d in all_days]}
-
-    # AI usage
-    by_provider = conn.execute("SELECT provider, COUNT(*) as total FROM ai_usage GROUP BY provider").fetchall()
-    conn.close()
-
-    open_rate = round(total_opened / total_sent * 100, 1) if total_sent else 0
-    reply_rate = round(total_replied / total_sent * 100, 1) if total_sent else 0
-    click_rate = round(total_clicks / total_sent * 100, 1) if total_sent else 0
-    bounce_rate = round(total_bounced / total_sent * 100, 1) if total_sent else 0
-
-    return render_template('analytics.html',
-        total_sent=total_sent, total_opened=total_opened, total_replied=total_replied,
-        total_clicks=total_clicks, total_bounced=total_bounced,
-        open_rate=open_rate, reply_rate=reply_rate, click_rate=click_rate, bounce_rate=bounce_rate,
-        time_data=json.dumps(time_data),
-        ai_providers=[dict(r) for r in by_provider])
-
-
-@app.route('/deliverability')
-@login_required
-def deliverability_page():
-    conn = get_db()
-    smtp_accounts = conn.execute("SELECT * FROM smtp_accounts ORDER BY active DESC, health_score DESC").fetchall()
-    bounced = conn.execute("""
-        SELECT es.*, c.name, c.company FROM emails_sent es
-        JOIN contacts c ON es.contact_id = c.id
-        WHERE es.status IN ('bounced', 'failed')
-        ORDER BY es.sent_at DESC LIMIT 100
-    """).fetchall()
-    total_sent = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
-    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed')").fetchone()[0]
-    bounce_rate = round(total_bounced / total_sent * 100, 1) if total_sent else 0
-    conn.close()
-    return render_template('deliverability.html',
-        smtp_accounts=smtp_accounts, bounced=bounced,
-        total_bounced=total_bounced, bounce_rate=bounce_rate)
-
-
-@app.route('/api/click_analytics')
-@login_required
-def api_click_analytics():
-    from services.lead_scoring import get_click_analytics
-    return jsonify(get_click_analytics())
-
-
-@app.route('/api/hot_leads')
-@login_required
-def api_hot_leads():
-    from services.lead_scoring import get_hot_leads, calculate_priority
-    leads = get_hot_leads(limit=20)
-    result = []
-    for l in leads:
-        result.append({
-            'id': l['id'], 'name': l['name'], 'company': l['company'],
-            'email': l['email'], 'lead_score': l['lead_score'],
-            'priority': calculate_priority(l['lead_score']),
-            'status': l['status'], 'last_activity': l['last_activity'],
-            'thread_id': l['thread_id'], 'thread_status': l['thread_status']
-        })
-    return jsonify({'leads': result})# ==============================
 @app.route('/api/smtp_accounts', methods=['GET'])
 @login_required
 def api_get_smtp_accounts():
@@ -3874,30 +3310,7 @@ def api_reset_smtp_today():
     return jsonify({'success': True, 'message': 'Daily counts reset'})
 
 
-@app.route('/follow_up/add', methods=['POST'])
-@login_required
-def add_follow_up():
-    email = request.form.get('email', '').strip().lower()
-    notes = request.form.get('notes', '')
-    conn = get_db()
-    contact = conn.execute("SELECT * FROM contacts WHERE email=?", (email,)).fetchone()
 
-    if contact:
-        conn.execute("""
-            INSERT INTO follow_ups (contact_id, email, name, company, notes)
-            VALUES (?,?,?,?,?)
-        """, (contact['id'], email, contact['name'], contact['company'], notes))
-        conn.execute("UPDATE emails_sent SET replied=1 WHERE contact_id=?", (contact['id'],))
-    else:
-        conn.execute("""
-            INSERT INTO follow_ups (contact_id, email, name, company, notes)
-            VALUES (?,?,?,?,?)
-        """, (0, email, 'Unknown', 'Unknown', notes))
-
-    conn.commit()
-    conn.close()
-    flash(f'Follow-up added for {email}', 'success')
-    return redirect(url_for('follow_ups'))
 
 
 @app.route('/api/settings/save', methods=['POST'])
@@ -4228,161 +3641,16 @@ def api_groq_usage():
     return jsonify({'keys': results})
 
 
-@app.route('/live-logs')
-@login_required
-def live_logs_page():
-    if getattr(current_user, 'role', '') != 'admin':
-        flash('Access denied', 'error')
-        return redirect(url_for('dashboard'))
-    return render_template('live_logs.html')
 
 
-@app.route('/api/live-logs')
-@login_required
-def api_live_logs():
-    """Stream logs for live logs page. Reads from campaign_logs + log files."""
-    if getattr(current_user, 'role', '') != 'admin':
-        return jsonify({'logs': [], 'last_id': 0})
-    from services.workspace_service import get_wid
-    tab = request.args.get('tab', 'all')
-    after_id = int(request.args.get('after', 0))
-    wid = get_wid()
-    logs = []
-
-    if tab in ('all', 'campaign', 'smtp'):
-        conn = get_db()
-        rows = conn.execute("""
-            SELECT id, campaign_id, level, message, smtp_email, created_at
-            FROM campaign_logs WHERE id > ? AND workspace_id = ?
-            ORDER BY created_at DESC LIMIT 100
-        """, (after_id, wid)).fetchall()
-        conn.close()
-        for r in reversed(rows):
-            if tab == 'smtp' and not r['smtp_email']:
-                continue
-            logs.append(dict(r))
-
-    if tab in ('all', 'error'):
-        # Read last 50 lines from error.log
-        err_path = os.path.join(LOG_DIR, 'error.log')
-        if os.path.exists(err_path):
-            try:
-                with open(err_path, 'r') as f:
-                    lines = f.readlines()[-50:]
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    ts = line[:19] if len(line) > 19 else ''
-                    msg = line[20:].strip() if len(line) > 20 else line
-                    logs.append({'id': 0, 'level': 'error', 'message': msg, 'smtp_email': '', 'created_at': ts})
-            except Exception:
-                pass
-
-    if tab == 'copilot':
-        conn = get_db()
-        try:
-            rows = conn.execute("""
-                SELECT id, page_type, user_message, action_taken, created_at
-                FROM copilot_logs WHERE workspace_id = ?
-                ORDER BY created_at DESC LIMIT 50
-            """, (wid,)).fetchall()
-            for r in reversed(rows):
-                logs.append({
-                    'id': r['id'], 'level': 'info',
-                    'message': f"[{r['page_type']}] {r['user_message'][:80]}" + (f" → {r['action_taken']}" if r['action_taken'] else ''),
-                    'smtp_email': '', 'created_at': r['created_at']
-                })
-        except Exception:
-            pass
-        conn.close()
-
-    last_id = max((l.get('id', 0) for l in logs), default=after_id)
-    return jsonify({'logs': logs, 'last_id': last_id})
 
 
-@app.route('/logs')
-@login_required
-def logs_page():
-    conn = get_db()
-    logs = conn.execute("""
-        SELECT es.*, c.name, c.company, camp.name as campaign_name
-        FROM emails_sent es
-        JOIN contacts c ON es.contact_id = c.id
-        JOIN campaigns camp ON es.campaign_id = camp.id
-        ORDER BY es.sent_at DESC
-    """).fetchall()
-
-    sent = sum(1 for l in logs if l['status'] == 'sent')
-    failed = sum(1 for l in logs if l['status'] == 'failed')
-    bounced = sum(1 for l in logs if l['status'] == 'bounced')
-    opened = sum(1 for l in logs if l['opened'])
-    not_opened = sent - opened
-    total = len(logs)
-    campaigns_count = len(set(l['campaign_id'] for l in logs))
-    success_rate = (sent / total * 100) if total > 0 else 0
-
-    stats = {'sent': sent, 'failed': failed, 'bounced': bounced, 'opened': opened, 'not_opened': not_opened, 'total': total, 'campaigns': campaigns_count, 'success_rate': success_rate}
-
-    # Time data for chart
-    from collections import defaultdict
-    by_date_sent = defaultdict(int)
-    by_date_failed = defaultdict(int)
-    for l in logs:
-        if l['sent_at']:
-            day = l['sent_at'][:10]
-            if l['status'] == 'sent':
-                by_date_sent[day] += 1
-            else:
-                by_date_failed[day] += 1
-    all_days = sorted(set(list(by_date_sent.keys()) + list(by_date_failed.keys())))
-    time_data = {'labels': all_days, 'sent': [by_date_sent[d] for d in all_days], 'failed': [by_date_failed[d] for d in all_days]}
-
-    conn.close()
-    return render_template('logs.html', logs=logs, stats=stats, stats_json=json.dumps(stats), time_data_json=json.dumps(time_data))
 
 
-@app.route('/bounced')
-@login_required
-def bounced():
-    conn = get_db()
-    rows = conn.execute("""
-        SELECT es.*, c.name, c.company FROM emails_sent es
-        JOIN contacts c ON es.contact_id = c.id
-        WHERE es.status IN ('bounced', 'failed')
-        ORDER BY es.sent_at DESC
-    """).fetchall()
-    conn.close()
-    return render_template('bounced.html', bounced=rows)
 
 
-@app.route('/export/<string:export_type>')
-@login_required
-def export_data(export_type):
-    from services.workspace_service import get_wid
-    from utils.db import USE_POSTGRES
-    wid = get_wid()
-    conn = get_db()
-    # pandas needs raw connection for PostgreSQL
-    db_conn = conn.raw if hasattr(conn, 'raw') else conn
-    # Use %s for PG raw connection, ? for SQLite
-    ph = '%s' if (USE_POSTGRES and hasattr(conn, 'raw')) else '?'
-    if export_type == 'sent':
-        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.subject, es.status, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status='sent' AND es.workspace_id={ph}", db_conn, params=(wid,))
-    elif export_type == 'bounced':
-        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.bounce_reason, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status IN ('bounced','failed') AND es.workspace_id={ph}", db_conn, params=(wid,))
-    elif export_type == 'follow_ups':
-        df = pd.read_sql(f"SELECT * FROM follow_ups WHERE workspace_id={ph}", db_conn, params=(wid,))
-    elif export_type == 'invalid':
-        df = pd.read_sql(f"SELECT name, company, email, validation_reason FROM contacts WHERE email_valid=0 AND workspace_id={ph}", db_conn, params=(wid,))
-    else:
-        df = pd.read_sql(f"SELECT * FROM contacts WHERE workspace_id={ph}", db_conn, params=(wid,))
 
-    conn.close()
-    import tempfile
-    filepath = os.path.join(tempfile.gettempdir(), f"export_{export_type}_{uuid.uuid4().hex[:8]}.xlsx")
-    df.to_excel(filepath, index=False)
-    return send_file(filepath, as_attachment=True, download_name=f"export_{export_type}.xlsx")
+
 
 
 @app.route('/api/sequence/<int:campaign_id>/analytics')
