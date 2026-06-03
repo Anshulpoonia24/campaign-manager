@@ -1362,6 +1362,32 @@ def change_password():
 # ROUTES
 # ==============================
 @app.route('/')
+def landing_page():
+    """Marketing landing page — public."""
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    return render_template('landing.html')
+
+
+@app.route('/solutions')
+def solutions_page():
+    return render_template('solutions.html')
+
+
+@app.route('/blogs')
+def blogs_page():
+    return render_template('blogs.html')
+
+
+@app.route('/contact', methods=['GET', 'POST'])
+def contact_page():
+    if request.method == 'POST':
+        flash('Message sent! We\'ll get back to you soon.', 'success')
+        return redirect(url_for('contact_page'))
+    return render_template('contact.html')
+
+
+@app.route('/dashboard')
 @login_required
 def dashboard():
     try:
