@@ -50,3 +50,7 @@ services:
         value: superadmin
       - key: ADMIN_PASSWORD
         sync: false
+      - key: SUPABASE_URL
+        value: https://ygbwqhxxmfdvrenbpcnw.supabase.co
+      - key: SUPABASE_ANON_KEY
+        sync: false
