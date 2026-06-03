@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { createServiceClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rate-limit';
 import { getClientIp } from '@/utils';
+import { sendWelcomeEmail } from '@/lib/welcome-email';
 
 export async function POST(request: Request) {
   const headersList = await headers();
@@ -74,6 +75,22 @@ export async function POST(request: Request) {
     ip_address: ip,
     user_agent: headersList.get('user-agent'),
   });
+
+  // Send welcome email on first verified login
+  const { data: profile } = await serviceClient
+    .from('user_profiles')
+    .select('created_at, full_name, email_verified')
+    .eq('user_id', userId)
+    .single();
+
+  if (profile && !profile.email_verified) {
+    // Mark email as verified
+    await serviceClient.from('user_profiles')
+      .update({ email_verified: true })
+      .eq('user_id', userId);
+    // Send welcome email
+    sendWelcomeEmail(email, profile.full_name || '').catch(console.error);
+  }
 
   // Return the verification token for client-side session exchange
   const token_hash = linkData.properties?.hashed_token;
