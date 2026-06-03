@@ -140,7 +140,11 @@ def _dashboard_inner():
     hot_leads_count = len([l for l in hot_leads if calculate_priority(l['lead_score']) == 'hot'])
     unread_count = sum(1 for t in attention_threads if t['unread_count'] > 0)
 
+    from datetime import datetime as _dt
+    now_hour = _dt.now().hour
+
     return render_template('dashboard.html',
+        now_hour=now_hour,
         total_sent=total_sent, total_opened=total_opened, total_replied=total_replied,
         total_clicks=total_clicks, total_contacts=total_contacts, total_bounced=total_bounced,
         open_rate=open_rate, reply_rate=reply_rate, click_rate=click_rate, bounce_rate=bounce_rate,

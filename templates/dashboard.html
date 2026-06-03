@@ -179,7 +179,7 @@
 <!-- PAGE HEADER -->
 <div class="page-header d-flex align-items-center justify-content-between">
   <div>
-    <h3>Command Center</h3>
+    <h3>{% if current_user.is_authenticated %}Good {% if now_hour < 12 %}morning{% elif now_hour < 17 %}afternoon{% else %}evening{% endif %}, {{ current_user.username.split('@')[0].replace('.',' ').title() }} 👋{% else %}Command Center{% endif %}</h3>
     <small>Real-time operational overview</small>
   </div>
   <div class="d-flex gap-2">
