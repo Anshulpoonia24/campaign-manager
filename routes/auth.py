@@ -120,14 +120,15 @@ def _login_with_supabase_token(access_token: str):
         ).fetchone()
 
         if not user_row:
-            # Auto-create account for Google user
+            # Auto-create account for Google user — use full name as display
             from services.workspace_service import create_workspace
-            wid = create_workspace(f"{name}'s Workspace")
-            # Use email as username, random password (can't login with password)
+            # Use full name for workspace, email as username
+            workspace_name = f"{name}'s Workspace" if name and name != email.split('@')[0] else f"{email.split('@')[0]}'s Workspace"
+            wid = create_workspace(workspace_name)
             import secrets
             conn.execute(
-                "INSERT INTO users (username, password_hash, role, workspace_id) VALUES (?,?,?,?)",
-                (email, generate_password_hash(secrets.token_hex(32)), 'admin', wid)
+                "INSERT INTO users (username, password_hash, role, workspace_id, full_name) VALUES (?,?,?,?,?)",
+                (email, generate_password_hash(secrets.token_hex(32)), 'admin', wid, name)
             )
             conn.commit()
             # Setup default settings
@@ -149,7 +150,8 @@ def _login_with_supabase_token(access_token: str):
 
         wid  = user_row['workspace_id'] if 'workspace_id' in user_row.keys() else 1
         role = user_row['role'] if 'role' in user_row.keys() else 'admin'
-        user = User(user_row['id'], user_row['username'], role, wid)
+        fn   = user_row['full_name'] if 'full_name' in user_row.keys() else name
+        user = User(user_row['id'], user_row['username'], role, wid, fn or name)
         login_user(user, remember=True)
         app_logger.info(f'[AUTH] Google login: {email}')
         return redirect(url_for('dash.dashboard'))
@@ -222,7 +224,8 @@ def login():
         if user_row and check_password_hash(user_row['password_hash'], password):
             wid = user_row['workspace_id'] if 'workspace_id' in user_row.keys() else 1
             role = user_row['role'] if 'role' in user_row.keys() else 'admin'
-            user = User(user_row['id'], user_row['username'], role, wid)
+            full_name = user_row['full_name'] if 'full_name' in user_row.keys() else ''
+            user = User(user_row['id'], user_row['username'], role, wid, full_name)
             login_user(user, remember=True)
             app_logger.info(f'Login successful: {username}')
             next_page = request.args.get('next')

@@ -232,6 +232,7 @@ def init_db(get_db, DEFAULT_SETTINGS):
         "ALTER TABLE smtp_accounts ADD COLUMN reply_to TEXT DEFAULT ''",
         "ALTER TABLE smtp_accounts ADD COLUMN bcc_emails TEXT DEFAULT ''",
         "ALTER TABLE smtp_accounts ADD COLUMN signature TEXT DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN full_name TEXT DEFAULT ''",
         "ALTER TABLE smtp_accounts ADD COLUMN login_username TEXT DEFAULT ''",
         "ALTER TABLE contacts ADD COLUMN industry TEXT DEFAULT ''",
         "ALTER TABLE contacts ADD COLUMN company_size TEXT DEFAULT ''",

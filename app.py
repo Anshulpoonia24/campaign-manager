@@ -229,11 +229,22 @@ def unauthorized_api():
 
 
 class User(UserMixin):
-    def __init__(self, id, username, role='admin', workspace_id=1):
+    def __init__(self, id, username, role='admin', workspace_id=1, full_name=''):
         self.id = id
         self.username = username
         self.role = role
         self.workspace_id = workspace_id or 1
+        self.full_name = full_name or ''
+
+    @property
+    def display_name(self):
+        """Best display name: full_name > username without domain > username."""
+        if self.full_name and self.full_name.strip():
+            return self.full_name.strip()
+        u = self.username
+        if '@' in u:
+            u = u.split('@')[0]
+        return u.replace('.', ' ').replace('_', ' ').title()
 
 
 @login_manager.user_loader
@@ -245,7 +256,8 @@ def load_user(user_id):
         if row:
             wid = row['workspace_id'] if 'workspace_id' in row.keys() else 1
             role = row['role'] if 'role' in row.keys() else 'admin'
-            return User(row['id'], row['username'], role, wid)
+            full_name = row['full_name'] if 'full_name' in row.keys() else ''
+            return User(row['id'], row['username'], role, wid, full_name)
     except Exception:
         pass
     return None
