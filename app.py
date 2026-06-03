@@ -127,6 +127,12 @@ app.register_blueprint(contacts_bp)
 from routes.settings import settings_bp
 app.register_blueprint(settings_bp)
 
+from routes.campaigns import campaigns_bp
+app.register_blueprint(campaigns_bp)
+
+from routes.sequences import sequences_bp
+app.register_blueprint(sequences_bp)
+
 # ==============================
 # LOGGING (production-safe, rotating)
 # ==============================
@@ -363,6 +369,13 @@ def init_db():
             default_hash = _hash_pw('admin123')
             conn.execute("INSERT INTO users (username, password_hash, role) VALUES (?,?,?)",
                          ('admin', default_hash, 'admin'))
+            conn.commit()
+        # Ensure superadmin exists in PG
+        sa_user = conn.execute("SELECT id FROM users WHERE username=?", ('superadmin',)).fetchone()
+        if not sa_user:
+            sa_hash = _hash_pw(os.getenv('ADMIN_PASSWORD', 'OutreachOS@2025'))
+            conn.execute("INSERT INTO users (username, password_hash, role, workspace_id) VALUES (?,?,?,?)",
+                         ('superadmin', sa_hash, 'admin', 1))
             conn.commit()
         # Ensure default workspace
         if not conn.execute("SELECT id FROM workspaces WHERE id=1").fetchone():
@@ -612,6 +625,15 @@ def init_db():
         conn.commit()
         print("[AUTH] Default admin created -- username: admin, password: admin123")
         print("[AUTH] WARNING: CHANGE THIS PASSWORD from Settings after first login!")
+
+    # Ensure superadmin user exists (same creds as /admin panel)
+    sa_user = conn.execute("SELECT id FROM users WHERE username=?", ('superadmin',)).fetchone()
+    if not sa_user:
+        sa_hash = _hash_pw(os.getenv('ADMIN_PASSWORD', 'OutreachOS@2025'))
+        conn.execute("INSERT INTO users (username, password_hash, role, workspace_id) VALUES (?,?,?,?)",
+                     ('superadmin', sa_hash, 'admin', 1))
+        conn.commit()
+        print("[AUTH] superadmin user created")
 
     # Insert default settings for any missing keys
     for k, v in DEFAULT_SETTINGS.items():
@@ -1387,429 +1409,19 @@ def _dashboard_inner():
         smtp_accounts=smtp_accounts, smtp_active=smtp_active, smtp_at_risk=smtp_at_risk, avg_health=avg_health,
         activity_feed=activity_feed, hot_leads=hot_leads,
         calculate_priority=calculate_priority, setup_steps=setup_steps,
-        unread_count=unread_count)@app.route('/campaigns')
-@login_required
-def campaigns_list():
-    from services.workspace_service import get_wid, ws_campaigns
-    wid = get_wid()
-    campaigns = ws_campaigns(wid)
-    conn = get_db()
-    meetings = {}
-    for camp in campaigns:
-        m = conn.execute(
-            "SELECT COUNT(*) FROM threads WHERE campaign_id=? AND status='meeting' AND workspace_id=?",
-            (camp['id'], wid)
-        ).fetchone()[0]
-        meetings[camp['id']] = m
-    conn.close()
-    return render_template('campaigns.html', campaigns=campaigns, meetings=meetings)
+        unread_count=unread_count)
 
 
-@app.route('/campaign/new', methods=['GET', 'POST'])
-@login_required
-def new_campaign():
-    if request.method == 'POST':
-        name = request.form.get('campaign_name', 'Untitled Campaign')
-        description = request.form.get('description', '')
-        from services.workspace_service import get_wid
-        wid = get_wid()
-        conn = get_db()
-        from utils.db import is_postgres
-        if is_postgres():
-            campaign_id = conn.execute(
-                "INSERT INTO campaigns (name, description, workspace_id) VALUES (?,?,?) RETURNING id",
-                (name, description, wid)
-            ).fetchone()[0]
-            conn.commit()
-        else:
-            conn.execute("INSERT INTO campaigns (name, description, workspace_id) VALUES (?,?,?)", (name, description, wid))
-            conn.commit()
-            campaign_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.close()
-        return redirect(url_for('campaign_detail', campaign_id=campaign_id))
-
-    return render_template('new_campaign.html')
 
 
-@app.route('/campaign/edit/<int:campaign_id>', methods=['POST'])
-@login_required
-def edit_campaign(campaign_id):
-    from utils.ownership import owns_campaign
-    if not owns_campaign(campaign_id):
-        flash('Not found.', 'error')
-        return redirect(url_for('campaigns_list'))
-    name = request.form.get('name', '').strip()
-    description = request.form.get('description', '').strip()
-    conn = get_db()
-    conn.execute("UPDATE campaigns SET name=?, description=? WHERE id=?", (name, description, campaign_id))
-    conn.commit()
-    conn.close()
-    flash('Campaign updated!', 'success')
-    return redirect(url_for('campaigns_list'))
 
 
-@app.route('/campaign/<int:campaign_id>')
-@login_required
-def campaign_detail(campaign_id):
-    conn = get_db()
-    campaign = conn.execute("SELECT * FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
-    emails = conn.execute("""
-        SELECT es.*, c.name, c.company FROM emails_sent es
-        JOIN contacts c ON es.contact_id = c.id
-        WHERE es.campaign_id=? ORDER BY es.sent_at DESC
-    """, (campaign_id,)).fetchall()
-
-    # Get contacts not yet successfully sent in THIS campaign
-    available = conn.execute("""
-        SELECT * FROM contacts WHERE email_valid=1
-        AND id NOT IN (SELECT contact_id FROM emails_sent WHERE campaign_id=? AND status='sent')
-    """, (campaign_id,)).fetchall()
-
-    conn.close()
-    return render_template('campaign_detail.html', campaign=campaign, emails=emails, available=available)
 
 
-@app.route('/campaign/<int:campaign_id>/send', methods=['POST'])
-@login_required
-@limiter.limit("5 per minute")
-def send_campaign(campaign_id):
-    subject_template = request.form.get('subject', 'Helping {company} scale engineering faster')
-    body_template = request.form.get('body', '')
-    contact_ids = request.form.getlist('contact_ids')
 
-    # Handle file upload
-    attachment_filename = ''
-    uploaded_file = request.files.get('attachment_file')
-    if uploaded_file and uploaded_file.filename:
-        from werkzeug.utils import secure_filename
-        filename = secure_filename(uploaded_file.filename)
-        filepath = os.path.join(ATTACHMENT_DIR, filename)
-        uploaded_file.save(filepath)
-        attachment_filename = filename
-    else:
-        attachment_filename = request.form.get('attachment', '')
-
-    print(f'[SEND] Campaign {campaign_id} | Subject: {subject_template} | Contacts: {contact_ids} | Body length: {len(body_template)}')
-
-    if not contact_ids:
-        flash('No contacts selected. Please select at least one contact.', 'error')
-        return redirect(url_for('campaign_detail', campaign_id=campaign_id))
-
-    app_logger.info(f'Campaign {campaign_id} send started | {len(contact_ids)} contacts | by {current_user.username}')
-    from services.workspace_service import get_wid
-    wid = get_wid()
-    conn = get_db()
-    sent = 0
-    failed = 0
-
-    # Try rotation first, fallback to settings
-    def get_smtp_creds():
-        from services.smtp_rotation import get_next_smtp_account, append_signature
-        account = get_next_smtp_account(workspace_id=wid)
-        if account:
-            return account  # Full identity object
-        # Fallback — backup SMTP only, no identity override
-        return {
-            'server':     get_setting('smtp_server'),
-            'port':       int(get_setting('smtp_port') or 587),
-            'username':   get_setting('smtp_username'),
-            'password':   get_setting('smtp_password'),
-            'from_email': get_setting('from_email') or get_setting('smtp_username'),
-            'from_name':  get_setting('from_name'),
-            'reply_to':   get_setting('reply_to'),
-            'bcc_emails': get_setting('bcc_emails'),
-            'signature':  '',
-            'account_id': None,
-            'email':      get_setting('from_email') or get_setting('smtp_username'),
-            'smtp_server': get_setting('smtp_server'),
-            'smtp_port':  int(get_setting('smtp_port') or 587),
-        }
-
-    try:
-        for idx, cid in enumerate(contact_ids):
-            # Get fresh SMTP creds per email (rotation)
-            creds = get_smtp_creds()
-            smtp_server  = creds.get('smtp_server') or creds.get('server')
-            smtp_port    = creds.get('smtp_port')   or creds.get('port')
-            # Use login_username for Brevo/custom SMTP (may differ from from_email)
-            smtp_username = creds.get('login_username') or creds.get('email') or creds.get('username')
-            smtp_password = creds['password']
-            from_email   = creds.get('from_email')  or smtp_username
-            from_name    = creds.get('from_name', '')
-            account_id   = creds.get('account_id')  or creds.get('id')
-            # Inbox-level identity (overrides global fallback)
-            reply_to     = creds.get('reply_to') or _get_reply_to()
-            bcc          = creds.get('bcc_emails')  or get_setting('bcc_emails')
-            signature    = creds.get('signature', '')
-
-            contact = conn.execute("SELECT * FROM contacts WHERE id=?", (cid,)).fetchone()
-            if not contact:
-                continue
-
-            # Check suppression list
-            if is_unsubscribed(contact['email']):
-                continue
-
-            # Atomic duplicate check — lock per campaign to prevent race condition
-            with _get_campaign_lock(campaign_id):
-                already = conn.execute(
-                    "SELECT id FROM emails_sent WHERE contact_id=? AND campaign_id=? AND status='sent'",
-                    (cid, campaign_id)
-                ).fetchone()
-                if already:
-                    continue
-
-                subject = subject_template.replace('{company}', contact['company'] or '')
-                subject = subject.replace('{name}', contact['name'] or '')
-                body = body_template.replace('{company}', contact['company'] or '')
-                body = body.replace('{name}', contact['name'] or '')
-
-                try:
-                    server = smtplib.SMTP(smtp_server, smtp_port)
-                    server.starttls()
-                    server.login(smtp_username, smtp_password)
-
-                    tracking_id = str(uuid.uuid4())
-                    # Append inbox signature before tracking pixel
-                    from services.smtp_rotation import append_signature
-                    body_with_sig = append_signature(body, signature)
-                    tracked_body = inject_tracking_pixel(body_with_sig, tracking_id)
-
-                    msg = EmailMessage()
-                    msg['Subject']    = subject
-                    msg['From']       = formataddr((from_name, from_email))
-                    msg['To']         = contact['email']
-                    msg['Message-ID'] = f'<{tracking_id}@outreachos>'
-                    if reply_to and reply_to.strip():
-                        msg['Reply-To'] = reply_to
-                    if bcc and bcc.strip():
-                        msg['Bcc'] = bcc
-                    msg.add_alternative(tracked_body, subtype='html')
-
-                    if attachment_filename and os.path.exists(os.path.join(ATTACHMENT_DIR, attachment_filename)):
-                        filepath = os.path.join(ATTACHMENT_DIR, attachment_filename)
-                        mime_type, _ = mimetypes.guess_type(filepath)
-                        if mime_type:
-                            maintype, subtype = mime_type.split('/', 1)
-                        else:
-                            maintype, subtype = 'application', 'octet-stream'
-                        with open(filepath, 'rb') as f:
-                            msg.add_attachment(f.read(), maintype=maintype, subtype=subtype,
-                                             filename=os.path.basename(filepath))
-
-                    server.send_message(msg)
-                    server.quit()
-                    conn.execute("""
-                        INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, tracking_id, sent_at, workspace_id)
-                        VALUES (?,?,?,?,?,?,?,?,?)
-                    """, (campaign_id, cid, contact['email'], subject, body, 'sent', tracking_id, datetime.now(), wid))
-                    conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (cid,))
-                    conn.commit()
-                    sent += 1
-                    # Log to thread system
-                    try:
-                        from services.inbox_service import get_or_create_thread, insert_message
-                        thread_id = get_or_create_thread(cid, campaign_id, subject)
-                        insert_message(
-                            thread_id=thread_id, direction='outgoing',
-                            sender_email=from_email, recipient_email=contact['email'],
-                            subject=subject, body=body, message_id=tracking_id
-                        )
-                    except Exception:
-                        pass
-                    if account_id:
-                        mark_send_success(account_id)
-                    smtp_logger.info(f'SENT | Campaign {campaign_id} | To: {contact["email"]} | Subject: {subject[:50]}')
-                    time.sleep(5)
-
-                except smtplib.SMTPRecipientsRefused as e:
-                    conn.execute("""
-                        INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, bounce_reason, sent_at)
-                        VALUES (?,?,?,?,?,?,?,?)
-                    """, (campaign_id, cid, contact['email'], subject, body, 'bounced', str(e), datetime.now()))
-                    conn.commit()
-                    failed += 1
-                    if account_id:
-                        mark_send_failure(account_id)
-                    smtp_logger.warning(f'BOUNCED | {contact["email"]} | {str(e)[:100]}')
-                    # Lead score penalty for bounce
-                    try:
-                        from services.lead_scoring import update_lead_score
-                        update_lead_score(cid, 'bounce')
-                    except Exception:
-                        pass
-
-                except Exception as e:
-                    conn.execute("""
-                        INSERT INTO emails_sent (campaign_id, contact_id, email, subject, body, status, bounce_reason, sent_at)
-                        VALUES (?,?,?,?,?,?,?,?)
-                    """, (campaign_id, cid, contact['email'], subject, body, 'failed', str(e), datetime.now()))
-                    conn.commit()
-                    failed += 1
-                    if account_id:
-                        mark_send_failure(account_id)
-                    smtp_logger.error(f'FAILED | {contact["email"]} | {str(e)[:100]}')
-                    error_logger.error(f'Send failed for {contact["email"]}: {str(e)}')
-
-    except Exception as e:
-        flash(f'SMTP Error: {e}', 'error')
-        error_logger.error(f'SMTP connection error in campaign {campaign_id}: {str(e)}')
-        conn.close()
-        return redirect(url_for('campaign_detail', campaign_id=campaign_id))
-
-    if sent > 0:
-        conn.execute("UPDATE campaigns SET status='sent' WHERE id=?", (campaign_id,))
-    conn.commit()
-    conn.close()
-    flash(f'Sent: {sent}, Failed: {failed}', 'success')
-    return redirect(url_for('campaign_detail', campaign_id=campaign_id))
-
-
-@app.route('/retry/<int:email_id>', methods=['POST'])
-@login_required
-def retry_email(email_id):
-    from utils.ownership import owns_email_sent
-    conn = get_db()
-    record = owns_email_sent(email_id)
-    if not record:
-        flash('Email record not found', 'error')
-        conn.close()
-        return redirect(url_for('dashboard'))
-
-    # Check if already sent successfully in same campaign
-    already_sent = conn.execute(
-        "SELECT id FROM emails_sent WHERE email=? AND campaign_id=? AND status='sent' AND id!=?",
-        (record['email'], record['campaign_id'], email_id)
-    ).fetchone()
-    if already_sent:
-        flash(f'{record["email"]} already sent in this campaign!', 'error')
-        conn.close()
-        return redirect(url_for('campaign_detail', campaign_id=record['campaign_id']))
-
-    from services.workspace_service import get_wid
-    from services.smtp_rotation import get_next_smtp_account
-    wid = get_wid()
-    account = get_next_smtp_account(workspace_id=wid)
-    if account:
-        smtp_server = account['smtp_server']
-        smtp_port = int(account['smtp_port'])
-        smtp_login = account['login_username'] or account['email']
-        smtp_password = account['password']
-        from_email = account['from_email'] or account['email']
-        from_name = account.get('from_name', '')
-        reply_to = account.get('reply_to') or _get_reply_to()
-        bcc = account.get('bcc_emails', '')
-    else:
-        smtp_server = get_setting('smtp_server')
-        smtp_port = int(get_setting('smtp_port') or 587)
-        smtp_login = get_setting('smtp_username')
-        smtp_password = get_setting('smtp_password')
-        from_email = get_setting('from_email') or smtp_login
-        from_name = get_setting('from_name')
-        reply_to = get_setting('reply_to') or from_email
-        bcc = get_setting('bcc_emails')
-
-    try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(smtp_login, smtp_password)
-
-        msg = EmailMessage()
-        msg['Subject'] = record['subject']
-        msg['From'] = formataddr((from_name, from_email))
-        msg['To'] = record['email']
-        if reply_to and reply_to.strip(): msg['Reply-To'] = reply_to
-        if bcc and bcc.strip(): msg['Bcc'] = bcc
-        msg.add_alternative(record['body'], subtype='html')
-
-        server.send_message(msg)
-        server.quit()
-
-        conn.execute("UPDATE emails_sent SET status='sent', bounce_reason=NULL, sent_at=? WHERE id=?",
-                     (datetime.now(), email_id))
-        conn.commit()
-        flash(f'Retry successful! Email sent to {record["email"]}', 'success')
-    except Exception as e:
-        conn.execute("UPDATE emails_sent SET bounce_reason=? WHERE id=?", (str(e), email_id))
-        conn.commit()
-        flash(f'Retry failed: {str(e)[:100]}', 'error')
-
-    conn.close()
-    return redirect(url_for('campaign_detail', campaign_id=record['campaign_id']))
-
-
-@app.route('/api/retry/<int:email_id>', methods=['POST'])
-@login_required
-def api_retry_email(email_id):
-    """AJAX retry - returns JSON with loader support"""
-    from utils.ownership import owns_email_sent
-    record = owns_email_sent(email_id)
-    if not record:
-        return jsonify({'success': False, 'error': 'Not found'}), 404
-    conn = get_db()
-
-    # Duplicate protection - don't resend if already sent in same campaign
-    already_sent = conn.execute(
-        "SELECT id FROM emails_sent WHERE email=? AND campaign_id=? AND status='sent' AND id!=?",
-        (record['email'], record['campaign_id'], email_id)
-    ).fetchone()
-    if already_sent:
-        conn.close()
-        return jsonify({'success': False, 'error': 'Already sent in this campaign'})
-
-    from services.workspace_service import get_wid
-    from services.smtp_rotation import get_next_smtp_account
-    wid = get_wid()
-    account = get_next_smtp_account(workspace_id=wid)
-    if account:
-        smtp_server = account['smtp_server']
-        smtp_port = int(account['smtp_port'])
-        smtp_login = account['login_username'] or account['email']
-        smtp_password = account['password']
-        from_email = account['from_email'] or account['email']
-        from_name = account.get('from_name', '')
-        reply_to = account.get('reply_to') or _get_reply_to()
-        bcc = account.get('bcc_emails', '')
-    else:
-        smtp_server = get_setting('smtp_server')
-        smtp_port = int(get_setting('smtp_port') or 587)
-        smtp_login = get_setting('smtp_username')
-        smtp_password = get_setting('smtp_password')
-        from_email = get_setting('from_email') or smtp_login
-        from_name = get_setting('from_name')
-        reply_to = get_setting('reply_to') or from_email
-        bcc = get_setting('bcc_emails')
-
-    try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(smtp_login, smtp_password)
-
-        msg = EmailMessage()
-        msg['Subject'] = record['subject']
-        msg['From'] = formataddr((from_name, from_email))
-        msg['To'] = record['email']
-        if reply_to and reply_to.strip(): msg['Reply-To'] = reply_to
-        if bcc and bcc.strip(): msg['Bcc'] = bcc
-        msg.add_alternative(record['body'], subtype='html')
-
-        server.send_message(msg)
-        server.quit()
-
-        conn.execute("UPDATE emails_sent SET status='sent', bounce_reason=NULL, sent_at=? WHERE id=?",
-                     (datetime.now(), email_id))
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True})
-    except Exception as e:
-        conn.execute("UPDATE emails_sent SET bounce_reason=? WHERE id=?", (str(e)[:200], email_id))
-        conn.commit()
-        conn.close()
-        return jsonify({'success': False, 'error': str(e)[:100]})
 
 
 # Per-campaign send lock — prevents race condition duplicate sends
-import threading
 _campaign_send_locks = {}
 _campaign_send_locks_mutex = threading.Lock()
 
@@ -1833,635 +1445,174 @@ def _set_send_progress(user_id, data):
 send_progress = {'running': False, 'total': 0, 'done': 0, 'sent': 0, 'failed': 0, 'current': '', 'campaign_id': 0}
 
 
-@app.route('/api/send_status')
-@login_required
-def api_send_status():
-    prog = _get_send_progress(current_user.id)
-    conn = get_db()
-    recent = []
-    if prog['campaign_id']:
-        rows = conn.execute("""
-            SELECT es.email, es.status, es.bounce_reason, c.name, c.company 
-            FROM emails_sent es JOIN contacts c ON es.contact_id=c.id 
-            WHERE es.campaign_id=? ORDER BY es.sent_at DESC LIMIT 50
-        """, (prog['campaign_id'],)).fetchall()
-        recent = [{'name': r['name'], 'company': r['company'], 'email': r['email'], 'status': r['status'], 'reason': r['bounce_reason'] or ''} for r in rows]
-    conn.close()
-    return jsonify({
-        'running': prog['running'],
-        'total':   prog['total'],
-        'done':    prog['done'],
-        'sent':    prog['sent'],
-        'failed':  prog['failed'],
-        'current': prog['current'],
-        'recent':  recent
-    })
-
-
-@app.route('/campaign/<int:campaign_id>/send_ai', methods=['POST'])
-@login_required
-@limiter.limit("5 per minute")
-def send_campaign_ai(campaign_id):
-    uid = current_user.id
-    prog = _get_send_progress(uid)
-    if prog['running']:
-        flash('Sending already in progress!', 'error')
-        return redirect(url_for('campaign_detail', campaign_id=campaign_id))
-
-    subject_template = request.form.get('subject', 'Helping {company} scale engineering faster')
-    attachment = request.form.get('attachment', '')
-    contact_ids = request.form.getlist('contact_ids')
-    
-    if not contact_ids:
-        flash('No contacts selected. Please select at least one contact.', 'error')
-        return redirect(url_for('campaign_detail', campaign_id=campaign_id))
-
-    def run_send_ai():
-        prog = {'running': True, 'total': len(contact_ids), 'done': 0, 'sent': 0, 'failed': 0, 'current': '', 'campaign_id': campaign_id}
-        _set_send_progress(uid, prog)
-        prompt_template = get_setting('email_prompt')
-        from services.workspace_service import get_wid
-        from services.smtp_rotation import get_next_smtp_account, append_signature
-        wid = get_wid()
-        conn = get_db()
-
-        # Get SMTP creds via rotation (handles Brevo login_username properly)
-        def _get_smtp_creds():
-            account = get_next_smtp_account(workspace_id=wid)
-            if account:
-                return account
-            return {
-                'smtp_server':    get_setting('smtp_server'),
-                'smtp_port':      int(get_setting('smtp_port') or 587),
-                'login_username': get_setting('smtp_username'),
-                'password':       get_setting('smtp_password'),
-                'from_email':     get_setting('from_email') or get_setting('smtp_username'),
-                'from_name':      get_setting('from_name'),
-                'reply_to':       get_setting('reply_to'),
-                'bcc_emails':     get_setting('bcc_emails'),
-                'signature':      '',
-                'email':          get_setting('from_email') or get_setting('smtp_username'),
-                'account_id':     None,
-                'id':             None,
-            }
-
-        creds = _get_smtp_creds()
-        smtp_server_addr = creds.get('smtp_server')
-        smtp_port_num = int(creds.get('smtp_port') or 587)
-        smtp_login = creds.get('login_username') or creds.get('email')
-        smtp_password = creds['password']
-        from_email = creds.get('from_email') or creds.get('email')
-        from_name = creds.get('from_name', '')
-        reply_to = creds.get('reply_to') or _get_reply_to()
-        bcc = creds.get('bcc_emails') or get_setting('bcc_emails')
-        signature = creds.get('signature', '')
-        account_id = creds.get('account_id') or creds.get('id')
-
-        server = None
+# ── AI Generated Email Cache (30min TTL, 500 max) ─────────────────
+class _AICache:
+    def __init__(self):
+        self._d = {}
+        self._TTL = 1800
+    def __setitem__(self, k, v):
+        if len(self._d) >= 500:
+            oldest = min(self._d, key=lambda x: self._d[x][1])
+            del self._d[oldest]
+        self._d[k] = (v, _time.time())
+    def __getitem__(self, k):
+        v, ts = self._d[k]
+        if _time.time() - ts > self._TTL:
+            del self._d[k]
+            raise KeyError(k)
+        return v
+    def __contains__(self, k):
+        try: self[k]; return True
+        except KeyError: return False
+    def get(self, k, default=None):
+        try: return self[k]
+        except KeyError: return default
+    def pop(self, k, default=None):
         try:
-            server = smtplib.SMTP(smtp_server_addr, smtp_port_num)
-            server.starttls()
-            server.login(smtp_login, smtp_password)
+            v = self[k]
+            del self._d[k]
+            return v
+        except KeyError:
+            return default
+
+ai_generated_cache = _AICache()
+
+
+# ── CELERY INTEGRATION ────────────────────────────────────────────
+try:
+    from celery_app import celery_app as _celery
+    CELERY_AVAILABLE = True
+except Exception:
+    CELERY_AVAILABLE = False
+
+def has_active_workers():
+    if not CELERY_AVAILABLE:
+        return False
+    try:
+        insp = _celery.control.inspect(timeout=2)
+        active = insp.active_queues()
+        return bool(active)
+    except Exception:
+        return False
+
+
+# ── AI EMAIL GENERATION ───────────────────────────────────────────
+def generate_ai_email(name, company, prompt_template, context='', designation=''):
+    """Generate AI email body. Returns (body, None) on success, (None, error) on failure."""
+    import requests
+    prompt = prompt_template.replace('{name}', name or '').replace('{company}', company or '')
+    if context:
+        prompt += f"\n\nCompany context: {context}"
+    if designation:
+        prompt += f"\nRecipient role: {designation}"
+
+    ai_priority = get_setting('ai_priority') or 'groq,gemini'
+    providers = [p.strip() for p in ai_priority.split(',')]
+
+    for provider in providers:
+        if provider == 'groq':
+            body, err = call_groq(prompt)
+            if body:
+                _log_ai_usage('groq', True)
+                return body, None
+        elif provider == 'gemini':
+            body, err = call_gemini(prompt)
+            if body:
+                _log_ai_usage('gemini', True)
+                return body, None
+    return None, 'All AI providers failed'
+
+
+def call_groq(prompt):
+    import requests
+    keys_str = get_setting('groq_api_keys') or ''
+    keys = [k.strip() for k in keys_str.split(',') if k.strip()]
+    if not keys:
+        return None, 'No Groq API keys configured'
+    for key in keys:
+        try:
+            resp = requests.post('https://api.groq.com/openai/v1/chat/completions',
+                headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
+                json={'model': 'llama-3.3-70b-versatile', 'messages': [{'role': 'user', 'content': prompt}],
+                      'temperature': 0.7, 'max_tokens': 1000},
+                timeout=30)
+            if resp.status_code == 200:
+                return resp.json()['choices'][0]['message']['content'], None
+            if resp.status_code == 429:
+                continue
+            return None, f'Groq error {resp.status_code}'
         except Exception as e:
-            error_logger.error(f'[AI SEND] SMTP login failed: {smtp_login}@{smtp_server_addr}:{smtp_port_num} — {e}')
-            prog['running'] = False
-            _set_send_progress(uid, prog)
-            return
-
-        for i, cid in enumerate(contact_ids):
-            if i > 0 and i % 10 == 0:
-                try: server.quit()
-                except Exception: pass
-                try:
-                    # Re-get creds (rotation may pick next account)
-                    creds = _get_smtp_creds()
-                    smtp_server_addr = creds.get('smtp_server')
-                    smtp_port_num = int(creds.get('smtp_port') or 587)
-                    smtp_login = creds.get('login_username') or creds.get('email')
-                    smtp_password = creds['password']
-                    from_email = creds.get('from_email') or creds.get('email')
-                    from_name = creds.get('from_name', '')
-                    reply_to = creds.get('reply_to') or _get_reply_to()
-                    bcc = creds.get('bcc_emails') or get_setting('bcc_emails')
-                    signature = creds.get('signature', '')
-                    account_id = creds.get('account_id') or creds.get('id')
-                    server = smtplib.SMTP(smtp_server_addr, smtp_port_num)
-                    server.starttls()
-                    server.login(smtp_login, smtp_password)
-                except Exception: pass
-
-            contact = conn.execute("SELECT * FROM contacts WHERE id=?", (cid,)).fetchone()
-            if not contact: continue
-
-            if is_unsubscribed(contact['email']):
-                prog['done'] += 1
-                _set_send_progress(uid, prog)
-                continue
-
-            already = conn.execute("SELECT id FROM emails_sent WHERE email=? AND campaign_id=? AND status='sent'", (contact['email'], campaign_id)).fetchone()
-            if already:
-                prog['done'] += 1
-                _set_send_progress(uid, prog)
-                continue
-
-            prog['current'] = f"{contact['name']} ({contact['email']})"
-            _set_send_progress(uid, prog)
-            subject = subject_template.replace('{company}', contact['company'] or '').replace('{name}', contact['name'] or '')
-
-            if str(cid) in ai_generated_cache:
-                body = ai_generated_cache.pop(str(cid))
-            else:
-                context = contact['context'] if 'context' in contact.keys() else ''
-                if not context:
-                    conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,bounce_reason,sent_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (campaign_id, cid, contact['email'], subject, '', 'failed', 'No context - fetch context first', datetime.now(), wid))
-                    conn.commit()
-                    prog['done'] += 1
-                    prog['failed'] += 1
-                    _set_send_progress(uid, prog)
-                    continue
-                designation = contact['designation'] if 'designation' in contact.keys() else ''
-                body, error = generate_ai_email(contact['name'], contact['company'], prompt_template, context, designation)
-                if not body:
-                    conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,bounce_reason,sent_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (campaign_id, cid, contact['email'], subject, '', 'failed', f'AI: {error}', datetime.now(), wid))
-                    conn.commit()
-                    prog['done'] += 1
-                    prog['failed'] += 1
-                    _set_send_progress(uid, prog)
-                    continue
-
-            try:
-                tracking_id = str(uuid.uuid4())
-                body_with_sig = append_signature(body, signature)
-                tracked_body = inject_tracking_pixel(body_with_sig, tracking_id)
-
-                msg = EmailMessage()
-                msg['Subject'] = subject
-                msg['From'] = formataddr((from_name, from_email))
-                msg['To'] = contact['email']
-                if reply_to: msg['Reply-To'] = reply_to
-                if bcc and bcc.strip(): msg['Bcc'] = bcc
-                msg.add_alternative(tracked_body, subtype='html')
-
-                if attachment and os.path.exists(os.path.join(ATTACHMENT_DIR, attachment)):
-                    filepath = os.path.join(ATTACHMENT_DIR, attachment)
-                    mt, _ = mimetypes.guess_type(filepath)
-                    maintype, subtype = (mt.split('/', 1) if mt else ('application', 'octet-stream'))
-                    with open(filepath, 'rb') as f:
-                        msg.add_attachment(f.read(), maintype=maintype, subtype=subtype, filename=os.path.basename(filepath))
-
-                server.send_message(msg)
-                conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,tracking_id,sent_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (campaign_id, cid, contact['email'], subject, body, 'sent', tracking_id, datetime.now(), wid))
-                conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (cid,))
-                conn.commit()
-                prog['sent'] += 1
-                if account_id:
-                    mark_send_success(account_id)
-            except Exception as e:
-                conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,bounce_reason,sent_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (campaign_id, cid, contact['email'], subject, body if 'body' in dir() else '', 'failed', str(e)[:200], datetime.now(), wid))
-                conn.commit()
-                prog['failed'] += 1
-                if account_id:
-                    mark_send_failure(account_id)
-
-            prog['done'] += 1
-            _set_send_progress(uid, prog)
-            time.sleep(5)
-
-        try: server.quit()
-        except Exception: pass
-        if prog['sent'] > 0:
-            conn.execute("UPDATE campaigns SET status='sent' WHERE id=?", (campaign_id,))
-            conn.commit()
-        conn.close()
-        prog['running'] = False
-        prog['current'] = ''
-        _set_send_progress(uid, prog)
-    t = threading.Thread(target=run_send_ai)
-    t.start()
-    return redirect(url_for('send_progress_page', campaign_id=campaign_id))
+            continue
+    return None, 'All Groq keys exhausted'
 
 
-# ==============================
-# CAMPAIGN EXECUTION API ROUTES
-# ==============================
-
-@app.route('/campaign/<int:campaign_id>/launch', methods=['POST'])
-@login_required
-@limiter.limit("5 per minute")
-def launch_campaign_route(campaign_id):
-    """Launch campaign — browser-independent backend execution."""
-    from services.campaign_executor import launch_campaign, JobStatus
-    from services.workspace_service import get_wid
-    import os
-
-    wid             = get_wid()
-    subject_template = request.form.get('subject', 'Helping {company} scale engineering faster')
-    body_template    = request.form.get('body', '')
-    send_mode        = request.form.get('send_mode', 'template')  # 'template' or 'ai'
-    contact_ids      = [int(x) for x in request.form.getlist('contact_ids') if x.isdigit()]
-
-    # Handle attachment
-    attachment_path = ''
-    uploaded = request.files.get('attachment_file')
-    if uploaded and uploaded.filename:
-        from werkzeug.utils import secure_filename
-        fname = secure_filename(uploaded.filename)
-        attachment_path = os.path.join(ATTACHMENT_DIR, fname)
-        uploaded.save(attachment_path)
-    elif request.form.get('attachment'):
-        attachment_path = os.path.join(ATTACHMENT_DIR, request.form.get('attachment'))
-
-    if not contact_ids:
-        flash('No contacts selected. Please select at least one contact.', 'error')
-        return redirect(url_for('campaign_detail', campaign_id=campaign_id))
-
-    result = launch_campaign(
-        campaign_id, contact_ids, subject_template,
-        body_template, send_mode, wid, attachment_path
-    )
-
-    app_logger.info(f'Campaign {campaign_id} launched | {len(contact_ids)} contacts | mode={send_mode} | {result["mode"]}')
-    return redirect(url_for('send_progress_page', campaign_id=campaign_id))
+def call_gemini(prompt):
+    import requests
+    key = get_setting('gemini_api_key') or ''
+    if not key:
+        return None, 'No Gemini API key'
+    try:
+        resp = requests.post(
+            f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}',
+            json={'contents': [{'parts': [{'text': prompt}]}]},
+            timeout=30)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data['candidates'][0]['content']['parts'][0]['text'], None
+        return None, f'Gemini error {resp.status_code}'
+    except Exception as e:
+        return None, str(e)
 
 
-@app.route('/api/campaign/<int:campaign_id>/status')
-@login_required
-def api_campaign_execution_status(campaign_id):
-    """Poll campaign execution status — used by send_progress.html every 3s."""
-    from services.campaign_executor import get_campaign_status
-    return jsonify(get_campaign_status(campaign_id))
-
-
-@app.route('/api/campaign/<int:campaign_id>/pause', methods=['POST'])
-@login_required
-def api_pause_campaign(campaign_id):
-    from services.campaign_executor import pause_campaign
-    from services.workspace_service import get_wid
-    wid = get_wid()
-    conn = get_db()
-    camp = conn.execute('SELECT id FROM campaigns WHERE id=? AND workspace_id=?', (campaign_id, wid)).fetchone()
-    conn.close()
-    if not camp:
-        return jsonify({'success': False, 'error': 'Campaign not found'}), 404
-    pause_campaign(campaign_id, wid)
-    return jsonify({'success': True, 'status': 'paused'})
-
-
-@app.route('/api/campaign/<int:campaign_id>/resume', methods=['POST'])
-@login_required
-def api_resume_campaign(campaign_id):
-    from services.campaign_executor import resume_campaign
-    from services.workspace_service import get_wid
-    wid = get_wid()
-    conn = get_db()
-    camp = conn.execute('SELECT id FROM campaigns WHERE id=? AND workspace_id=?', (campaign_id, wid)).fetchone()
-    conn.close()
-    if not camp:
-        return jsonify({'success': False, 'error': 'Campaign not found'}), 404
-    result = resume_campaign(campaign_id, wid)
-    return jsonify({'success': bool(result)})
-
-
-@app.route('/api/campaign/<int:campaign_id>/cancel', methods=['POST'])
-@login_required
-def api_cancel_campaign(campaign_id):
-    from services.campaign_executor import cancel_campaign
-    from services.workspace_service import get_wid
-    wid = get_wid()
-    conn = get_db()
-    camp = conn.execute('SELECT id FROM campaigns WHERE id=? AND workspace_id=?', (campaign_id, wid)).fetchone()
-    conn.close()
-    if not camp:
-        return jsonify({'success': False, 'error': 'Campaign not found'}), 404
-    cancel_campaign(campaign_id, wid)
-    return jsonify({'success': True, 'status': 'cancelled'})
-
-
-@app.route('/campaign/<int:campaign_id>/sending')
-@login_required
-def send_progress_page(campaign_id):
-    conn = get_db()
-    campaign = conn.execute('SELECT * FROM campaigns WHERE id=?', (campaign_id,)).fetchone()
-    conn.close()
-    return render_template('send_progress.html', campaign_id=campaign_id, campaign=campaign)
-
-
-@app.route('/campaign/<int:campaign_id>/status')
-@login_required
-def campaign_status_page(campaign_id):
-    """Dedicated live campaign execution status page."""
-    conn = get_db()
-    campaign = conn.execute('SELECT * FROM campaigns WHERE id=?', (campaign_id,)).fetchone()
-    conn.close()
-    if not campaign:
-        flash('Campaign not found', 'error')
-        return redirect(url_for('campaigns_list'))
-    return render_template('campaign_status.html', campaign_id=campaign_id, campaign=campaign)
-
-
-# ==============================
-# LEGACY SEND ROUTES (kept for backward compat)
-# ==============================@app.route('/api/sequence/<int:campaign_id>/analytics')
-@login_required
-def api_sequence_analytics(campaign_id):
-    """Per-step open/reply rates + dropoff funnel."""
-    from services.sequence_engine import get_steps
-    conn = get_db()
-    steps = get_steps(campaign_id)
-    result = []
-    prev_sent = None
-    for s in steps:
-        sent = conn.execute(
-            "SELECT COUNT(*) FROM emails_sent WHERE campaign_id=? AND status='sent'",
-            (campaign_id,)
-        ).fetchone()[0]
-        opened = conn.execute(
-            "SELECT COUNT(*) FROM emails_sent WHERE campaign_id=? AND opened=1",
-            (campaign_id,)
-        ).fetchone()[0]
-        replied = conn.execute(
-            "SELECT COUNT(*) FROM emails_sent WHERE campaign_id=? AND replied=1",
-            (campaign_id,)
-        ).fetchone()[0]
-        bounced = conn.execute(
-            "SELECT COUNT(*) FROM emails_sent WHERE campaign_id=? AND status='bounced'",
-            (campaign_id,)
-        ).fetchone()[0]
-        dropoff = round((1 - sent / prev_sent) * 100, 1) if prev_sent and prev_sent > 0 else 0
-        prev_sent = sent
-        result.append({
-            'step_id':    s['id'],
-            'step_order': s['step_order'],
-            'step_type':  s['step_type'],
-            'subject':    s['subject'],
-            'delay_days': s['delay_days'],
-            'sent':       sent,
-            'opened':     opened,
-            'replied':    replied,
-            'bounced':    bounced,
-            'open_rate':  round(opened  / sent * 100, 1) if sent else 0,
-            'reply_rate': round(replied / sent * 100, 1) if sent else 0,
-            'bounce_rate':round(bounced / sent * 100, 1) if sent else 0,
-            'dropoff':    dropoff,
-        })
-    conn.close()
-    total_enrolled = conn.execute(
-        "SELECT COUNT(*) FROM contact_sequence_state WHERE campaign_id=?",
-        (campaign_id,)
-    ).fetchone()[0] if False else 0
-    conn2 = get_db()
-    total_enrolled = conn2.execute(
-        "SELECT COUNT(*) FROM contact_sequence_state WHERE campaign_id=?",
-        (campaign_id,)
-    ).fetchone()[0]
-    conn2.close()
-    return jsonify({'steps': result, 'total_enrolled': total_enrolled})
-
-
-# ==============================
-# SEQUENCE ENGINE ROUTES — PART 2 (Enrollment + State)
-# ==============================
-
-@app.route('/campaign/<int:campaign_id>/sequence')
-@login_required
-def sequence_builder(campaign_id):
-    """Sequence builder UI for a campaign."""
-    conn = get_db()
-    campaign = conn.execute("SELECT * FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
-    conn.close()
-    if not campaign:
-        flash('Campaign not found', 'error')
-        return redirect(url_for('campaigns_list'))
-    return render_template('sequence_builder.html', campaign=campaign)
-
-
-@app.route('/api/sequence/<int:campaign_id>/enroll', methods=['POST'])
-@login_required
-def api_sequence_enroll(campaign_id):
-    """
-    Enroll contacts into a sequence.
-    Body: {contact_ids: [1,2,3]}  OR  {enroll_all: true}
-    Uses Celery if available, else synchronous.
-    """
-    from services.sequence_engine import enroll_contacts_bulk, get_steps
-    from services.workspace_service import get_wid
-    data = request.json or {}
-    wid  = get_wid()
-
-    # Must have at least 1 step before enrolling
-    steps = get_steps(campaign_id)
-    if not steps:
-        return jsonify({'success': False, 'error': 'No active steps in this sequence. Add steps first.'})
-
-    # Resolve contact list
-    if data.get('enroll_all'):
+def _log_ai_usage(provider, success):
+    try:
         conn = get_db()
-        rows = conn.execute(
-            "SELECT id FROM contacts WHERE workspace_id=? AND email_valid=1",
-            (wid,)
-        ).fetchall()
+        conn.execute("INSERT INTO ai_usage (provider, success) VALUES (?,?)", (provider, 1 if success else 0))
+        conn.commit()
         conn.close()
-        contact_ids = [r['id'] for r in rows]
-    else:
-        contact_ids = [int(i) for i in data.get('contact_ids', [])]
-
-    if not contact_ids:
-        return jsonify({'success': False, 'error': 'No contacts provided'})
-
-    # Try Celery async first
-    if CELERY_AVAILABLE and has_active_workers():
-        from tasks.sequence_tasks import enroll_contacts_task
-        result = enroll_contacts_task.apply_async(
-            args=[contact_ids, campaign_id, wid],
-            queue='automation_queue'
-        )
-        app_logger.info(f'[SEQ] Enroll queued | campaign {campaign_id} | {len(contact_ids)} contacts | task {result.id}')
-        return jsonify({'success': True, 'queued': True, 'task_id': result.id, 'total': len(contact_ids)})
-
-    # Fallback: synchronous
-    result = enroll_contacts_bulk(contact_ids, campaign_id, wid)
-    app_logger.info(f'[SEQ] Enrolled sync | campaign {campaign_id} | {result}')
-    return jsonify({'success': True, 'queued': False, **result})
+    except Exception:
+        pass
 
 
-@app.route('/api/sequence/<int:campaign_id>/pause/<int:contact_id>', methods=['POST'])
-@login_required
-def api_sequence_pause(campaign_id, contact_id):
-    """Manually pause a contact's sequence."""
-    from services.sequence_engine import pause_contact
-    pause_contact(contact_id, campaign_id)
-    return jsonify({'success': True, 'status': 'paused'})
+# ── SMTP ROTATION HELPERS (exposed for blueprints) ────────────────
+def reset_daily_counts():
+    conn = get_db()
+    conn.execute("UPDATE smtp_accounts SET sent_today=0")
+    conn.commit()
+    conn.close()
+
+def check_warmup_upgrade():
+    conn = get_db()
+    accounts = conn.execute("SELECT id, warmup_stage, health_score FROM smtp_accounts WHERE active=1").fetchall()
+    for a in accounts:
+        if a['health_score'] >= 90 and a['warmup_stage'] < 5:
+            conn.execute("UPDATE smtp_accounts SET warmup_stage=warmup_stage+1 WHERE id=?", (a['id'],))
+    conn.commit()
+    conn.close()
+
+def mark_send_success(account_id):
+    conn = get_db()
+    conn.execute("UPDATE smtp_accounts SET sent_today=sent_today+1, last_used=? WHERE id=?", (datetime.now(), account_id))
+    conn.commit()
+    conn.close()
+
+def mark_send_failure(account_id):
+    conn = get_db()
+    conn.execute("UPDATE smtp_accounts SET health_score=MAX(0, health_score-5) WHERE id=?", (account_id,))
+    conn.commit()
+    conn.close()
 
 
-@app.route('/api/sequence/<int:campaign_id>/resume/<int:contact_id>', methods=['POST'])
-@login_required
-def api_sequence_resume(campaign_id, contact_id):
-    """Resume a paused contact's sequence."""
-    from services.sequence_engine import resume_contact
-    resume_contact(contact_id, campaign_id)
-    return jsonify({'success': True, 'status': 'active'})
 
 
-@app.route('/api/sequence/<int:campaign_id>/contacts')
-@login_required
-def api_sequence_contacts(campaign_id):
-    """Get all contacts with their current sequence state."""
-    from services.sequence_engine import get_campaign_contacts_state
-    contacts = get_campaign_contacts_state(campaign_id)
-    # Serialize datetimes
-    for c in contacts:
-        for k in ('next_run_at', 'last_sent_at', 'completed_at', 'created_at'):
-            if c.get(k) and not isinstance(c[k], str):
-                c[k] = c[k].isoformat()
-    return jsonify({'contacts': contacts})
 
 
-@app.route('/api/sequence/<int:campaign_id>/stats')
-@login_required
-def api_sequence_stats(campaign_id):
-    """Get sequence stats — totals + per-step rates."""
-    from services.sequence_engine import get_sequence_stats
-    stats = get_sequence_stats(campaign_id)
-    return jsonify(stats)
 
 
-@app.route('/api/sequence/<int:campaign_id>/contact/<int:contact_id>/history')
-@login_required
-def api_sequence_contact_history(campaign_id, contact_id):
-    """Get email send history for a contact in this sequence."""
-    from services.sequence_engine import get_contact_sequence_history, get_contact_state
-    history = get_contact_sequence_history(contact_id, campaign_id)
-    state   = get_contact_state(contact_id, campaign_id)
-    if state:
-        for k in ('next_run_at', 'last_sent_at', 'completed_at', 'created_at'):
-            if state.get(k) and not isinstance(state[k], str):
-                state[k] = state[k].isoformat()
-    return jsonify({'history': history, 'state': state})
 
 
-@app.route('/api/sequence/<int:campaign_id>/trigger', methods=['POST'])
-@login_required
-@limiter.limit("5 per minute")
-def api_sequence_trigger(campaign_id):
-    """
-    Manually trigger sequence processing for a campaign.
-    Useful for testing without waiting for Beat.
-    """
-    from services.workspace_service import get_wid
-    wid = get_wid()
-
-    if CELERY_AVAILABLE and has_active_workers():
-        from tasks.sequence_tasks import process_sequences_task
-        result = process_sequences_task.apply_async(queue='automation_queue')
-        return jsonify({'success': True, 'queued': True, 'task_id': result.id})
-
-    # Fallback: run synchronously for this campaign only
-    from services.sequence_engine import get_due_contacts, check_stop_conditions, \
-        get_steps, get_contact_state, advance_state, mark_completed, \
-        mark_stopped, calculate_next_run, get_smart_delay
-
-    due = get_due_contacts(wid, limit=50)
-    due = [d for d in due if d['campaign_id'] == campaign_id]
-    processed = 0
-    for cs in due:
-        should_stop, reason = check_stop_conditions(cs['contact_id'], campaign_id)
-        if should_stop:
-            mark_stopped(cs['contact_id'], campaign_id, reason)
-        processed += 1
-
-    return jsonify({'success': True, 'queued': False, 'processed': processed})
 
 
-# ==============================
-# SEQUENCE ENGINE ROUTES — PART 1 (Step CRUD)
-# ==============================
-
-
-@app.route('/api/sequence/<int:campaign_id>/steps')
-@login_required
-def api_sequence_steps(campaign_id):
-    """Get all steps for a campaign."""
-    from services.sequence_engine import get_all_steps
-    steps = get_all_steps(campaign_id)
-    return jsonify({'steps': steps})
-
-
-@app.route('/api/sequence/<int:campaign_id>/steps/add', methods=['POST'])
-@login_required
-def api_sequence_add_step(campaign_id):
-    """Add a new step to a campaign sequence."""
-    from services.sequence_engine import add_step, get_all_steps
-    from services.workspace_service import get_wid
-    data       = request.json or {}
-    wid        = get_wid()
-    steps      = get_all_steps(campaign_id)
-    next_order = max((s['step_order'] for s in steps), default=0) + 1
-    step_id = add_step(
-        campaign_id  = campaign_id,
-        workspace_id = wid,
-        step_order   = int(data.get('step_order', next_order)),
-        step_type    = data.get('step_type', 'email'),
-        delay_days   = int(data.get('delay_days', 3)),
-        subject      = data.get('subject', ''),
-        body         = data.get('body', ''),
-        ai_enabled   = bool(data.get('ai_enabled', False)),
-    )
-    app_logger.info(f'[SEQ] Step added: campaign {campaign_id} step_id {step_id}')
-    return jsonify({'success': True, 'step_id': step_id})
-
-
-@app.route('/api/sequence/step/<int:step_id>/update', methods=['POST'])
-@login_required
-def api_sequence_update_step(step_id):
-    """Update an existing step."""
-    from services.sequence_engine import update_step
-    data = request.json or {}
-    update_step(
-        step_id    = step_id,
-        step_order = int(data.get('step_order', 1)),
-        step_type  = data.get('step_type', 'email'),
-        delay_days = int(data.get('delay_days', 3)),
-        subject    = data.get('subject', ''),
-        body       = data.get('body', ''),
-        ai_enabled = bool(data.get('ai_enabled', False)),
-        active     = bool(data.get('active', True)),
-    )
-    return jsonify({'success': True})
-
-
-@app.route('/api/sequence/step/<int:step_id>/delete', methods=['DELETE'])
-@login_required
-def api_sequence_delete_step(step_id):
-    """Delete a step."""
-    from services.sequence_engine import delete_step
-    delete_step(step_id)
-    return jsonify({'success': True})
-
-
-@app.route('/api/sequence/<int:campaign_id>/steps/reorder', methods=['POST'])
-@login_required
-def api_sequence_reorder_steps(campaign_id):
-    """
-    Reorder steps.
-    Body: {ordered_ids: [1, 3, 2, 4]}
-    """
-    from services.sequence_engine import reorder_steps
-    ordered_ids = (request.json or {}).get('ordered_ids', [])
-    if not ordered_ids:
-        return jsonify({'success': False, 'error': 'ordered_ids required'})
-    reorder_steps(campaign_id, ordered_ids)
-    return jsonify({'success': True})
-
-
-# ==============================
-# OUTREACH COPILOT
-# ==============================
-
-# Old copilot routes removed — now served by routes/copilot.py (copilot_bp)
 
 
 if __name__ == '__main__':
