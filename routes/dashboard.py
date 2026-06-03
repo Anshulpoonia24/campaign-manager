@@ -13,7 +13,13 @@ dashboard_bp = Blueprint('dash', __name__)
 def landing_page():
     if current_user.is_authenticated:
         return redirect(url_for('dash.dashboard'))
-    return render_template('landing.html')
+    from app import get_db
+    conn = get_db()
+    latest_blogs = conn.execute(
+        "SELECT id, title, slug, summary, cover_image, category, author, created_at FROM blogs WHERE published=1 ORDER BY featured DESC, created_at DESC LIMIT 3"
+    ).fetchall()
+    conn.close()
+    return render_template('landing.html', latest_blogs=latest_blogs)
 
 
 @dashboard_bp.route('/solutions')
@@ -23,7 +29,27 @@ def solutions_page():
 
 @dashboard_bp.route('/blogs')
 def blogs_page():
-    return render_template('blogs.html')
+    from app import get_db
+    conn = get_db()
+    blogs = conn.execute(
+        "SELECT * FROM blogs WHERE published=1 ORDER BY featured DESC, created_at DESC"
+    ).fetchall()
+    conn.close()
+    return render_template('blogs.html', blogs=blogs)
+
+
+@dashboard_bp.route('/blogs/<slug>')
+def blog_post(slug):
+    from app import get_db
+    conn = get_db()
+    blog = conn.execute(
+        "SELECT * FROM blogs WHERE slug=? AND published=1", (slug,)
+    ).fetchone()
+    conn.close()
+    if not blog:
+        from flask import abort
+        abort(404)
+    return render_template('blog_post.html', blog=blog)
 
 
 @dashboard_bp.route('/contact', methods=['GET', 'POST'])

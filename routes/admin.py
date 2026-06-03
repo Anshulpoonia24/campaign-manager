@@ -122,7 +122,8 @@ def admin_dashboard():
     # Redis/Celery status
     infra = {'redis': False, 'celery_workers': 0}
     try:
-        from celery_app import is_redis_available, has_active_workers
+        from celery_app import is_redis_available
+        from app import has_active_workers
         infra['redis'] = is_redis_available()
         infra['celery_workers'] = 1 if has_active_workers() else 0
     except Exception:
@@ -391,3 +392,107 @@ def api_stats():
         'contacts': total_contacts,
         'emails_sent': total_sent,
     })
+
+
+# ── BLOG MANAGEMENT ───────────────────────────────────────────
+import re as _re
+
+def _slugify(text):
+    text = text.lower().strip()
+    text = _re.sub(r'[^\w\s-]', '', text)
+    text = _re.sub(r'[\s_-]+', '-', text)
+    return text[:80]
+
+
+@admin_bp.route('/blogs')
+@admin_required
+def blogs_list():
+    conn = get_db()
+    blogs = conn.execute("SELECT * FROM blogs ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return render_template('admin/blogs.html', blogs=blogs)
+
+
+@admin_bp.route('/blogs/new', methods=['GET', 'POST'])
+@admin_required
+def blog_new():
+    if request.method == 'POST':
+        title    = request.form.get('title', '').strip()
+        summary  = request.form.get('summary', '').strip()
+        content  = request.form.get('content', '').strip()
+        cover    = request.form.get('cover_image', '').strip()
+        author   = request.form.get('author', 'OutreachOS Team').strip()
+        category = request.form.get('category', 'General').strip()
+        tags     = request.form.get('tags', '').strip()
+        published = 1 if request.form.get('published') else 0
+        featured  = 1 if request.form.get('featured') else 0
+        if not title:
+            flash('Title is required.', 'error')
+            return render_template('admin/blog_form.html', blog=None)
+        slug = _slugify(title)
+        conn = get_db()
+        base_slug = slug; i = 1
+        while conn.execute("SELECT id FROM blogs WHERE slug=?", (slug,)).fetchone():
+            slug = f"{base_slug}-{i}"; i += 1
+        conn.execute("""
+            INSERT INTO blogs (title,slug,summary,content,cover_image,author,category,tags,published,featured)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        """, (title, slug, summary, content, cover, author, category, tags, published, featured))
+        conn.commit(); conn.close()
+        flash(f'Blog "{title}" created.', 'success')
+        return redirect(url_for('admin.blogs_list'))
+    return render_template('admin/blog_form.html', blog=None)
+
+
+@admin_bp.route('/blogs/<int:blog_id>/edit', methods=['GET', 'POST'])
+@admin_required
+def blog_edit(blog_id):
+    conn = get_db()
+    blog = conn.execute("SELECT * FROM blogs WHERE id=?", (blog_id,)).fetchone()
+    if not blog:
+        conn.close()
+        flash('Blog not found.', 'error')
+        return redirect(url_for('admin.blogs_list'))
+    if request.method == 'POST':
+        title    = request.form.get('title', '').strip()
+        summary  = request.form.get('summary', '').strip()
+        content  = request.form.get('content', '').strip()
+        cover    = request.form.get('cover_image', '').strip()
+        author   = request.form.get('author', 'OutreachOS Team').strip()
+        category = request.form.get('category', 'General').strip()
+        tags     = request.form.get('tags', '').strip()
+        published = 1 if request.form.get('published') else 0
+        featured  = 1 if request.form.get('featured') else 0
+        conn.execute("""
+            UPDATE blogs SET title=?,summary=?,content=?,cover_image=?,
+                author=?,category=?,tags=?,published=?,featured=?,updated_at=?
+            WHERE id=?
+        """, (title, summary, content, cover, author, category, tags,
+              published, featured, datetime.now(), blog_id))
+        conn.commit(); conn.close()
+        flash('Blog updated.', 'success')
+        return redirect(url_for('admin.blogs_list'))
+    conn.close()
+    return render_template('admin/blog_form.html', blog=blog)
+
+
+@admin_bp.route('/blogs/<int:blog_id>/delete', methods=['POST'])
+@admin_required
+def blog_delete(blog_id):
+    conn = get_db()
+    conn.execute("DELETE FROM blogs WHERE id=?", (blog_id,))
+    conn.commit(); conn.close()
+    flash('Blog deleted.', 'success')
+    return redirect(url_for('admin.blogs_list'))
+
+
+@admin_bp.route('/blogs/<int:blog_id>/toggle', methods=['POST'])
+@admin_required
+def blog_toggle(blog_id):
+    conn = get_db()
+    blog = conn.execute("SELECT published FROM blogs WHERE id=?", (blog_id,)).fetchone()
+    if blog:
+        conn.execute("UPDATE blogs SET published=? WHERE id=?", (0 if blog['published'] else 1, blog_id))
+        conn.commit()
+    conn.close()
+    return jsonify({'success': True})

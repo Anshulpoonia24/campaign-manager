@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ blog.title }} — OutreachOS Blog</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="/static/landing.css" rel="stylesheet">
+<style>
+.blog-post-wrap { max-width: 740px; margin: 0 auto; padding: 60px 24px 100px; }
+.blog-meta { display:flex; align-items:center; gap:12px; margin-bottom:24px; flex-wrap:wrap; }
+.blog-cat { background:#eef2ff; color:#4338ca; font-size:12px; font-weight:700; padding:3px 10px; border-radius:99px; }
+.blog-date { font-size:13px; color:#6b7280; }
+.blog-author { font-size:13px; color:#6b7280; }
+.blog-title { font-size:2.2rem; font-weight:800; color:#111827; line-height:1.2; letter-spacing:-0.5px; margin-bottom:16px; }
+.blog-summary { font-size:1.1rem; color:#6b7280; line-height:1.7; margin-bottom:32px; border-left:3px solid #6366f1; padding-left:16px; }
+.blog-cover { width:100%; height:340px; object-fit:cover; border-radius:14px; margin-bottom:36px; }
+.blog-content { font-size:1rem; line-height:1.8; color:#374151; }
+.blog-content h2 { font-size:1.5rem; font-weight:700; color:#111827; margin:32px 0 12px; }
+.blog-content h3 { font-size:1.2rem; font-weight:700; color:#111827; margin:24px 0 10px; }
+.blog-content p { margin-bottom:16px; }
+.blog-content ul, .blog-content ol { margin-bottom:16px; padding-left:24px; }
+.blog-content li { margin-bottom:6px; }
+.blog-content strong { color:#111827; }
+.blog-content a { color:#6366f1; }
+.blog-tags { margin-top:40px; display:flex; gap:8px; flex-wrap:wrap; }
+.blog-tag { background:#f1f5f9; color:#64748b; font-size:12px; font-weight:500; padding:4px 10px; border-radius:99px; }
+.back-link { display:inline-flex; align-items:center; gap:6px; color:#6366f1; font-size:13px; font-weight:600; text-decoration:none; margin-bottom:32px; }
+.back-link:hover { text-decoration:underline; }
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo"><span>O</span>utreachOS</a>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/solutions">Solutions</a>
+      <a href="/blogs">Blog</a>
+      <a href="/contact">Contact</a>
+    </div>
+    <div class="nav-cta">
+      <a href="/login" class="btn-ghost">Sign In</a>
+      <a href="/register" class="btn-primary-nav">Get Started</a>
+    </div>
+  </div>
+</nav>
+
+<div class="blog-post-wrap">
+  <a href="/blogs" class="back-link">← Back to Blog</a>
+
+  <div class="blog-meta">
+    <span class="blog-cat">{{ blog.category }}</span>
+    <span class="blog-author">By {{ blog.author }}</span>
+    <span class="blog-date">{{ blog.created_at[:10] if blog.created_at else '' }}</span>
+  </div>
+
+  <h1 class="blog-title">{{ blog.title }}</h1>
+
+  {% if blog.summary %}
+  <div class="blog-summary">{{ blog.summary }}</div>
+  {% endif %}
+
+  {% if blog.cover_image %}
+  <img src="{{ blog.cover_image }}" alt="{{ blog.title }}" class="blog-cover">
+  {% endif %}
+
+  <div class="blog-content">
+    {{ blog.content | safe }}
+  </div>
+
+  {% if blog.tags %}
+  <div class="blog-tags">
+    {% for tag in blog.tags.split(',') %}
+    <span class="blog-tag">{{ tag.strip() }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-brand">OutreachOS</div>
+    <div class="footer-links">
+      <a href="/blogs">Blog</a>
+      <a href="/contact">Contact</a>
+      <a href="/login">Login</a>
+    </div>
+    <div class="footer-copy">© 2026 OutreachOS</div>
+  </div>
+</footer>
+</body>
+</html>

@@ -338,24 +338,44 @@
   <div style="text-align:center;">
     <div class="section-label">Blog</div>
     <h2 class="section-title" style="font-size:28px;">Learn outbound</h2>
+    <p style="color:#6b7280;font-size:15px;margin-top:8px;">Guides, strategies, and insights from the OutreachOS team</p>
   </div>
   <div class="blog-grid">
-    <div class="blog-card">
-      <div class="blog-tag">Deliverability</div>
-      <h3>Why your cold emails land in spam (and how to fix it)</h3>
-      <p>The complete guide to inbox placement — SPF, DKIM, warmup, content optimization.</p>
-    </div>
-    <div class="blog-card">
-      <div class="blog-tag">Technical</div>
-      <h3>SPF, DKIM & DMARC — The definitive 2024 guide</h3>
-      <p>Set up email authentication correctly. Step-by-step for every DNS provider.</p>
-    </div>
-    <div class="blog-card">
-      <div class="blog-tag">AI & Sales</div>
-      <h3>The future of AI SDR — replacing manual outreach</h3>
-      <p>How AI agents are transforming cold outreach from spray-and-pray to precision targeting.</p>
-    </div>
+    {% if latest_blogs %}
+      {% for b in latest_blogs %}
+      <a href="/blogs/{{ b.slug }}" class="blog-card" style="text-decoration:none;color:inherit;display:block;">
+        {% if b.cover_image %}
+        <div style="width:100%;height:160px;background:url('{{ b.cover_image }}') center/cover no-repeat;border-radius:10px;margin-bottom:14px;"></div>
+        {% endif %}
+        <div class="blog-tag">{{ b.category }}</div>
+        <h3 style="margin:10px 0 8px;font-size:16px;font-weight:700;color:#111827;line-height:1.4;">{{ b.title }}</h3>
+        <p style="color:#6b7280;font-size:13.5px;line-height:1.6;margin:0;">{{ b.summary[:120] }}{% if b.summary|length > 120 %}...{% endif %}</p>
+        <div style="margin-top:12px;font-size:12px;color:#9ca3af;">{{ b.author }} · {{ b.created_at[:10] if b.created_at else '' }}</div>
+      </a>
+      {% endfor %}
+    {% else %}
+      <div class="blog-card">
+        <div class="blog-tag">Deliverability</div>
+        <h3>Why your cold emails land in spam (and how to fix it)</h3>
+        <p>The complete guide to inbox placement — SPF, DKIM, warmup, content optimization.</p>
+      </div>
+      <div class="blog-card">
+        <div class="blog-tag">Technical</div>
+        <h3>SPF, DKIM &amp; DMARC — The definitive guide</h3>
+        <p>Set up email authentication correctly. Step-by-step for every DNS provider.</p>
+      </div>
+      <div class="blog-card">
+        <div class="blog-tag">AI &amp; Sales</div>
+        <h3>The future of AI SDR — replacing manual outreach</h3>
+        <p>How AI agents are transforming cold outreach from spray-and-pray to precision targeting.</p>
+      </div>
+    {% endif %}
   </div>
+  {% if latest_blogs %}
+  <div style="text-align:center;margin-top:32px;">
+    <a href="/blogs" class="btn-ghost" style="display:inline-block;padding:10px 24px;border:1px solid #e5e7eb;border-radius:9px;color:#374151;font-size:13px;font-weight:600;text-decoration:none;">View All Posts →</a>
+  </div>
+  {% endif %}
 </section>
 
 <!-- FAQ -->

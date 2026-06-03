@@ -233,6 +233,22 @@ def init_db(get_db, DEFAULT_SETTINGS):
         "ALTER TABLE smtp_accounts ADD COLUMN bcc_emails TEXT DEFAULT ''",
         "ALTER TABLE smtp_accounts ADD COLUMN signature TEXT DEFAULT ''",
         "ALTER TABLE users ADD COLUMN full_name TEXT DEFAULT ''",
+        # Blogs table
+        """CREATE TABLE IF NOT EXISTS blogs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            slug TEXT UNIQUE NOT NULL,
+            summary TEXT DEFAULT '',
+            content TEXT DEFAULT '',
+            cover_image TEXT DEFAULT '',
+            author TEXT DEFAULT 'OutreachOS Team',
+            category TEXT DEFAULT 'General',
+            tags TEXT DEFAULT '',
+            published INTEGER DEFAULT 0,
+            featured INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"""
         "ALTER TABLE smtp_accounts ADD COLUMN login_username TEXT DEFAULT ''",
         "ALTER TABLE contacts ADD COLUMN industry TEXT DEFAULT ''",
         "ALTER TABLE contacts ADD COLUMN company_size TEXT DEFAULT ''",

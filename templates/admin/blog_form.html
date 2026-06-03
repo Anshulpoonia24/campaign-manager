@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ 'Edit' if blog else 'New' }} Blog — OutreachOS Admin</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+body { background:#f8fafc; font-family:'Inter',sans-serif; }
+.admin-nav { background:#1e293b; padding:12px 24px; display:flex; align-items:center; gap:16px; }
+.admin-nav a { color:#94a3b8; text-decoration:none; font-size:13px; font-weight:500; }
+.admin-nav a:hover { color:#fff; }
+.admin-nav .brand { color:#fff; font-weight:800; font-size:15px; margin-right:16px; }
+.main { max-width:900px; margin:32px auto; padding:0 20px; }
+.form-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:28px 32px; box-shadow:0 1px 4px rgba(0,0,0,0.04); }
+label { font-size:12px; font-weight:600; color:#374151; margin-bottom:5px; display:block; }
+.content-editor { font-family:'Courier New',monospace; font-size:13px; min-height:320px; resize:vertical; }
+</style>
+</head>
+<body>
+<div class="admin-nav">
+  <span class="brand">⚡ OutreachOS Admin</span>
+  <a href="/admin/">Dashboard</a>
+  <a href="/admin/workspaces">Tenants</a>
+  <a href="/admin/blogs">Blogs</a>
+  <a href="/admin/ai-config">AI Config</a>
+  <a href="/admin/logout" style="margin-left:auto;color:#f87171;">Logout</a>
+</div>
+
+<div class="main">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for cat, msg in messages %}
+  <div class="alert alert-{{ 'success' if cat=='success' else 'danger' }} alert-dismissible fade show py-2 mb-3">
+    {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}{% endif %}{% endwith %}
+
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <a href="/admin/blogs" class="btn btn-sm btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Back</a>
+    <h4 style="margin:0;font-weight:800;">{{ 'Edit Post' if blog else 'New Blog Post' }}</h4>
+  </div>
+
+  <form method="POST" class="form-card">
+    <div class="row g-3">
+      <!-- Title -->
+      <div class="col-12">
+        <label>Title *</label>
+        <input type="text" name="title" class="form-control"
+               value="{{ blog.title if blog else '' }}"
+               placeholder="e.g. How to improve cold email open rates" required>
+      </div>
+
+      <!-- Summary -->
+      <div class="col-12">
+        <label>Summary <small class="text-muted fw-normal">(shown on landing page / blog list)</small></label>
+        <textarea name="summary" class="form-control" rows="2"
+                  placeholder="2-3 sentence description shown in blog cards...">{{ blog.summary if blog else '' }}</textarea>
+      </div>
+
+      <!-- Cover Image -->
+      <div class="col-md-8">
+        <label>Cover Image URL <small class="text-muted fw-normal">(optional — use any image URL)</small></label>
+        <input type="text" name="cover_image" class="form-control"
+               value="{{ blog.cover_image if blog else '' }}"
+               placeholder="https://images.unsplash.com/...">
+      </div>
+
+      <!-- Category -->
+      <div class="col-md-4">
+        <label>Category</label>
+        <select name="category" class="form-select">
+          {% set cats = ['General','Outreach','Cold Email','AI & Automation','Deliverability','Product','Case Study','Tutorial'] %}
+          {% for cat in cats %}
+          <option value="{{ cat }}" {{ 'selected' if blog and blog.category == cat }}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Author + Tags -->
+      <div class="col-md-6">
+        <label>Author</label>
+        <input type="text" name="author" class="form-control"
+               value="{{ blog.author if blog else 'OutreachOS Team' }}">
+      </div>
+      <div class="col-md-6">
+        <label>Tags <small class="text-muted fw-normal">(comma separated)</small></label>
+        <input type="text" name="tags" class="form-control"
+               value="{{ blog.tags if blog else '' }}"
+               placeholder="cold email, outreach, AI">
+      </div>
+
+      <!-- Content -->
+      <div class="col-12">
+        <label>Content <small class="text-muted fw-normal">(HTML supported)</small></label>
+        <textarea name="content" class="form-control content-editor"
+                  placeholder="Write your blog post here. HTML tags like &lt;h2&gt;, &lt;p&gt;, &lt;ul&gt;, &lt;strong&gt; are supported.">{{ blog.content if blog else '' }}</textarea>
+        <small class="text-muted">Tip: Use &lt;h2&gt;, &lt;h3&gt;, &lt;p&gt;, &lt;ul&gt;&lt;li&gt;, &lt;strong&gt;, &lt;em&gt;, &lt;a href=""&gt; tags</small>
+      </div>
+
+      <!-- Toggles -->
+      <div class="col-12 d-flex gap-4">
+        <div class="form-check">
+          <input type="checkbox" name="published" id="published" class="form-check-input"
+                 {{ 'checked' if blog and blog.published }} style="accent-color:#6366f1;">
+          <label for="published" class="form-check-label" style="font-size:13px;font-weight:500;cursor:pointer;">
+            ✅ Publish (visible on landing page)
+          </label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="featured" id="featured" class="form-check-input"
+                 {{ 'checked' if blog and blog.featured }} style="accent-color:#f59e0b;">
+          <label for="featured" class="form-check-label" style="font-size:13px;font-weight:500;cursor:pointer;">
+            ⭐ Featured (shown prominently)
+          </label>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="col-12 d-flex gap-2 pt-2">
+        <button type="submit" class="btn btn-primary px-4">
+          <i class="fas fa-save me-1"></i>{{ 'Update Post' if blog else 'Create Post' }}
+        </button>
+        <a href="/admin/blogs" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
