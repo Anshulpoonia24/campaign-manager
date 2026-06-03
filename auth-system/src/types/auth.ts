@@ -6,6 +6,12 @@ export interface UserProfile {
   avatar_url: string | null;
   auth_provider: 'email' | 'google';
   email_verified: boolean;
+  is_admin: boolean;
+  last_login_at: string | null;
+  login_count: number;
+  signup_ip: string | null;
+  last_ip: string | null;
+  status: string;
   created_at: string;
   updated_at: string;
 }

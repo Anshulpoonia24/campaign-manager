@@ -79,17 +79,22 @@ export async function POST(request: Request) {
   // Send welcome email on first verified login
   const { data: profile } = await serviceClient
     .from('user_profiles')
-    .select('created_at, full_name, email_verified')
+    .select('created_at, full_name, email_verified, login_count')
     .eq('user_id', userId)
     .single();
 
   if (profile && !profile.email_verified) {
     // Mark email as verified
     await serviceClient.from('user_profiles')
-      .update({ email_verified: true })
+      .update({ email_verified: true, last_login_at: new Date().toISOString(), login_count: 1 })
       .eq('user_id', userId);
     // Send welcome email
     sendWelcomeEmail(email, profile.full_name || '').catch(console.error);
+  } else if (profile) {
+    // Update login tracking
+    await serviceClient.from('user_profiles')
+      .update({ last_login_at: new Date().toISOString(), login_count: (profile as any).login_count ? (profile as any).login_count + 1 : 1, last_ip: ip })
+      .eq('user_id', userId);
   }
 
   // Return the verification token for client-side session exchange
