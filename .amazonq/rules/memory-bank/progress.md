@@ -3,6 +3,18 @@
 
 ---
 
+## ⚡ AGENT INSTRUCTIONS (MANDATORY — READ FIRST)
+
+1. **Har commit ke saath `progress.md` update karna hai** — bina user ke bolne ke
+2. **Session notes** mein kya kiya add karna hai (date + bullet points)
+3. **Completed features** mein naya kaam add karna hai
+4. **Known issues** update karne hain jab fix ho
+5. **Ye document khud se maintain karna hai** — user ko remind nahi karna
+6. **Naya session start ho toh ye file pehle padho** — poora context yahan hai
+7. **User ko baar baar explain nahi karna** — jo pehle hua woh yahan documented hai
+
+---
+
 ## 🚀 WHAT IS THIS PROJECT
 
 **OutreachOS** — AI-powered B2B cold email outreach platform for Shiksha Infotech.
