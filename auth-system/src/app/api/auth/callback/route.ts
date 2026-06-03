@@ -17,7 +17,7 @@ export async function GET(request: Request) {
         const serviceClient = await createServiceClient();
         const { data: profile } = await serviceClient
           .from('user_profiles')
-          .select('created_at')
+          .select('created_at, login_count')
           .eq('user_id', user.id)
           .single();
 
@@ -28,6 +28,11 @@ export async function GET(request: Request) {
           if (now - createdAt < 60000) {
             const name = user.user_metadata?.full_name || user.user_metadata?.name || '';
             sendWelcomeEmail(user.email!, name).catch(console.error);
+          } else {
+            // Existing user — update login tracking
+            await serviceClient.from('user_profiles')
+              .update({ last_login_at: new Date().toISOString(), login_count: (profile as any).login_count ? (profile as any).login_count + 1 : 1 })
+              .eq('user_id', user.id);
           }
         }
       }
