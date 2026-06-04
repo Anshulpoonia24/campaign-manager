@@ -5,11 +5,33 @@ Upload, add, edit, delete, verify, enrich, filter contacts.
 """
 import time
 import os
+import threading
+import requests as http_requests
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from utils.db import get_db
+import pandas as pd
 
 contacts_bp = Blueprint("contacts_routes", __name__)
+
+
+def _get_app_globals():
+    """Lazy-load app-level globals to avoid circular imports."""
+    from app import (
+        app_logger, get_setting, call_groq, call_gemini,
+        generate_ai_email, mx_cache, verify_email,
+        CELERY_AVAILABLE, has_active_workers
+    )
+    return app_logger, get_setting, call_groq, call_gemini, generate_ai_email, mx_cache, verify_email, CELERY_AVAILABLE, has_active_workers
+
+
+def _queue_enrich_all(force=False):
+    try:
+        from app import queue_enrich_all
+        return queue_enrich_all(force)
+    except Exception:
+        return None
 
 
 @contacts_bp.route('/add_contact', methods=['POST'])
@@ -23,14 +45,13 @@ def add_contact():
 
     if not email or '@' not in email:
         flash('Please enter a valid email address.', 'error')
-        return redirect(url_for('upload_contacts'))
+        return redirect(url_for('contacts_routes.upload_contacts'))
 
     if not name:
         name = email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
     else:
         name = name.strip().title()
 
-    # Auto-generate website from email domain if not provided
     if not website:
         domain = email.split('@')[1]
         if domain not in ['gmail.com','yahoo.com','hotmail.com','outlook.com','live.com','icloud.com','protonmail.com','aol.com']:
@@ -48,7 +69,7 @@ def add_contact():
         conn.commit()
         flash(f'{name} ({email}) added!', 'success')
     conn.close()
-    return redirect(url_for('contacts'))
+    return redirect(url_for('contacts_routes.contacts'))
 
 
 @contacts_bp.route('/upload', methods=['GET', 'POST'])
@@ -190,8 +211,9 @@ def upload_contacts():
             else:
                 skip_info = f' | Duplicates: {', '.join(skipped_names[:10])}... +{len(skipped_names)-10} more'
         flash(f'{added} contacts added, {skipped} skipped (duplicate/invalid){skip_info} | Detected: {mapping_info}', 'success')
+        app_logger, *_ = _get_app_globals()
         app_logger.info(f'Upload: {added} added, {skipped} skipped | File: {file.filename} | by {current_user.username}')
-        return redirect(url_for('contacts'))
+        return redirect(url_for('contacts_routes.contacts'))
 
     return render_template('upload.html')
 
@@ -302,9 +324,9 @@ def api_industry_breakdown():
 @contacts_bp.route('/api/contacts/<int:contact_id>/enrich_intelligence', methods=['POST'])
 @login_required
 def api_enrich_intelligence(contact_id):
-    """Trigger full intelligence enrichment for one contact."""
     from services.workspace_service import get_wid
     wid = get_wid()
+    _, _, _, _, _, _, _, CELERY_AVAILABLE, has_active_workers = _get_app_globals()
     if CELERY_AVAILABLE and has_active_workers():
         from tasks.enrichment_tasks import enrich_single_contact
         result = enrich_single_contact.apply_async(
@@ -380,6 +402,7 @@ def api_bulk_enrich_intelligence():
     contact_ids = [c['id'] for c in contacts]
     if not contact_ids:
         return jsonify({'success': True, 'message': 'All contacts already enriched', 'queued': 0})
+    _, _, _, _, _, _, _, CELERY_AVAILABLE, has_active_workers = _get_app_globals()
     if CELERY_AVAILABLE and has_active_workers():
         from tasks.enrichment_tasks import enrich_single_contact
         for cid in contact_ids:
@@ -416,20 +439,19 @@ verify_progress = {'running': False, 'total': 0, 'done': 0, 'current_email': ''}
 def verify_emails_route():
     global verify_progress
     if verify_progress['running']:
-        return redirect(url_for('contacts'))
+        return redirect(url_for('contacts_routes.contacts'))
 
     reverify = request.form.get('reverify', '0')
 
     def run_verify(reverify_flag):
         global verify_progress
-        mx_cache.clear()  # Reset cache
+        _, _, _, _, _, mx_cache, verify_email, _, _ = _get_app_globals()
+        mx_cache.clear()
         conn = get_db()
-
         if reverify_flag == '1':
             contacts_list = conn.execute("SELECT id, email FROM contacts").fetchall()
         else:
             contacts_list = conn.execute("SELECT id, email FROM contacts WHERE email_valid=-1").fetchall()
-
         verify_progress = {'running': True, 'total': len(contacts_list), 'done': 0, 'current_email': ''}
 
         def verify_one(contact):
@@ -452,7 +474,7 @@ def verify_emails_route():
 
     t = threading.Thread(target=run_verify, args=(reverify,))
     t.start()
-    return redirect(url_for('verify_progress_page'))
+    return redirect(url_for('contacts_routes.verify_progress_page'))
 
 
 @contacts_bp.route('/verify_progress')
@@ -464,6 +486,7 @@ def verify_progress_page():
 @contacts_bp.route('/api/verify_single/<int:contact_id>')
 @login_required
 def api_verify_single(contact_id):
+    _, _, _, _, _, _, verify_email, _, _ = _get_app_globals()
     conn = get_db()
     contact = conn.execute("SELECT id, email FROM contacts WHERE id=?", (contact_id,)).fetchone()
     if not contact:
@@ -517,7 +540,7 @@ Only use WELL KNOWN facts. If unsure, say what the company likely does based on 
 Keep it under 50 words. No fluff. Plain text, no markdown."""
 
     try:
-        # Try Groq first, then Gemini
+        app_logger, get_setting, call_groq, call_gemini, *_ = _get_app_globals()
         text, err = call_groq(prompt)
         if not text:
             text, err = call_gemini(prompt)
@@ -576,6 +599,7 @@ def api_fetch_all_context():
                 continue
         prompt = f"In 1-2 short bullet points (under 50 words), what does {contact['company']} do? Any recent funding or news? Only well-known facts. Plain text."
         try:
+            _, _, call_groq, call_gemini, *_ = _get_app_globals()
             text, err = call_groq(prompt)
             if not text:
                 text, err = call_gemini(prompt)
@@ -607,18 +631,15 @@ def get_wid_safe():
 @contacts_bp.route('/api/enrich_all', methods=['POST'])
 @login_required
 def api_enrich_all():
-    """Enrich contacts - scrape website + AI summarize. Uses Celery if available."""
     force = request.json.get('force', False) if request.json else False
-
-    # Try Celery first
-    task_id = queue_enrich_all(force)
+    task_id = _queue_enrich_all(force)
     if task_id:
         conn = get_db()
         total = conn.execute("SELECT COUNT(*) FROM contacts WHERE email_valid=1").fetchone()[0]
         conn.close()
         return jsonify({'enriched': 0, 'failed': 0, 'total': total, 'queued': True, 'task_id': task_id})
 
-    # Fallback: synchronous enrichment (existing logic)
+    app_logger, get_setting, call_groq, call_gemini, *_ = _get_app_globals()
     conn = get_db()
     if force:
         contacts_list = conn.execute("SELECT id, name, company, email FROM contacts WHERE workspace_id=?", (get_wid_safe(),)).fetchall()
@@ -660,7 +681,6 @@ Include: what they do, any known funding/stage, tech focus. Plain text only."""
                     result_text, err = call_gemini(prompt)
                 if result_text:
                     break
-            if result_text:
                 conn.execute("UPDATE contacts SET context=? WHERE id=?", (result_text.strip(), contact['id']))
                 conn.commit()
                 enriched += 1
@@ -716,8 +736,8 @@ def api_generate_email():
     name = request.json.get('name', '')
     company = request.json.get('company', '')
     contact_id = request.json.get('contact_id', '')
+    _, get_setting, call_groq, call_gemini, generate_ai_email, *_ = _get_app_globals()
     prompt_template = get_setting('email_prompt')
-    
     context = ''
     designation = ''
     if contact_id:
@@ -727,13 +747,10 @@ def api_generate_email():
             context = row['context'] or ''
             designation = row['designation'] or ''
         conn.close()
-    
     if not context:
         return jsonify({'success': False, 'error': 'No context found. Please fetch context first.'})
-    
     body, error = generate_ai_email(name, company, prompt_template, context, designation)
     if body:
-        # Cache for later send
         ai_generated_cache[str(contact_id)] = body
         return jsonify({'success': True, 'body': body})
     return jsonify({'success': False, 'error': error})
@@ -743,6 +760,7 @@ def api_generate_email():
 @login_required
 def api_generate_all():
     contact_ids = request.json.get('contact_ids', [])
+    _, get_setting, _, _, generate_ai_email, *_ = _get_app_globals()
     prompt_template = get_setting('email_prompt')
     results = []
     conn = get_db()
