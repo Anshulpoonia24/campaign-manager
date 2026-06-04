@@ -447,28 +447,35 @@ def verify_emails_route():
         global verify_progress
         _, _, _, _, _, mx_cache, verify_email, _, _ = _get_app_globals()
         mx_cache.clear()
+        # Fetch contacts list with own connection
         conn = get_db()
         if reverify_flag == '1':
-            contacts_list = conn.execute("SELECT id, email FROM contacts").fetchall()
+            contacts_list = [(r['id'], r['email']) for r in conn.execute("SELECT id, email FROM contacts").fetchall()]
         else:
-            contacts_list = conn.execute("SELECT id, email FROM contacts WHERE email_valid=-1").fetchall()
+            contacts_list = [(r['id'], r['email']) for r in conn.execute("SELECT id, email FROM contacts WHERE email_valid=-1").fetchall()]
+        conn.close()
         verify_progress = {'running': True, 'total': len(contacts_list), 'done': 0, 'current_email': ''}
 
-        def verify_one(contact):
-            valid, reason = verify_email(contact['email'])
-            return contact['id'], contact['email'], valid, reason
+        def verify_one(item):
+            cid, email = item
+            valid, reason = verify_email(email)
+            return cid, email, valid, reason
 
-        with ThreadPoolExecutor(max_workers=20) as pool:
-            futures = {pool.submit(verify_one, c): c for c in contacts_list}
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            futures = {pool.submit(verify_one, item): item for item in contacts_list}
             for future in as_completed(futures):
                 cid, email, valid, reason = future.result()
                 verify_progress['current_email'] = email
-                conn.execute("UPDATE contacts SET email_valid=?, validation_reason=? WHERE id=?",
-                             (1 if valid else 0, reason, cid))
-                conn.commit()
+                # Each write gets its own connection (PostgreSQL safe)
+                wconn = get_db()
+                try:
+                    wconn.execute("UPDATE contacts SET email_valid=?, validation_reason=? WHERE id=?",
+                                 (1 if valid else 0, reason, cid))
+                    wconn.commit()
+                finally:
+                    wconn.close()
                 verify_progress['done'] += 1
 
-        conn.close()
         verify_progress['running'] = False
         verify_progress['current_email'] = ''
 
@@ -504,15 +511,16 @@ def api_verify_single(contact_id):
 @login_required
 def api_fetch_context(contact_id):
     from utils.ownership import owns_contact
-    conn = get_db()
-    contact = owns_contact(contact_id)
+    contact = owns_contact(contact_id)  # returns row or None, handles its own conn
     if not contact:
-        conn.close()
         return jsonify({'success': False, 'error': 'Not found'})
 
-    # ── Company-level cache: reuse context from same domain/company ──
+    # Company-level cache: reuse context from same domain/company
     domain = contact['email'].split('@')[1] if contact['email'] and '@' in contact['email'] else ''
     company = (contact['company'] or '').strip()
+    wid = getattr(current_user, 'workspace_id', 1)
+
+    conn = get_db()
     if domain or company:
         existing = conn.execute("""
             SELECT context FROM contacts
@@ -523,11 +531,7 @@ def api_fetch_context(contact_id):
                 OR (? != '' AND LOWER(company) = LOWER(?))
             )
             LIMIT 1
-        """, (
-            getattr(current_user, 'workspace_id', 1),
-            domain, f'%@{domain}',
-            company, company
-        )).fetchone()
+        """, (wid, domain, f'%@{domain}', company, company)).fetchone()
         if existing:
             conn.execute("UPDATE contacts SET context=? WHERE id=?", (existing['context'], contact_id))
             conn.commit()
@@ -540,7 +544,7 @@ Only use WELL KNOWN facts. If unsure, say what the company likely does based on 
 Keep it under 50 words. No fluff. Plain text, no markdown."""
 
     try:
-        app_logger, get_setting, call_groq, call_gemini, *_ = _get_app_globals()
+        _, get_setting, call_groq, call_gemini, *_ = _get_app_globals()
         text, err = call_groq(prompt)
         if not text:
             text, err = call_gemini(prompt)
@@ -550,13 +554,13 @@ Keep it under 50 words. No fluff. Plain text, no markdown."""
 
         text = text.strip()
         conn.execute("UPDATE contacts SET context=? WHERE id=?", (text, contact_id))
-        conn.execute("INSERT INTO ai_usage (provider, purpose, success) VALUES ('groq','research',1)")
+        conn.execute("INSERT INTO ai_usage (provider, purpose, success, workspace_id) VALUES ('groq','research',1,?)", (wid,))
         conn.commit()
         conn.close()
         return jsonify({'success': True, 'context': text})
     except Exception as e:
         conn.close()
-        return jsonify({'success': False, 'error': str(e)[:50]})
+        return jsonify({'success': False, 'error': str(e)[:100]})
 
 
 @contacts_bp.route('/api/fetch_all_context', methods=['POST'])
@@ -806,9 +810,11 @@ def api_audience_count():
 @contacts_bp.route('/api/verify_status')
 @login_required
 def api_verify_status():
+    from services.workspace_service import get_wid
+    wid = get_wid()
     conn = get_db()
     all_contacts = conn.execute(
-        "SELECT id, name, email, email_valid, validation_reason FROM contacts ORDER BY id"
+        "SELECT id, name, email, email_valid, validation_reason FROM contacts WHERE workspace_id=? ORDER BY id", (wid,)
     ).fetchall()
     conn.close()
     results = [{'id': r['id'], 'name': r['name'], 'email': r['email'], 'valid': r['email_valid'], 'reason': r['validation_reason'] or ''} for r in all_contacts]
