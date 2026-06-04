@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     role TEXT DEFAULT 'admin',
     workspace_id INTEGER DEFAULT 1,
+    full_name TEXT DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -299,6 +300,22 @@ CREATE TABLE IF NOT EXISTS tracking_events (
     user_agent TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS blogs (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    slug TEXT UNIQUE NOT NULL,
+    summary TEXT DEFAULT '',
+    content TEXT DEFAULT '',
+    cover_image TEXT DEFAULT '',
+    author TEXT DEFAULT 'OutreachOS Team',
+    category TEXT DEFAULT 'General',
+    tags TEXT DEFAULT '',
+    published INTEGER DEFAULT 0,
+    featured INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 PG_INDEXES = """
@@ -351,4 +368,15 @@ def init_pg(conn):
                 conn.execute(stmt)
             except Exception:
                 pass
+    conn.commit()
+
+    # Safe column migrations for existing DBs
+    for migration in [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT DEFAULT ''",
+        "ALTER TABLE smtp_accounts ADD COLUMN IF NOT EXISTS login_username TEXT DEFAULT ''",
+    ]:
+        try:
+            conn.execute(migration)
+        except Exception:
+            pass
     conn.commit()

@@ -111,7 +111,7 @@ body { font-family: 'Inter', sans-serif; background: #f8fafc; min-height: 100vh;
         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f9fafb;">
           <div>
             <div style="font-weight:600;font-size:13px;color:#0f172a;">{{ u.username }}</div>
-            <div style="font-size:11px;color:#9CA3AF;">{{ u.role }} · joined {{ u.created_at[:10] if u.created_at else '—' }}</div>
+            <div style="font-size:11px;color:#9CA3AF;">{{ u.role }} · joined {{ u.created_at[:10] if u.created_at and u.created_at is string else (u.created_at.strftime('%Y-%m-%d') if u.created_at else '—') }}</div>
           </div>
           <button class="btn btn-sm btn-outline-secondary" onclick="showResetPw({{ u.id }}, '{{ u.username }}')">
             <i class="fas fa-key me-1"></i>Reset PW
@@ -158,7 +158,7 @@ body { font-family: 'Inter', sans-serif; background: #f8fafc; min-height: 100vh;
           <tr>
             <td style="font-weight:600;">{{ c.name }}</td>
             <td><span style="background:#f1f5f9;color:#475569;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px;">{{ c.status }}</span></td>
-            <td><small class="text-muted">{{ c.created_at[:10] if c.created_at else '—' }}</small></td>
+            <td><small class="text-muted">{{ c.created_at[:10] if c.created_at and c.created_at is string else (c.created_at.strftime('%Y-%m-%d') if c.created_at else '—') }}</small></td>
           </tr>
           {% endfor %}
           </tbody>
