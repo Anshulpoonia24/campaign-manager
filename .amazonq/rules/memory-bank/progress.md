@@ -1,5 +1,5 @@
 # OutreachOS — Living Development Document
-> Last updated: 2026-06-03 | Read this FIRST in every new session
+> Last updated: 2026-06-04 | Read this FIRST in every new session
 
 ---
 
@@ -12,6 +12,24 @@
 5. **Ye document khud se maintain karna hai** — user ko remind nahi karna
 6. **Naya session start ho toh ye file pehle padho** — poora context yahan hai
 7. **User ko baar baar explain nahi karna** — jo pehle hua woh yahan documented hai
+8. **EVERY single file change must be logged here** — file name, line changed, why
+9. **progress.md ko har push ke saath commit karna hai** — alag commit bhi theek hai
+10. **User kabhi nahi bolega progress.md update karo** — agent ki zimmedari hai
+
+---
+
+## ⚠️ CRITICAL PRODUCTION NOTES (READ BEFORE ANY CODE CHANGE)
+
+- **Python version on Render: 3.14** — psycopg2 ke saath incompatibility hai
+- **psycopg2 params**: hamesha `list(params)` pass karo, kabhi `tuple` ya `params or ()` nahi
+- **`INSERT OR IGNORE`**: SQLite syntax hai — `_convert()` in `utils/db.py` auto-converts to `ON CONFLICT DO NOTHING` for PostgreSQL
+- **datetime slicing**: PostgreSQL `datetime` object return karta hai, string nahi — `[:10]` crash karega. Hamesha `str(val)[:10]` ya `_dt()` helper use karo
+- **url_for**: Blueprint endpoints ke saath full name use karo — `url_for('contacts_routes.contacts')` not `url_for('contacts')`
+- **Circular imports**: Blueprints `app.py` se globals lazy-load karo — `from app import X` inside function, not at top
+- **DB connections**: Har thread ka apna `get_db()` call hona chahiye — shared connection across threads crash karega PostgreSQL pe
+- **`INSERT OR IGNORE INTO settings`**: `api/settings/save` never overwrites protected fields with empty string
+- **Render auto-deploy**: `main` branch pe push karo → Render automatically deploy karega
+- **Dev branch**: `devvvvvvvvvv` — test changes yahan karo, phir `main` mein merge karo
 
 ---
 
@@ -314,6 +332,40 @@ conn.execute("SELECT * FROM contacts WHERE workspace_id=?", (wid,))
 ---
 
 ## 📝 SESSION NOTES
+
+### 2026-06-04 Session 4 — Production Bug Fixing (Live Log Monitoring)
+
+**Files changed:**
+
+| File | Change | Why |
+|---|---|---|
+| `utils/db.py` | `_convert()` simplified — removed problematic regex patterns | Python 3.14 encoding crash |
+| `utils/db.py` | `execute()` — `params or ()` → explicit None check + `list(params)` | psycopg2 + py3.14 tuple handling bug |
+| `utils/db.py` | `executemany()` — params converted to list of lists | same py3.14 compat |
+| `app.py` | Startup: `_get_pg_pool` import removed → `_connect_pg()` test | `_get_pg_pool` doesn't exist in db.py |
+| `app.py` | Added `queue_enrich_all()` + `queue_check_replies()` functions | were in old settings.py, got lost in rewrite |
+| `requirements.txt` | `psycopg2-binary==2.9.10` → `>=2.9.10` | unpin so Render installs py3.14 compatible version |
+| `routes/contacts.py` | `verify_emails` — each thread gets own `get_db()` connection | shared conn across ThreadPoolExecutor crashes PostgreSQL |
+| `routes/contacts.py` | `api_fetch_context` — removed double `conn = get_db()` | `owns_contact()` already has its own conn internally |
+| `routes/contacts.py` | `api_verify_status` — added `WHERE workspace_id=?` | was returning all workspaces' contacts |
+| `routes/contacts.py` | `ai_usage` INSERT — added `workspace_id` param | was missing, caused INSERT error |
+| `routes/contacts.py` | Fixed `url_for('upload_contacts')` → `contacts_routes.upload_contacts` | blueprint endpoint name |
+| `routes/contacts.py` | Fixed `url_for('contacts')` → `contacts_routes.contacts` | blueprint endpoint name |
+| `routes/contacts.py` | Fixed `api_enrich_all` logic bug — result_text check was inside loop | was never saving enriched context |
+| `routes/settings.py` | Complete rewrite with `_app()` lazy-loader | all globals undefined (get_setting, get_db, etc.) |
+| `routes/analytics.py` | `url_for('dashboard')` → `url_for('dash.dashboard')` | NameError in live_logs_page |
+| `routes/analytics.py` | All `sent_at[:10]` → `_dt()` helper | PostgreSQL returns datetime object not string |
+| `routes/campaigns.py` | `url_for('dashboard')` → `url_for('dash.dashboard')` in retry_email | NameError |
+| `routes/inbox.py` | `sent_at[:16]` → `_fmt()` helper in api_contact_by_thread | PostgreSQL datetime object crash |
+| `utils/pg_schema.py` | Added `full_name TEXT DEFAULT ''` to users table | column missing, User.display_name crashed |
+| `utils/pg_schema.py` | Added `blogs` table to PG_SCHEMA | blogs table missing in production |
+| `utils/pg_schema.py` | Added `ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name` to `init_pg()` | safe migration for existing DBs |
+| `templates/admin/tenant_detail.html` | `created_at[:10]` → Jinja2 `strftime` conditional | PostgreSQL datetime object crash |
+
+**Commits this session:**
+`736d7c0` → `d49949b` → `3cd441a` → `32e4a85` → `63fc460` → `bec4cde` → `81d0939` → `52d8063`
+
+---
 
 ### 2026-06-03 Session 3 — Full Portal 500 Audit
 - **`routes/settings.py`**: Complete rewrite — all globals were undefined (`get_setting`, `get_db`, `DB_PATH`, `error_logger`, `app_logger`, `CELERY_AVAILABLE`, `imap_checker_running`, `smtplib`, `time`, `DEFAULT_SETTINGS`, `reset_daily_counts`). Added `_app()` lazy-loader.
