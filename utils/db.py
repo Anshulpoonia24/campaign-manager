@@ -142,23 +142,15 @@ class PgCursor:
     def _convert(self, sql):
         """Convert SQLite syntax to PostgreSQL."""
         import re
-        # Track if this was INSERT OR IGNORE
         is_ignore = bool(re.search(r'INSERT\s+OR\s+IGNORE', sql, re.IGNORECASE))
-        # Remove OR IGNORE / OR REPLACE
         sql = re.sub(r'INSERT\s+OR\s+IGNORE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
-        # ? → %s
+        sql = re.sub(r'INSERT\s+OR\s+REPLACE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
         sql = sql.replace('?', '%s')
-        # Append ON CONFLICT DO NOTHING for INSERT OR IGNORE
-        if is_ignore and 'ON CONFLICT' not in sql:
+        if is_ignore and 'ON CONFLICT' not in sql.upper():
             sql = sql.rstrip().rstrip(';') + ' ON CONFLICT DO NOTHING'
-        # AUTOINCREMENT not valid in PG (SERIAL handles it)
         sql = re.sub(r'INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT', 'SERIAL PRIMARY KEY', sql, flags=re.IGNORECASE)
-        # datetime('now') → CURRENT_TIMESTAMP
         sql = re.sub(r"datetime\('now'\)", 'CURRENT_TIMESTAMP', sql, flags=re.IGNORECASE)
-        # DATE('now') → CURRENT_DATE
         sql = re.sub(r"DATE\('now'\)", 'CURRENT_DATE', sql, flags=re.IGNORECASE)
-        # datetime('now', '-X minutes') → NOW() - INTERVAL 'X minutes'
-        sql = re.sub(r"datetime\('now',\s*%s\)", "NOW() + CAST(%s || ' minutes' AS INTERVAL)", sql, flags=re.IGNORECASE)
         return sql
 
     def execute(self, sql, params=None):

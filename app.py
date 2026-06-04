@@ -383,11 +383,11 @@ try:
     if USE_POSTGRES:
         # Test PG connection directly to surface errors
         try:
-            from utils.db import _get_pg_pool
-            _get_pg_pool()
-            print('[STARTUP] PostgreSQL pool created successfully')
+            raw = _connect_pg()
+            raw.close()
+            print('[STARTUP] PostgreSQL connection test OK')
         except Exception as pg_err:
-            print(f'[STARTUP] PostgreSQL pool FAILED: {pg_err}')
+            print(f'[STARTUP] PostgreSQL connection FAILED: {pg_err}')
     init_db()
     # Ensure tracking_events table exists
     from services.tracking import ensure_tracking_table
