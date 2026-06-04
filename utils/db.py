@@ -154,7 +154,11 @@ class PgCursor:
         return sql
 
     def execute(self, sql, params=None):
-        self._cur.execute(self._convert(sql), params or ())
+        converted = self._convert(sql)
+        if params is None:
+            self._cur.execute(converted)
+        else:
+            self._cur.execute(converted, tuple(params))
         return self
 
     def executemany(self, sql, seq):

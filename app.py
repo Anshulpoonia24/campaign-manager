@@ -383,6 +383,7 @@ try:
     if USE_POSTGRES:
         # Test PG connection directly to surface errors
         try:
+            from utils.db import _connect_pg
             raw = _connect_pg()
             raw.close()
             print('[STARTUP] PostgreSQL connection test OK')
