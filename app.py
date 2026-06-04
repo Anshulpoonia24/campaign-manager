@@ -381,7 +381,6 @@ try:
     print(f'[STARTUP] USE_POSTGRES={USE_POSTGRES}')
     print(f'[STARTUP] DATABASE_URL set={bool(DATABASE_URL)} len={len(DATABASE_URL)}')
     if USE_POSTGRES:
-        # Test PG connection directly to surface errors
         try:
             from utils.db import _connect_pg
             raw = _connect_pg()
