@@ -315,6 +315,23 @@ conn.execute("SELECT * FROM contacts WHERE workspace_id=?", (wid,))
 
 ## 📝 SESSION NOTES
 
+### 2026-06-03 Session 3 — Full Portal 500 Audit
+- **`routes/settings.py`**: Complete rewrite — all globals were undefined (`get_setting`, `get_db`, `DB_PATH`, `error_logger`, `app_logger`, `CELERY_AVAILABLE`, `imap_checker_running`, `smtplib`, `time`, `DEFAULT_SETTINGS`, `reset_daily_counts`). Added `_app()` lazy-loader.
+- **`routes/analytics.py`**: Fixed `url_for('dashboard')` → `url_for('dash.dashboard')`. Fixed all `sent_at[:10]` datetime slicing crashes on PostgreSQL (datetime objects, not strings). Added `_dt()` helper.
+- **`routes/campaigns.py`**: Fixed `url_for('dashboard')` → `url_for('dash.dashboard')` in `retry_email`.
+- **`routes/inbox.py`**: Fixed `sent_at[:16]` datetime crash in `api_contact_by_thread`.
+- **`routes/contacts.py`**: Added all missing imports (`get_db`, `pd`, `threading`, `requests`), added `_get_app_globals()` lazy-loader.
+- **`utils/pg_schema.py`**: Added `users.full_name` column + `blogs` table + safe ALTER migrations.
+- **`templates/admin/tenant_detail.html`**: Fixed `created_at[:10]` crash for PostgreSQL datetime.
+- All 176 routes verified loading cleanly locally.
+
+### 2026-06-03 Session 2
+- Fixed 500 error on `/admin/tenant/<id>`
+- Root cause: `pg_schema.py` mein `users.full_name` column missing tha, `blogs` table missing tha
+- Added `ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name` safe migration to `init_pg()`
+- Added `blogs` table to `PG_SCHEMA` in `pg_schema.py`
+- Fixed `created_at[:10]` Jinja2 slicing crash — PostgreSQL returns `datetime` object, not string
+
 ### 2026-06-03 (Latest)
 - Fixed auth routes `url_for` for blueprint architecture
 - Implemented Google OAuth via Supabase (`/auth/google`, `/auth/google/callback`)
