@@ -157,12 +157,15 @@ class PgCursor:
         converted = self._convert(sql)
         if params is None:
             self._cur.execute(converted)
+        elif isinstance(params, (list, tuple)):
+            self._cur.execute(converted, list(params))
         else:
-            self._cur.execute(converted, tuple(params))
+            self._cur.execute(converted, [params])
         return self
 
     def executemany(self, sql, seq):
-        self._cur.executemany(self._convert(sql), seq)
+        converted = self._convert(sql)
+        self._cur.executemany(converted, [list(p) for p in seq])
         return self
 
     def executescript(self, script):

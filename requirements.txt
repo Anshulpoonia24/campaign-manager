@@ -22,7 +22,7 @@ beautifulsoup4==4.13.4
 python-dotenv==1.2.2
 
 # ── DATABASE ─────────────────────────────────────────────────
-psycopg2-binary==2.9.10     # PostgreSQL driver (binary = no build deps)
+psycopg2-binary>=2.9.10     # PostgreSQL driver
 
 # ── ASYNC TASK QUEUE ──────────────────────────────────────────
 celery==5.4.0
