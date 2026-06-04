@@ -79,7 +79,7 @@ def upload_contacts():
         file = request.files.get('file')
         if not file or not file.filename.endswith(('.xlsx', '.xls', '.csv')):
             flash('Please upload Excel or CSV file', 'error')
-            return redirect(url_for('upload_contacts'))
+            return redirect(url_for('contacts_routes.upload_contacts'))
 
         if file.filename.endswith('.csv'):
             df = pd.read_csv(file)
@@ -147,7 +147,7 @@ def upload_contacts():
 
         if 'email' not in col_map:
             flash('Email column not found! Please ensure your file has an email column.', 'error')
-            return redirect(url_for('upload_contacts'))
+            return redirect(url_for('contacts_routes.upload_contacts'))
 
         # Show detected mapping
         mapping_info = ' | '.join([f"{k.upper()}: {v}" for k, v in col_map.items()])
@@ -235,7 +235,7 @@ def edit_contact(contact_id):
     from utils.ownership import owns_contact
     if not owns_contact(contact_id):
         flash('Not found.', 'error')
-        return redirect(url_for('contacts'))
+        return redirect(url_for('contacts_routes.contacts'))
     name = request.form.get('name', '').strip().title()
     company = request.form.get('company', '').strip()
     email = request.form.get('email', '').strip().lower()
@@ -248,7 +248,7 @@ def edit_contact(contact_id):
     conn.commit()
     conn.close()
     flash('Contact updated!', 'success')
-    return redirect(url_for('contacts'))
+    return redirect(url_for('contacts_routes.contacts'))
 
 
 @contacts_bp.route('/api/contact/delete/<int:contact_id>', methods=['DELETE'])
@@ -681,6 +681,7 @@ Include: what they do, any known funding/stage, tech focus. Plain text only."""
                     result_text, err = call_gemini(prompt)
                 if result_text:
                     break
+            if result_text:
                 conn.execute("UPDATE contacts SET context=? WHERE id=?", (result_text.strip(), contact['id']))
                 conn.commit()
                 enriched += 1

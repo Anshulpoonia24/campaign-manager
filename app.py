@@ -894,6 +894,25 @@ def has_active_workers():
         return False
 
 
+def queue_enrich_all(force=False):
+    """Route enrichment to Celery or threading fallback."""
+    if CELERY_AVAILABLE and has_active_workers():
+        from tasks.ai_tasks import enrich_all_contacts
+        result = enrich_all_contacts.apply_async(args=[force], queue='ai')
+        app_logger.info(f'[CELERY] Enrich all queued | task_id={result.id}')
+        return result.id
+    return None
+
+
+def queue_check_replies():
+    """Route IMAP check to Celery or direct call."""
+    if CELERY_AVAILABLE and has_active_workers():
+        from tasks.inbox_tasks import check_replies_task
+        result = check_replies_task.apply_async(queue='inbox')
+        return result.id
+    return None
+
+
 # ── AI EMAIL GENERATION ───────────────────────────────────────────
 def generate_ai_email(name, company, prompt_template, context='', designation=''):
     """Generate AI email body. Returns (body, None) on success, (None, error) on failure."""
