@@ -342,8 +342,8 @@ conn.execute("SELECT * FROM contacts WHERE workspace_id=?", (wid,))
 | `utils/db.py` | `_convert()` simplified — removed problematic regex patterns | Python 3.14 encoding crash |
 | `utils/db.py` | `execute()` — `params or ()` → explicit None check + `list(params)` | psycopg2 + py3.14 tuple handling bug |
 | `utils/db.py` | `executemany()` — params converted to list of lists | same py3.14 compat |
-| `app.py` | Startup: `_get_pg_pool` import removed → `_connect_pg()` test | `_get_pg_pool` doesn't exist in db.py |
-| `app.py` | Added `queue_enrich_all()` + `queue_check_replies()` functions | were in old settings.py, got lost in rewrite |
+| `app.py` | Startup: `_get_pg_pool` import removed → `_connect_pg()` test with proper import | `_get_pg_pool` doesn't exist in db.py |
+| `app.py` | Added `queue_enrich_all()` + `queue_check_replies()` functions | were missing after settings.py rewrite |
 | `requirements.txt` | `psycopg2-binary==2.9.10` → `>=2.9.10` | unpin so Render installs py3.14 compatible version |
 | `routes/contacts.py` | `verify_emails` — each thread gets own `get_db()` connection | shared conn across ThreadPoolExecutor crashes PostgreSQL |
 | `routes/contacts.py` | `api_fetch_context` — removed double `conn = get_db()` | `owns_contact()` already has its own conn internally |
@@ -363,11 +363,7 @@ conn.execute("SELECT * FROM contacts WHERE workspace_id=?", (wid,))
 | `templates/admin/tenant_detail.html` | `created_at[:10]` → Jinja2 `strftime` conditional | PostgreSQL datetime object crash |
 
 **Commits this session:**
-`736d7c0` → `d49949b` → `3cd441a` → `32e4a85` → `63fc460` → `bec4cde` → `81d0939` → `52d8063`
-
----
-
-### 2026-06-03 Session 3 — Full Portal 500 Audit
+`736d7c0` → `d49949b` → `3cd441a` → `32e4a85` → `63fc460` → `bec4cde` → `81d0939` → `52d8063` → `1e01ea6`
 - **`routes/settings.py`**: Complete rewrite — all globals were undefined (`get_setting`, `get_db`, `DB_PATH`, `error_logger`, `app_logger`, `CELERY_AVAILABLE`, `imap_checker_running`, `smtplib`, `time`, `DEFAULT_SETTINGS`, `reset_daily_counts`). Added `_app()` lazy-loader.
 - **`routes/analytics.py`**: Fixed `url_for('dashboard')` → `url_for('dash.dashboard')`. Fixed all `sent_at[:10]` datetime slicing crashes on PostgreSQL (datetime objects, not strings). Added `_dt()` helper.
 - **`routes/campaigns.py`**: Fixed `url_for('dashboard')` → `url_for('dash.dashboard')` in `retry_email`.
