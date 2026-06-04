@@ -55,14 +55,36 @@ def _parse_pg_url():
         }
     if url.startswith('postgres://'):
         url = 'postgresql://' + url[len('postgres://'):]
-    from urllib.parse import urlparse
-    p = urlparse(url)
+    # Manual parse to handle passwords with special chars like @
+    # Format: postgresql://user:password@host:port/dbname
+    # Split from the right on @ to get host part
+    from urllib.parse import unquote
+    # Remove scheme
+    rest = url.split('://', 1)[1]  # user:password@host:port/dbname
+    # Split on last @ to separate credentials from host
+    at_idx = rest.rfind('@')
+    credentials = rest[:at_idx]   # user:password
+    hostpart    = rest[at_idx+1:] # host:port/dbname
+    # Split credentials
+    colon_idx = credentials.find(':')
+    user     = unquote(credentials[:colon_idx])
+    password = unquote(credentials[colon_idx+1:])
+    # Split host and path
+    slash_idx = hostpart.find('/')
+    hostport  = hostpart[:slash_idx]
+    database  = hostpart[slash_idx+1:]
+    if ':' in hostport:
+        host, port = hostport.rsplit(':', 1)
+        port = int(port)
+    else:
+        host = hostport
+        port = 5432
     return {
-        'host':        p.hostname,
-        'port':        p.port or 5432,
-        'database':    p.path.lstrip('/'),
-        'user':        p.username,
-        'password':    p.password or '',
+        'host':        host,
+        'port':        port,
+        'database':    database,
+        'user':        user,
+        'password':    password,
         'ssl_context': True,
     }
 
@@ -71,6 +93,7 @@ def _connect_pg():
     """Create a fresh pg8000 connection."""
     import pg8000.native
     kwargs = _parse_pg_url()
+    # Single attempt — no retry loop (prevents circuit breaker hammering)
     conn = pg8000.native.Connection(**kwargs)
     return conn
 
@@ -217,6 +240,7 @@ def get_db():
             conn._conn.run('BEGIN')
             return conn
         except Exception as e:
+            err_msg = str(e)
             print(f'[DB] PostgreSQL FAILED: {e}')
             logger.error(f'[DB] PostgreSQL connection failed: {e}')
             if os.getenv('RENDER') or os.getenv('WEBSITE_HOSTNAME') or os.getenv('PORT'):
