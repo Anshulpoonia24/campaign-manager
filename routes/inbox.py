@@ -119,12 +119,15 @@ def api_contact_by_thread(thread_id):
         WHERE contact_id=? ORDER BY sent_at DESC LIMIT 5
     """, (thread['contact_id'],)).fetchall() if thread['contact_id'] else []
     for e in emails:
+        def _fmt(dt):
+            if not dt: return ''
+            return dt[:16] if isinstance(dt, str) else str(dt)[:16]
         if e['replied']:
-            timeline.append({'text': 'Reply received', 'color': '#10b981', 'time': e['sent_at'][:16] if e['sent_at'] else ''})
+            timeline.append({'text': 'Reply received', 'color': '#10b981', 'time': _fmt(e['sent_at'])})
         if e['opened']:
-            timeline.append({'text': 'Email opened', 'color': '#6366f1', 'time': e['sent_at'][:16] if e['sent_at'] else ''})
+            timeline.append({'text': 'Email opened', 'color': '#6366f1', 'time': _fmt(e['sent_at'])})
         if e['status'] == 'sent':
-            timeline.append({'text': 'Email sent', 'color': '#9CA3AF', 'time': e['sent_at'][:16] if e['sent_at'] else ''})
+            timeline.append({'text': 'Email sent', 'color': '#9CA3AF', 'time': _fmt(e['sent_at'])})
     conn.close()
     return jsonify({
         'contact': dict(contact) if contact else None,

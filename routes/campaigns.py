@@ -296,7 +296,7 @@ def retry_email(email_id):
     if not record:
         flash('Email record not found', 'error')
         conn.close()
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('dash.dashboard'))
 
     already_sent = conn.execute(
         "SELECT id FROM emails_sent WHERE email=? AND campaign_id=? AND status='sent' AND id!=?",

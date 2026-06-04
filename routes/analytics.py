@@ -7,10 +7,17 @@ import json
 import os
 import uuid
 from collections import defaultdict
-from flask import Blueprint, render_template, request, jsonify, send_file
+from flask import Blueprint, render_template, request, jsonify, send_file, redirect, url_for, flash
 from flask_login import login_required, current_user
 
 analytics_bp = Blueprint('analytics', __name__)
+
+
+def _dt(val):
+    """Safely stringify a datetime/string to YYYY-MM-DD HH:MM."""
+    if not val:
+        return ''
+    return val[:10] if isinstance(val, str) else str(val)[:10]
 
 
 @analytics_bp.route('/analytics', endpoint='analytics_page')
@@ -18,31 +25,31 @@ analytics_bp = Blueprint('analytics', __name__)
 def analytics_page():
     from app import get_db
     conn = get_db()
-    total_sent = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
-    total_opened = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE opened=1").fetchone()[0]
+    total_sent    = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
+    total_opened  = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE opened=1").fetchone()[0]
     total_replied = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE replied=1").fetchone()[0]
-    total_clicks = conn.execute("SELECT COUNT(*) FROM email_clicks").fetchone()[0]
+    total_clicks  = conn.execute("SELECT COUNT(*) FROM email_clicks").fetchone()[0]
     total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed')").fetchone()[0]
 
-    by_date_sent = defaultdict(int)
+    by_date_sent   = defaultdict(int)
     by_date_opened = defaultdict(int)
     logs = conn.execute("SELECT status, opened, sent_at FROM emails_sent ORDER BY sent_at").fetchall()
     for l in logs:
         if l['sent_at']:
-            day = l['sent_at'][:10]
+            day = _dt(l['sent_at'])
             if l['status'] == 'sent':
                 by_date_sent[day] += 1
             if l['opened']:
                 by_date_opened[day] += 1
-    all_days = sorted(set(list(by_date_sent.keys()) + list(by_date_opened.keys())))
+    all_days  = sorted(set(list(by_date_sent.keys()) + list(by_date_opened.keys())))
     time_data = {'labels': all_days, 'sent': [by_date_sent[d] for d in all_days], 'opened': [by_date_opened[d] for d in all_days]}
 
     by_provider = conn.execute("SELECT provider, COUNT(*) as total FROM ai_usage GROUP BY provider").fetchall()
     conn.close()
 
-    open_rate = round(total_opened / total_sent * 100, 1) if total_sent else 0
-    reply_rate = round(total_replied / total_sent * 100, 1) if total_sent else 0
-    click_rate = round(total_clicks / total_sent * 100, 1) if total_sent else 0
+    open_rate   = round(total_opened  / total_sent * 100, 1) if total_sent else 0
+    reply_rate  = round(total_replied / total_sent * 100, 1) if total_sent else 0
+    click_rate  = round(total_clicks  / total_sent * 100, 1) if total_sent else 0
     bounce_rate = round(total_bounced / total_sent * 100, 1) if total_sent else 0
 
     return render_template('analytics.html',
@@ -65,9 +72,9 @@ def deliverability_page():
         WHERE es.status IN ('bounced', 'failed')
         ORDER BY es.sent_at DESC LIMIT 100
     """).fetchall()
-    total_sent = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
+    total_sent    = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
     total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed')").fetchone()[0]
-    bounce_rate = round(total_bounced / total_sent * 100, 1) if total_sent else 0
+    bounce_rate   = round(total_bounced / total_sent * 100, 1) if total_sent else 0
     conn.close()
     return render_template('deliverability.html',
         smtp_accounts=smtp_accounts, bounced=bounced,
@@ -85,7 +92,7 @@ def api_click_analytics():
 @login_required
 def api_hot_leads():
     from services.lead_scoring import get_hot_leads, calculate_priority
-    leads = get_hot_leads(limit=20)
+    leads  = get_hot_leads(limit=20)
     result = []
     for l in leads:
         result.append({
@@ -114,7 +121,7 @@ def api_ai_usage():
     conn.close()
     return jsonify({
         'by_provider': [{'provider': r['provider'], 'total': r['total'], 'success': r['success']} for r in by_provider],
-        'by_date': [{'day': r['day'], 'provider': r['provider'], 'total': r['total']} for r in by_date]
+        'by_date':     [{'day': str(r['day']) if r['day'] else '', 'provider': r['provider'], 'total': r['total']} for r in by_date]
     })
 
 
@@ -131,31 +138,33 @@ def logs_page():
         ORDER BY es.sent_at DESC
     """).fetchall()
 
-    sent = sum(1 for l in logs if l['status'] == 'sent')
-    failed = sum(1 for l in logs if l['status'] == 'failed')
-    bounced = sum(1 for l in logs if l['status'] == 'bounced')
-    opened = sum(1 for l in logs if l['opened'])
-    not_opened = sent - opened
-    total = len(logs)
+    sent     = sum(1 for l in logs if l['status'] == 'sent')
+    failed   = sum(1 for l in logs if l['status'] == 'failed')
+    bounced  = sum(1 for l in logs if l['status'] == 'bounced')
+    opened   = sum(1 for l in logs if l['opened'])
+    total    = len(logs)
     campaigns_count = len(set(l['campaign_id'] for l in logs))
     success_rate = (sent / total * 100) if total > 0 else 0
 
-    stats = {'sent': sent, 'failed': failed, 'bounced': bounced, 'opened': opened, 'not_opened': not_opened, 'total': total, 'campaigns': campaigns_count, 'success_rate': success_rate}
+    stats = {'sent': sent, 'failed': failed, 'bounced': bounced, 'opened': opened,
+             'not_opened': sent - opened, 'total': total,
+             'campaigns': campaigns_count, 'success_rate': success_rate}
 
-    by_date_sent = defaultdict(int)
+    by_date_sent   = defaultdict(int)
     by_date_failed = defaultdict(int)
     for l in logs:
         if l['sent_at']:
-            day = l['sent_at'][:10]
+            day = _dt(l['sent_at'])
             if l['status'] == 'sent':
                 by_date_sent[day] += 1
             else:
                 by_date_failed[day] += 1
-    all_days = sorted(set(list(by_date_sent.keys()) + list(by_date_failed.keys())))
+    all_days  = sorted(set(list(by_date_sent.keys()) + list(by_date_failed.keys())))
     time_data = {'labels': all_days, 'sent': [by_date_sent[d] for d in all_days], 'failed': [by_date_failed[d] for d in all_days]}
 
     conn.close()
-    return render_template('logs.html', logs=logs, stats=stats, stats_json=json.dumps(stats), time_data_json=json.dumps(time_data))
+    return render_template('logs.html', logs=logs, stats=stats,
+                           stats_json=json.dumps(stats), time_data_json=json.dumps(time_data))
 
 
 @analytics_bp.route('/bounced')
@@ -177,14 +186,14 @@ def bounced():
 @login_required
 def export_data(export_type):
     import pandas as pd
+    import tempfile
     from services.workspace_service import get_wid
     from utils.db import USE_POSTGRES
     from app import get_db
-    import tempfile
-    wid = get_wid()
-    conn = get_db()
+    wid     = get_wid()
+    conn    = get_db()
     db_conn = conn.raw if hasattr(conn, 'raw') else conn
-    ph = '%s' if (USE_POSTGRES and hasattr(conn, 'raw')) else '?'
+    ph      = '%s' if (USE_POSTGRES and hasattr(conn, 'raw')) else '?'
     if export_type == 'sent':
         df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.subject, es.status, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status='sent' AND es.workspace_id={ph}", db_conn, params=(wid,))
     elif export_type == 'bounced':
@@ -204,25 +213,23 @@ def export_data(export_type):
 @analytics_bp.route('/live-logs', endpoint='live_logs_page')
 @login_required
 def live_logs_page():
-    from flask import redirect, url_for, flash
     if getattr(current_user, 'role', '') != 'admin':
         flash('Access denied', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('dash.dashboard'))
     return render_template('live_logs.html')
 
 
 @analytics_bp.route('/api/live-logs')
 @login_required
 def api_live_logs():
-    """Stream logs for live logs page."""
     from app import get_db, LOG_DIR
     from services.workspace_service import get_wid
     if getattr(current_user, 'role', '') != 'admin':
         return jsonify({'logs': [], 'last_id': 0})
-    tab = request.args.get('tab', 'all')
+    tab      = request.args.get('tab', 'all')
     after_id = int(request.args.get('after', 0))
-    wid = get_wid()
-    logs = []
+    wid      = get_wid()
+    logs     = []
 
     if tab in ('all', 'campaign', 'smtp'):
         conn = get_db()
@@ -235,7 +242,10 @@ def api_live_logs():
         for r in reversed(rows):
             if tab == 'smtp' and not r['smtp_email']:
                 continue
-            logs.append(dict(r))
+            row = dict(r)
+            if row.get('created_at') and not isinstance(row['created_at'], str):
+                row['created_at'] = str(row['created_at'])
+            logs.append(row)
 
     if tab in ('all', 'error'):
         err_path = os.path.join(LOG_DIR, 'error.log')
@@ -247,7 +257,7 @@ def api_live_logs():
                     line = line.strip()
                     if not line:
                         continue
-                    ts = line[:19] if len(line) > 19 else ''
+                    ts  = line[:19] if len(line) > 19 else ''
                     msg = line[20:].strip() if len(line) > 20 else line
                     logs.append({'id': 0, 'level': 'error', 'message': msg, 'smtp_email': '', 'created_at': ts})
             except Exception:
@@ -265,7 +275,7 @@ def api_live_logs():
                 logs.append({
                     'id': r['id'], 'level': 'info',
                     'message': f"[{r['page_type']}] {r['user_message'][:80]}" + (f" → {r['action_taken']}" if r['action_taken'] else ''),
-                    'smtp_email': '', 'created_at': r['created_at']
+                    'smtp_email': '', 'created_at': str(r['created_at']) if r['created_at'] else ''
                 })
         except Exception:
             pass
