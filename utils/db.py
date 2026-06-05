@@ -138,7 +138,12 @@ class PgConnection:
         is_ignore = bool(re.search(r'INSERT\s+OR\s+IGNORE', sql, re.IGNORECASE))
         sql = re.sub(r'INSERT\s+OR\s+IGNORE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
         sql = re.sub(r'INSERT\s+OR\s+REPLACE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
-        sql = sql.replace('?', '%s')
+        # Convert ? to $1, $2, $3... for pg8000
+        counter = [0]
+        def replace_placeholder(m):
+            counter[0] += 1
+            return f'${counter[0]}'
+        sql = re.sub(r'\?', replace_placeholder, sql)
         if is_ignore and 'ON CONFLICT' not in sql.upper():
             sql = sql.rstrip().rstrip(';') + ' ON CONFLICT DO NOTHING'
         sql = re.sub(r'INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT', 'SERIAL PRIMARY KEY', sql, flags=re.IGNORECASE)
