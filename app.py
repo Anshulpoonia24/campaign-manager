@@ -633,11 +633,11 @@ def extract_email_address(from_header):
 
 
 def check_replies():
-    """Check IMAP inbox for new replies — logs to threads+messages AND follow_ups (backward compat)"""
+    """Check IMAP inbox for new replies."""
     from services.inbox_service import find_thread_by_email, insert_message, categorize_reply_with_ai
 
-    imap_server = get_setting('imap_server')
-    imap_port = int(get_setting('imap_port') or 993)
+    imap_server   = get_setting('imap_server')
+    imap_port     = int(get_setting('imap_port') or 993)
     imap_username = get_setting('imap_username')
     imap_password = get_setting('imap_password')
 
@@ -646,7 +646,7 @@ def check_replies():
 
     try:
         mail = imaplib.IMAP4_SSL(imap_server, imap_port)
-        mail.socket().settimeout(30)  # 30s timeout on IMAP operations
+        mail.socket().settimeout(30)
         mail.login(imap_username, imap_password)
         mail.select('INBOX')
 
@@ -658,116 +658,75 @@ def check_replies():
         email_ids = messages[0].split()
         logged = 0
         conn = get_db()
-
-        for eid in email_ids:
-            try:
-                status, msg_data = mail.fetch(eid, '(RFC822)')
-                if status != 'OK':
-                    continue
-
-                msg = email_lib.message_from_bytes(msg_data[0][1])
-                from_header = decode_email_header(msg.get('From', ''))
-                sender_email = extract_email_address(from_header)
-                subject = decode_email_header(msg.get('Subject', ''))
-                message_id = msg.get('Message-ID', '').strip()
-                in_reply_to = msg.get('In-Reply-To', '').strip()
-
-                # Extract body
-                body_text = ''
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        if part.get_content_type() == 'text/plain':
-                            payload = part.get_payload(decode=True)
-                            if payload:
-                                body_text = payload.decode('utf-8', errors='ignore')[:1000]
-                                break
-                else:
-                    payload = msg.get_payload(decode=True)
-                    if payload:
-                        body_text = payload.decode('utf-8', errors='ignore')[:1000]
-
-                # Duplicate check via message_id
-                if message_id:
-                    already = conn.execute(
-                        "SELECT id FROM messages WHERE message_id=?", (message_id,)
-                    ).fetchone()
-                    if already:
+        try:
+            for eid in email_ids:
+                try:
+                    st2, msg_data = mail.fetch(eid, '(RFC822)')
+                    if st2 != 'OK':
                         continue
-
-                # AI categorize
-                ai_category = categorize_reply_with_ai(body_text, subject)
-
-                # Thread system
-                thread_id = find_thread_by_email(sender_email, subject, in_reply_to or None)
-                insert_message(
-                    thread_id=thread_id,
-                    direction='incoming',
-                    sender_email=sender_email,
-                    recipient_email=imap_username,
-                    subject=subject,
-                    body=body_text,
-                    message_id=message_id,
-                    in_reply_to=in_reply_to,
-                    ai_category=ai_category
-                )
-
-                # Update thread status based on AI category
-                if ai_category in ('interested', 'meeting'):
-                    conn.execute("UPDATE threads SET status=? WHERE id=?", (ai_category, thread_id))
-
-                # Match contact
-                contact = conn.execute("SELECT * FROM contacts WHERE email=?", (sender_email,)).fetchone()
-
-                # Lead scoring for reply
-                if contact:
-                    from services.lead_scoring import update_lead_score
-                    if ai_category == 'interested':
-                        update_lead_score(contact['id'], 'interested')
-                    elif ai_category == 'meeting':
-                        update_lead_score(contact['id'], 'meeting')
+                    msg          = email_lib.message_from_bytes(msg_data[0][1])
+                    from_header  = decode_email_header(msg.get('From', ''))
+                    sender_email = extract_email_address(from_header)
+                    subject      = decode_email_header(msg.get('Subject', ''))
+                    message_id   = msg.get('Message-ID', '').strip()
+                    in_reply_to  = msg.get('In-Reply-To', '').strip()
+                    body_text    = ''
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            if part.get_content_type() == 'text/plain':
+                                payload = part.get_payload(decode=True)
+                                if payload:
+                                    body_text = payload.decode('utf-8', errors='ignore')[:1000]
+                                    break
                     else:
-                        update_lead_score(contact['id'], 'reply')
-
-                # Backward compat: also log to follow_ups
-                notes = f"Subject: {subject}\n{body_text[:300]}"
-                if contact:
-                    already_fu = conn.execute(
-                        "SELECT id FROM follow_ups WHERE email=? AND notes LIKE ?",
-                        (sender_email, f'%{subject[:50]}%')
-                    ).fetchone()
-                    if not already_fu:
-                        conn.execute("""
-                            INSERT INTO follow_ups (contact_id, email, name, company, notes)
-                            VALUES (?,?,?,?,?)
-                        """, (contact['id'], sender_email, contact['name'], contact['company'], notes))
-                    # Only mark most recent sent email as replied
-                    conn.execute("""
-                        UPDATE emails_sent SET replied=1
-                        WHERE contact_id=? AND status='sent'
-                        AND id = (SELECT id FROM emails_sent WHERE contact_id=? AND status='sent'
-                                  ORDER BY sent_at DESC LIMIT 1)
-                    """, (contact['id'], contact['id']))
-                    conn.execute("UPDATE contacts SET status='replied' WHERE id=?", (contact['id'],))
-                else:
-                    conn.execute("""
-                        INSERT INTO follow_ups (contact_id, email, name, company, notes)
-                        VALUES (?,?,?,?,?)
-                    """, (0, sender_email, from_header.split('<')[0].strip() or sender_email, 'Unknown', notes))
-
-                conn.commit()
-                logged += 1
-                app_logger.info(f'REPLY THREADED | From: {sender_email} | Category: {ai_category} | Subject: {subject[:50]}')
-
-            except Exception as e:
-                error_logger.error(f'IMAP parse error for email {eid}: {str(e)}')
-                continue
-
-        conn.close()
+                        payload = msg.get_payload(decode=True)
+                        if payload:
+                            body_text = payload.decode('utf-8', errors='ignore')[:1000]
+                    if message_id:
+                        if conn.execute('SELECT id FROM messages WHERE message_id=?', (message_id,)).fetchone():
+                            continue
+                    ai_category = categorize_reply_with_ai(body_text, subject)
+                    thread_id   = find_thread_by_email(sender_email, subject, in_reply_to or None)
+                    insert_message(
+                        thread_id=thread_id, direction='incoming',
+                        sender_email=sender_email, recipient_email=imap_username,
+                        subject=subject, body=body_text,
+                        message_id=message_id, in_reply_to=in_reply_to,
+                        ai_category=ai_category
+                    )
+                    if ai_category in ('interested', 'meeting'):
+                        conn.execute('UPDATE threads SET status=? WHERE id=?', (ai_category, thread_id))
+                    contact = conn.execute('SELECT * FROM contacts WHERE email=?', (sender_email,)).fetchone()
+                    if contact:
+                        from services.lead_scoring import update_lead_score
+                        update_lead_score(contact['id'], ai_category if ai_category in ('interested','meeting') else 'reply')
+                        notes = f'Subject: {subject}\n{body_text[:300]}'
+                        if not conn.execute('SELECT id FROM follow_ups WHERE email=? AND notes LIKE ?',
+                                            (sender_email, f'%{subject[:50]}%')).fetchone():
+                            conn.execute('INSERT INTO follow_ups (contact_id,email,name,company,notes) VALUES (?,?,?,?,?)',
+                                (contact['id'], sender_email, contact['name'], contact['company'], notes))
+                        conn.execute("""UPDATE emails_sent SET replied=1
+                            WHERE contact_id=? AND status='sent'
+                            AND id=(SELECT id FROM emails_sent WHERE contact_id=? AND status='sent'
+                                    ORDER BY sent_at DESC LIMIT 1)""", (contact['id'], contact['id']))
+                        conn.execute("UPDATE contacts SET status='replied' WHERE id=?", (contact['id'],))
+                    else:
+                        conn.execute('INSERT INTO follow_ups (contact_id,email,name,company,notes) VALUES (?,?,?,?,?)',
+                            (0, sender_email, from_header.split('<')[0].strip() or sender_email, 'Unknown',
+                             f'Subject: {subject}\n{body_text[:300]}'))
+                    conn.commit()
+                    logged += 1
+                    app_logger.info(f'REPLY | From: {sender_email} | Category: {ai_category}')
+                except Exception as e:
+                    error_logger.error(f'IMAP parse error email {eid}: {str(e)}')
+                    continue
+        finally:
+            conn.close()
         mail.logout()
         return logged
 
     except imaplib.IMAP4.error as e:
-        error_logger.error(f'IMAP auth/connection error: {str(e)}')
+        error_logger.error(f'IMAP auth error: {str(e)}')
         return 0
     except Exception as e:
         error_logger.error(f'IMAP checker error: {str(e)}')

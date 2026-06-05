@@ -24,16 +24,18 @@ def _dt(val):
 @login_required
 def analytics_page():
     from app import get_db
+    from services.workspace_service import get_wid
+    wid = get_wid()
     conn = get_db()
-    total_sent    = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
-    total_opened  = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE opened=1").fetchone()[0]
-    total_replied = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE replied=1").fetchone()[0]
-    total_clicks  = conn.execute("SELECT COUNT(*) FROM email_clicks").fetchone()[0]
-    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed')").fetchone()[0]
+    total_sent    = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent' AND workspace_id=?", (wid,)).fetchone()[0]
+    total_opened  = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE opened=1 AND workspace_id=?", (wid,)).fetchone()[0]
+    total_replied = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE replied=1 AND workspace_id=?", (wid,)).fetchone()[0]
+    total_clicks  = conn.execute("SELECT COUNT(*) FROM email_clicks WHERE workspace_id=?", (wid,)).fetchone()[0]
+    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed') AND workspace_id=?", (wid,)).fetchone()[0]
 
     by_date_sent   = defaultdict(int)
     by_date_opened = defaultdict(int)
-    logs = conn.execute("SELECT status, opened, sent_at FROM emails_sent ORDER BY sent_at").fetchall()
+    logs = conn.execute("SELECT status, opened, sent_at FROM emails_sent WHERE workspace_id=? ORDER BY sent_at", (wid,)).fetchall()
     for l in logs:
         if l['sent_at']:
             day = _dt(l['sent_at'])
@@ -64,16 +66,18 @@ def analytics_page():
 @login_required
 def deliverability_page():
     from app import get_db
+    from services.workspace_service import get_wid
+    wid = get_wid()
     conn = get_db()
-    smtp_accounts = conn.execute("SELECT * FROM smtp_accounts ORDER BY active DESC, health_score DESC").fetchall()
+    smtp_accounts = conn.execute("SELECT * FROM smtp_accounts WHERE workspace_id=? ORDER BY active DESC, health_score DESC", (wid,)).fetchall()
     bounced = conn.execute("""
         SELECT es.*, c.name, c.company FROM emails_sent es
         JOIN contacts c ON es.contact_id = c.id
-        WHERE es.status IN ('bounced', 'failed')
+        WHERE es.status IN ('bounced', 'failed') AND es.workspace_id=?
         ORDER BY es.sent_at DESC LIMIT 100
-    """).fetchall()
-    total_sent    = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
-    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed')").fetchone()[0]
+    """, (wid,)).fetchall()
+    total_sent    = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent' AND workspace_id=?", (wid,)).fetchone()[0]
+    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed') AND workspace_id=?", (wid,)).fetchone()[0]
     bounce_rate   = round(total_bounced / total_sent * 100, 1) if total_sent else 0
     conn.close()
     return render_template('deliverability.html',

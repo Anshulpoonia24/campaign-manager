@@ -197,7 +197,9 @@ Rules:
                 timeout=20
             )
             if r.status_code == 200:
-                return r.json()['choices'][0]['message']['content'].strip()
+                choices = r.json().get('choices', [])
+                if choices:
+                    return choices[0]['message']['content'].strip()
     except Exception as e:
         error_logger.error(f'Follow-up AI generation failed: {str(e)}')
     return None
@@ -268,9 +270,11 @@ def process_automation_rules():
         rule_fu = get_rule('no_reply_followup')
         if rule_fu and rule_fu['enabled']:
             conn2 = get_db()
-            # Get all contacts with sent emails but no reply
+            # Get all contacts with sent emails but no reply — workspace scoped
+            from utils.db import USE_POSTGRES
             candidates = conn2.execute("""
-                SELECT DISTINCT es.contact_id, es.campaign_id, c.name, c.company, c.context
+                SELECT DISTINCT es.contact_id, es.campaign_id, c.name, c.company,
+                       c.context, c.workspace_id
                 FROM emails_sent es
                 JOIN contacts c ON es.contact_id = c.id
                 WHERE es.status = 'sent'
@@ -295,15 +299,17 @@ def process_automation_rules():
 
 
 def get_automation_stats():
-    """Get current automation stats for dashboard."""
+    """Get current automation stats for dashboard — workspace scoped."""
+    from services.workspace_service import get_wid
+    wid = get_wid()
     conn = get_db()
     stats = {
-        'total_threads': conn.execute("SELECT COUNT(*) FROM threads").fetchone()[0],
-        'interested_threads': conn.execute("SELECT COUNT(*) FROM threads WHERE status='interested'").fetchone()[0],
-        'meeting_threads': conn.execute("SELECT COUNT(*) FROM threads WHERE status='meeting'").fetchone()[0],
-        'booked_threads': conn.execute("SELECT COUNT(*) FROM threads WHERE status='booked'").fetchone()[0],
-        'ooo_detected': conn.execute("SELECT COUNT(*) FROM messages WHERE ai_category='ooo'").fetchone()[0],
-        'active_rules': conn.execute("SELECT COUNT(*) FROM automation_settings WHERE enabled=1").fetchone()[0],
+        'total_threads':      conn.execute("SELECT COUNT(*) FROM threads WHERE workspace_id=?", (wid,)).fetchone()[0],
+        'interested_threads': conn.execute("SELECT COUNT(*) FROM threads WHERE status='interested' AND workspace_id=?", (wid,)).fetchone()[0],
+        'meeting_threads':    conn.execute("SELECT COUNT(*) FROM threads WHERE status='meeting' AND workspace_id=?", (wid,)).fetchone()[0],
+        'booked_threads':     conn.execute("SELECT COUNT(*) FROM threads WHERE status='booked' AND workspace_id=?", (wid,)).fetchone()[0],
+        'ooo_detected':       conn.execute("SELECT COUNT(*) FROM messages WHERE ai_category='ooo'").fetchone()[0],
+        'active_rules':       conn.execute("SELECT COUNT(*) FROM automation_settings WHERE enabled=1").fetchone()[0],
     }
     conn.close()
     return stats
