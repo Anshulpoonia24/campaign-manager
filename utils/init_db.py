@@ -248,7 +248,7 @@ def init_db(get_db, DEFAULT_SETTINGS):
             featured INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )"""
+        )""" ,
         "ALTER TABLE smtp_accounts ADD COLUMN login_username TEXT DEFAULT ''",
         "ALTER TABLE contacts ADD COLUMN industry TEXT DEFAULT ''",
         "ALTER TABLE contacts ADD COLUMN company_size TEXT DEFAULT ''",

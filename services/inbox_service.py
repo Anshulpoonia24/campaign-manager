@@ -223,9 +223,11 @@ Reply with ONLY the category word, nothing else."""
                 timeout=15
             )
             if r.status_code == 200:
-                category = r.json()['choices'][0]['message']['content'].strip().lower()
-                if category in AI_CATEGORIES:
-                    return category
+                choices = r.json().get('choices', [])
+                if choices:
+                    category = choices[0]['message']['content'].strip().lower()
+                    if category in AI_CATEGORIES:
+                        return category
 
         # Try Gemini fallback
         gemini_key = get_setting('gemini_api_key') or ''
@@ -236,9 +238,11 @@ Reply with ONLY the category word, nothing else."""
                 timeout=15
             )
             if r.status_code == 200:
-                category = r.json()['candidates'][0]['content']['parts'][0]['text'].strip().lower()
-                if category in AI_CATEGORIES:
-                    return category
+                candidates = r.json().get('candidates', [])
+                if candidates:
+                    category = candidates[0]['content']['parts'][0]['text'].strip().lower()
+                    if category in AI_CATEGORIES:
+                        return category
 
     except Exception as e:
         error_logger.error(f'AI categorization failed: {str(e)}')

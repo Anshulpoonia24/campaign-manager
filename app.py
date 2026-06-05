@@ -167,7 +167,7 @@ limiter = Limiter(
     get_remote_address,
     app=app,
     default_limits=["200 per hour"],
-    storage_uri="memory://"
+    storage_uri=os.getenv('REDIS_URL', 'memory://')  # Use Redis when available
 )
 
 # ==============================
@@ -208,6 +208,25 @@ def file_too_large(e):
         return jsonify({'error': 'File too large (max 16MB)'}), 413
     flash('File too large! Maximum 16MB allowed.', 'error')
     return redirect(request.referrer or url_for('dash.dashboard'))
+
+
+@app.teardown_appcontext
+def _close_db(e=None):
+    """Close DB connection at end of each request."""
+    from flask import g
+    db = g.pop('_db', None)
+    if db is not None:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
+@app.before_request
+def _set_request_id():
+    """Set request correlation ID for distributed tracing."""
+    from flask import g
+    g.request_id = str(uuid.uuid4())[:8]
 
 # ==============================
 # AUTHENTICATION
@@ -250,14 +269,17 @@ class User(UserMixin):
 @login_manager.user_loader
 def load_user(user_id):
     try:
-        conn = get_db()
-        row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
-        conn.close()
-        if row:
-            wid = row['workspace_id'] if 'workspace_id' in row.keys() else 1
-            role = row['role'] if 'role' in row.keys() else 'admin'
-            full_name = row['full_name'] if 'full_name' in row.keys() else ''
-            return User(row['id'], row['username'], role, wid, full_name)
+        from utils.db import get_db as _get_db
+        conn = _get_db()
+        try:
+            row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            if row:
+                wid       = row['workspace_id'] if 'workspace_id' in row.keys() else 1
+                role      = row['role']          if 'role'          in row.keys() else 'admin'
+                full_name = row['full_name']      if 'full_name'      in row.keys() else ''
+                return User(row['id'], row['username'], role, wid, full_name)
+        finally:
+            conn.close()
     except Exception:
         pass
     return None
@@ -316,49 +338,66 @@ def _get_reply_to():
 
 
 def get_setting(key):
-    """Get setting for current workspace (falls back to global)."""
+    """Get setting for current workspace — single query with workspace fallback."""
     try:
         from flask_login import current_user
         wid = getattr(current_user, 'workspace_id', 1) if current_user and current_user.is_authenticated else 1
     except Exception:
         wid = 1
-    conn = get_db()
-    # Try workspace-specific first
-    row = conn.execute("SELECT value FROM settings WHERE key=? AND workspace_id=?", (key, wid)).fetchone()
-    if not row:
-        # Fall back to global (workspace_id=1 or NULL)
-        row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-    conn.close()
-    if row:
-        return row[0]
-    return DEFAULT_SETTINGS.get(key, '')
+    # Use direct connection (not g-cached) to avoid double-close issues
+    from utils.db import get_db as _get_db
+    conn = _get_db()
+    try:
+        row = conn.execute("""
+            SELECT value FROM settings
+            WHERE key=? AND (workspace_id=? OR workspace_id=1)
+            ORDER BY CASE WHEN workspace_id=? THEN 0 ELSE 1 END
+            LIMIT 1
+        """, (key, wid, wid)).fetchone()
+        if row:
+            return row[0]
+        return DEFAULT_SETTINGS.get(key, '')
+    finally:
+        conn.close()
 
 
 def set_setting(key, value):
-    conn = get_db()
+    from utils.db import get_db as _get_db
+    conn = _get_db()
     try:
         from flask_login import current_user
         wid = getattr(current_user, 'workspace_id', 1) if current_user and current_user.is_authenticated else 1
     except Exception:
         wid = 1
-    existing = conn.execute("SELECT key FROM settings WHERE key=? AND workspace_id=?", (key, wid)).fetchone()
-    if existing:
-        conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=?", (value, key, wid))
-    else:
-        conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)", (key, value, wid))
-    conn.commit()
-    conn.close()
+    try:
+        existing = conn.execute("SELECT key FROM settings WHERE key=? AND workspace_id=?", (key, wid)).fetchone()
+        if existing:
+            conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=?", (value, key, wid))
+        else:
+            conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)", (key, value, wid))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_db():
+    """Get DB connection — cached per request via Flask g to prevent connection exhaustion."""
     from utils.db import get_db as _utils_get_db
+    try:
+        from flask import g, has_request_context
+        if has_request_context():
+            if not hasattr(g, '_db'):
+                g._db = _utils_get_db()
+            return g._db
+    except Exception:
+        pass
     return _utils_get_db()
 
 
 def _table_exists(conn, table_name):
     from utils.db import USE_POSTGRES
     if USE_POSTGRES:
-        row = conn.execute("SELECT 1 FROM information_schema.tables WHERE table_name=%s", (table_name,)).fetchone()
+        row = conn.execute("SELECT 1 FROM information_schema.tables WHERE table_name=?", (table_name,)).fetchone()
     else:
         row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,)).fetchone()
     return row is not None
@@ -407,24 +446,28 @@ except Exception as e:
 # ==============================
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# ── MX cache with TTL (24h expiry, 1000 domain max) ──
+# ── MX cache with TTL (24h expiry, 1000 domain max) — THREAD SAFE ──
 import time as _time
+import threading as _threading
 
 class _MXCache:
     def __init__(self):
-        self._d = {}
-        self._TTL = 86400  # 24 hours
+        self._d    = {}
+        self._TTL  = 86400
+        self._lock = _threading.Lock()
     def __setitem__(self, k, v):
-        if len(self._d) >= 1000:
-            oldest = min(self._d, key=lambda x: self._d[x][1])
-            del self._d[oldest]
-        self._d[k] = (v, _time.time())
+        with self._lock:
+            if len(self._d) >= 1000:
+                oldest = min(self._d, key=lambda x: self._d[x][1])
+                del self._d[oldest]
+            self._d[k] = (v, _time.time())
     def __getitem__(self, k):
-        v, ts = self._d[k]
-        if _time.time() - ts > self._TTL:
-            del self._d[k]
-            raise KeyError(k)
-        return v
+        with self._lock:
+            v, ts = self._d[k]
+            if _time.time() - ts > self._TTL:
+                del self._d[k]
+                raise KeyError(k)
+            return v
     def __contains__(self, k):
         try: self[k]; return True
         except KeyError: return False
@@ -432,7 +475,8 @@ class _MXCache:
         try: return self[k]
         except KeyError: return default
     def clear(self):
-        self._d = {}
+        with self._lock:
+            self._d = {}
 
 mx_cache = _MXCache()
 
@@ -572,10 +616,13 @@ def inject_tracking_pixel(body, tracking_id, contact_id=None, campaign_id=None, 
 
 def is_unsubscribed(email):
     """Check if email is in suppression list"""
-    conn = get_db()
-    row = conn.execute("SELECT id FROM unsubscribes WHERE email=?", (email.lower(),)).fetchone()
-    conn.close()
-    return row is not None
+    from utils.db import get_db as _get_db
+    conn = _get_db()
+    try:
+        row = conn.execute("SELECT id FROM unsubscribes WHERE email=?", (email.lower(),)).fetchone()
+        return row is not None
+    finally:
+        conn.close()
 
 
 # ==============================
@@ -610,11 +657,11 @@ def extract_email_address(from_header):
 
 
 def check_replies():
-    """Check IMAP inbox for new replies — logs to threads+messages AND follow_ups (backward compat)"""
+    """Check IMAP inbox for new replies."""
     from services.inbox_service import find_thread_by_email, insert_message, categorize_reply_with_ai
 
-    imap_server = get_setting('imap_server')
-    imap_port = int(get_setting('imap_port') or 993)
+    imap_server   = get_setting('imap_server')
+    imap_port     = int(get_setting('imap_port') or 993)
     imap_username = get_setting('imap_username')
     imap_password = get_setting('imap_password')
 
@@ -623,6 +670,7 @@ def check_replies():
 
     try:
         mail = imaplib.IMAP4_SSL(imap_server, imap_port)
+        mail.socket().settimeout(30)
         mail.login(imap_username, imap_password)
         mail.select('INBOX')
 
@@ -634,116 +682,75 @@ def check_replies():
         email_ids = messages[0].split()
         logged = 0
         conn = get_db()
-
-        for eid in email_ids:
-            try:
-                status, msg_data = mail.fetch(eid, '(RFC822)')
-                if status != 'OK':
-                    continue
-
-                msg = email_lib.message_from_bytes(msg_data[0][1])
-                from_header = decode_email_header(msg.get('From', ''))
-                sender_email = extract_email_address(from_header)
-                subject = decode_email_header(msg.get('Subject', ''))
-                message_id = msg.get('Message-ID', '').strip()
-                in_reply_to = msg.get('In-Reply-To', '').strip()
-
-                # Extract body
-                body_text = ''
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        if part.get_content_type() == 'text/plain':
-                            payload = part.get_payload(decode=True)
-                            if payload:
-                                body_text = payload.decode('utf-8', errors='ignore')[:1000]
-                                break
-                else:
-                    payload = msg.get_payload(decode=True)
-                    if payload:
-                        body_text = payload.decode('utf-8', errors='ignore')[:1000]
-
-                # Duplicate check via message_id
-                if message_id:
-                    already = conn.execute(
-                        "SELECT id FROM messages WHERE message_id=?", (message_id,)
-                    ).fetchone()
-                    if already:
+        try:
+            for eid in email_ids:
+                try:
+                    st2, msg_data = mail.fetch(eid, '(RFC822)')
+                    if st2 != 'OK':
                         continue
-
-                # AI categorize
-                ai_category = categorize_reply_with_ai(body_text, subject)
-
-                # Thread system
-                thread_id = find_thread_by_email(sender_email, subject, in_reply_to or None)
-                insert_message(
-                    thread_id=thread_id,
-                    direction='incoming',
-                    sender_email=sender_email,
-                    recipient_email=imap_username,
-                    subject=subject,
-                    body=body_text,
-                    message_id=message_id,
-                    in_reply_to=in_reply_to,
-                    ai_category=ai_category
-                )
-
-                # Update thread status based on AI category
-                if ai_category in ('interested', 'meeting'):
-                    conn.execute("UPDATE threads SET status=? WHERE id=?", (ai_category, thread_id))
-
-                # Match contact
-                contact = conn.execute("SELECT * FROM contacts WHERE email=?", (sender_email,)).fetchone()
-
-                # Lead scoring for reply
-                if contact:
-                    from services.lead_scoring import update_lead_score
-                    if ai_category == 'interested':
-                        update_lead_score(contact['id'], 'interested')
-                    elif ai_category == 'meeting':
-                        update_lead_score(contact['id'], 'meeting')
+                    msg          = email_lib.message_from_bytes(msg_data[0][1])
+                    from_header  = decode_email_header(msg.get('From', ''))
+                    sender_email = extract_email_address(from_header)
+                    subject      = decode_email_header(msg.get('Subject', ''))
+                    message_id   = msg.get('Message-ID', '').strip()
+                    in_reply_to  = msg.get('In-Reply-To', '').strip()
+                    body_text    = ''
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            if part.get_content_type() == 'text/plain':
+                                payload = part.get_payload(decode=True)
+                                if payload:
+                                    body_text = payload.decode('utf-8', errors='ignore')[:1000]
+                                    break
                     else:
-                        update_lead_score(contact['id'], 'reply')
-
-                # Backward compat: also log to follow_ups
-                notes = f"Subject: {subject}\n{body_text[:300]}"
-                if contact:
-                    already_fu = conn.execute(
-                        "SELECT id FROM follow_ups WHERE email=? AND notes LIKE ?",
-                        (sender_email, f'%{subject[:50]}%')
-                    ).fetchone()
-                    if not already_fu:
-                        conn.execute("""
-                            INSERT INTO follow_ups (contact_id, email, name, company, notes)
-                            VALUES (?,?,?,?,?)
-                        """, (contact['id'], sender_email, contact['name'], contact['company'], notes))
-                    # Only mark most recent sent email as replied
-                    conn.execute("""
-                        UPDATE emails_sent SET replied=1
-                        WHERE contact_id=? AND status='sent'
-                        AND id = (SELECT id FROM emails_sent WHERE contact_id=? AND status='sent'
-                                  ORDER BY sent_at DESC LIMIT 1)
-                    """, (contact['id'], contact['id']))
-                    conn.execute("UPDATE contacts SET status='replied' WHERE id=?", (contact['id'],))
-                else:
-                    conn.execute("""
-                        INSERT INTO follow_ups (contact_id, email, name, company, notes)
-                        VALUES (?,?,?,?,?)
-                    """, (0, sender_email, from_header.split('<')[0].strip() or sender_email, 'Unknown', notes))
-
-                conn.commit()
-                logged += 1
-                app_logger.info(f'REPLY THREADED | From: {sender_email} | Category: {ai_category} | Subject: {subject[:50]}')
-
-            except Exception as e:
-                error_logger.error(f'IMAP parse error for email {eid}: {str(e)}')
-                continue
-
-        conn.close()
+                        payload = msg.get_payload(decode=True)
+                        if payload:
+                            body_text = payload.decode('utf-8', errors='ignore')[:1000]
+                    if message_id:
+                        if conn.execute('SELECT id FROM messages WHERE message_id=?', (message_id,)).fetchone():
+                            continue
+                    ai_category = categorize_reply_with_ai(body_text, subject)
+                    thread_id   = find_thread_by_email(sender_email, subject, in_reply_to or None)
+                    insert_message(
+                        thread_id=thread_id, direction='incoming',
+                        sender_email=sender_email, recipient_email=imap_username,
+                        subject=subject, body=body_text,
+                        message_id=message_id, in_reply_to=in_reply_to,
+                        ai_category=ai_category
+                    )
+                    if ai_category in ('interested', 'meeting'):
+                        conn.execute('UPDATE threads SET status=? WHERE id=?', (ai_category, thread_id))
+                    contact = conn.execute('SELECT * FROM contacts WHERE email=?', (sender_email,)).fetchone()
+                    if contact:
+                        from services.lead_scoring import update_lead_score
+                        update_lead_score(contact['id'], ai_category if ai_category in ('interested','meeting') else 'reply')
+                        notes = f'Subject: {subject}\n{body_text[:300]}'
+                        if not conn.execute('SELECT id FROM follow_ups WHERE email=? AND notes LIKE ?',
+                                            (sender_email, f'%{subject[:50]}%')).fetchone():
+                            conn.execute('INSERT INTO follow_ups (contact_id,email,name,company,notes) VALUES (?,?,?,?,?)',
+                                (contact['id'], sender_email, contact['name'], contact['company'], notes))
+                        conn.execute("""UPDATE emails_sent SET replied=1
+                            WHERE contact_id=? AND status='sent'
+                            AND id=(SELECT id FROM emails_sent WHERE contact_id=? AND status='sent'
+                                    ORDER BY sent_at DESC LIMIT 1)""", (contact['id'], contact['id']))
+                        conn.execute("UPDATE contacts SET status='replied' WHERE id=?", (contact['id'],))
+                    else:
+                        conn.execute('INSERT INTO follow_ups (contact_id,email,name,company,notes) VALUES (?,?,?,?,?)',
+                            (0, sender_email, from_header.split('<')[0].strip() or sender_email, 'Unknown',
+                             f'Subject: {subject}\n{body_text[:300]}'))
+                    conn.commit()
+                    logged += 1
+                    app_logger.info(f'REPLY | From: {sender_email} | Category: {ai_category}')
+                except Exception as e:
+                    error_logger.error(f'IMAP parse error email {eid}: {str(e)}')
+                    continue
+        finally:
+            conn.close()
         mail.logout()
         return logged
 
     except imaplib.IMAP4.error as e:
-        error_logger.error(f'IMAP auth/connection error: {str(e)}')
+        error_logger.error(f'IMAP auth error: {str(e)}')
         return 0
     except Exception as e:
         error_logger.error(f'IMAP checker error: {str(e)}')
@@ -819,15 +826,18 @@ def start_imap_checker():
 
 
 
-# Per-campaign send lock — prevents race condition duplicate sends
-_campaign_send_locks = {}
+# Per-campaign send lock — WeakValueDictionary auto-cleans completed campaigns
+import weakref
+_campaign_send_locks = weakref.WeakValueDictionary()
 _campaign_send_locks_mutex = threading.Lock()
 
 def _get_campaign_lock(campaign_id):
     with _campaign_send_locks_mutex:
-        if campaign_id not in _campaign_send_locks:
-            _campaign_send_locks[campaign_id] = threading.Lock()
-        return _campaign_send_locks[campaign_id]
+        lock = _campaign_send_locks.get(campaign_id)
+        if lock is None:
+            lock = threading.Lock()
+            _campaign_send_locks[campaign_id] = lock
+        return lock
 
 
 # Send progress tracking — keyed by user_id to prevent race conditions
@@ -843,22 +853,25 @@ def _set_send_progress(user_id, data):
 send_progress = {'running': False, 'total': 0, 'done': 0, 'sent': 0, 'failed': 0, 'current': '', 'campaign_id': 0}
 
 
-# ── AI Generated Email Cache (30min TTL, 500 max) ─────────────────
+# ── AI Generated Email Cache (30min TTL, 500 max) — THREAD SAFE ──
 class _AICache:
     def __init__(self):
-        self._d = {}
-        self._TTL = 1800
+        self._d    = {}
+        self._TTL  = 1800
+        self._lock = _threading.Lock()
     def __setitem__(self, k, v):
-        if len(self._d) >= 500:
-            oldest = min(self._d, key=lambda x: self._d[x][1])
-            del self._d[oldest]
-        self._d[k] = (v, _time.time())
+        with self._lock:
+            if len(self._d) >= 500:
+                oldest = min(self._d, key=lambda x: self._d[x][1])
+                del self._d[oldest]
+            self._d[k] = (v, _time.time())
     def __getitem__(self, k):
-        v, ts = self._d[k]
-        if _time.time() - ts > self._TTL:
-            del self._d[k]
-            raise KeyError(k)
-        return v
+        with self._lock:
+            v, ts = self._d[k]
+            if _time.time() - ts > self._TTL:
+                del self._d[k]
+                raise KeyError(k)
+            return v
     def __contains__(self, k):
         try: self[k]; return True
         except KeyError: return False
@@ -866,12 +879,15 @@ class _AICache:
         try: return self[k]
         except KeyError: return default
     def pop(self, k, default=None):
-        try:
-            v = self[k]
-            del self._d[k]
-            return v
-        except KeyError:
-            return default
+        with self._lock:
+            try:
+                v, ts = self._d[k]
+                del self._d[k]
+                if _time.time() - ts > self._TTL:
+                    return default
+                return v
+            except KeyError:
+                return default
 
 ai_generated_cache = _AICache()
 
@@ -952,12 +968,14 @@ def call_groq(prompt):
                 headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
                 json={'model': 'llama-3.3-70b-versatile', 'messages': [{'role': 'user', 'content': prompt}],
                       'temperature': 0.7, 'max_tokens': 1000},
-                timeout=30)
+                timeout=15)
             if resp.status_code == 200:
                 return resp.json()['choices'][0]['message']['content'], None
             if resp.status_code == 429:
                 continue
             return None, f'Groq error {resp.status_code}'
+        except requests.exceptions.Timeout:
+            continue
         except Exception as e:
             continue
     return None, 'All Groq keys exhausted'
@@ -972,11 +990,16 @@ def call_gemini(prompt):
         resp = requests.post(
             f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}',
             json={'contents': [{'parts': [{'text': prompt}]}]},
-            timeout=30)
+            timeout=15)
         if resp.status_code == 200:
             data = resp.json()
-            return data['candidates'][0]['content']['parts'][0]['text'], None
+            candidates = data.get('candidates', [])
+            if candidates:
+                return candidates[0]['content']['parts'][0]['text'], None
+            return None, 'Gemini empty response'
         return None, f'Gemini error {resp.status_code}'
+    except requests.exceptions.Timeout:
+        return None, 'Gemini timeout'
     except Exception as e:
         return None, str(e)
 
@@ -1038,6 +1061,8 @@ if __name__ == '__main__':
     start_imap_checker()
     start_daily_reset()
     start_automation_worker()
+    from services.campaign_executor import start_stall_checker
+    start_stall_checker()
     from services.copilot.autonomous import start_autonomous_worker
     start_autonomous_worker()
     print(f"\n=== Email Campaign Manager ===")
@@ -1052,6 +1077,8 @@ else:
         start_imap_checker()
         start_daily_reset()
         start_automation_worker()
+        from services.campaign_executor import start_stall_checker
+        start_stall_checker()
         from services.copilot.autonomous import start_autonomous_worker
         start_autonomous_worker()
         print('[STARTUP] Background workers started (gunicorn mode)')

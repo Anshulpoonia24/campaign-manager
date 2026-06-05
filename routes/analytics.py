@@ -24,16 +24,18 @@ def _dt(val):
 @login_required
 def analytics_page():
     from app import get_db
+    from services.workspace_service import get_wid
+    wid = get_wid()
     conn = get_db()
-    total_sent    = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
-    total_opened  = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE opened=1").fetchone()[0]
-    total_replied = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE replied=1").fetchone()[0]
-    total_clicks  = conn.execute("SELECT COUNT(*) FROM email_clicks").fetchone()[0]
-    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed')").fetchone()[0]
+    total_sent    = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent' AND workspace_id=?", (wid,)).fetchone()[0]
+    total_opened  = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE opened=1 AND workspace_id=?", (wid,)).fetchone()[0]
+    total_replied = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE replied=1 AND workspace_id=?", (wid,)).fetchone()[0]
+    total_clicks  = conn.execute("SELECT COUNT(*) FROM email_clicks WHERE workspace_id=?", (wid,)).fetchone()[0]
+    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed') AND workspace_id=?", (wid,)).fetchone()[0]
 
     by_date_sent   = defaultdict(int)
     by_date_opened = defaultdict(int)
-    logs = conn.execute("SELECT status, opened, sent_at FROM emails_sent ORDER BY sent_at").fetchall()
+    logs = conn.execute("SELECT status, opened, sent_at FROM emails_sent WHERE workspace_id=? ORDER BY sent_at", (wid,)).fetchall()
     for l in logs:
         if l['sent_at']:
             day = _dt(l['sent_at'])
@@ -64,16 +66,18 @@ def analytics_page():
 @login_required
 def deliverability_page():
     from app import get_db
+    from services.workspace_service import get_wid
+    wid = get_wid()
     conn = get_db()
-    smtp_accounts = conn.execute("SELECT * FROM smtp_accounts ORDER BY active DESC, health_score DESC").fetchall()
+    smtp_accounts = conn.execute("SELECT * FROM smtp_accounts WHERE workspace_id=? ORDER BY active DESC, health_score DESC", (wid,)).fetchall()
     bounced = conn.execute("""
         SELECT es.*, c.name, c.company FROM emails_sent es
         JOIN contacts c ON es.contact_id = c.id
-        WHERE es.status IN ('bounced', 'failed')
+        WHERE es.status IN ('bounced', 'failed') AND es.workspace_id=?
         ORDER BY es.sent_at DESC LIMIT 100
-    """).fetchall()
-    total_sent    = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
-    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed')").fetchone()[0]
+    """, (wid,)).fetchall()
+    total_sent    = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent' AND workspace_id=?", (wid,)).fetchone()[0]
+    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed') AND workspace_id=?", (wid,)).fetchone()[0]
     bounce_rate   = round(total_bounced / total_sent * 100, 1) if total_sent else 0
     conn.close()
     return render_template('deliverability.html',
@@ -129,14 +133,18 @@ def api_ai_usage():
 @login_required
 def logs_page():
     from app import get_db
+    from services.workspace_service import get_wid
+    wid = get_wid()
     conn = get_db()
     logs = conn.execute("""
         SELECT es.*, c.name, c.company, camp.name as campaign_name
         FROM emails_sent es
         JOIN contacts c ON es.contact_id = c.id
         JOIN campaigns camp ON es.campaign_id = camp.id
+        WHERE es.workspace_id=?
         ORDER BY es.sent_at DESC
-    """).fetchall()
+        LIMIT 500
+    """, (wid,)).fetchall()
 
     sent     = sum(1 for l in logs if l['status'] == 'sent')
     failed   = sum(1 for l in logs if l['status'] == 'failed')
@@ -194,16 +202,17 @@ def export_data(export_type):
     conn    = get_db()
     db_conn = conn.raw if hasattr(conn, 'raw') else conn
     ph      = '%s' if (USE_POSTGRES and hasattr(conn, 'raw')) else '?'
+    # pd.read_sql needs native connection - use params as positional
     if export_type == 'sent':
-        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.subject, es.status, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status='sent' AND es.workspace_id={ph}", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.subject, es.status, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status='sent' AND es.workspace_id={ph}", db_conn, params=[wid])
     elif export_type == 'bounced':
-        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.bounce_reason, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status IN ('bounced','failed') AND es.workspace_id={ph}", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.bounce_reason, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status IN ('bounced','failed') AND es.workspace_id={ph}", db_conn, params=[wid])
     elif export_type == 'follow_ups':
-        df = pd.read_sql(f"SELECT * FROM follow_ups WHERE workspace_id={ph}", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT * FROM follow_ups WHERE workspace_id={ph}", db_conn, params=[wid])
     elif export_type == 'invalid':
-        df = pd.read_sql(f"SELECT name, company, email, validation_reason FROM contacts WHERE email_valid=0 AND workspace_id={ph}", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT name, company, email, validation_reason FROM contacts WHERE email_valid=0 AND workspace_id={ph}", db_conn, params=[wid])
     else:
-        df = pd.read_sql(f"SELECT * FROM contacts WHERE workspace_id={ph}", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT * FROM contacts WHERE workspace_id={ph}", db_conn, params=[wid])
     conn.close()
     filepath = os.path.join(tempfile.gettempdir(), f"export_{export_type}_{uuid.uuid4().hex[:8]}.xlsx")
     df.to_excel(filepath, index=False)

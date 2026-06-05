@@ -32,7 +32,7 @@ def blogs_page():
     from app import get_db
     conn = get_db()
     blogs = conn.execute(
-        "SELECT * FROM blogs WHERE published=1 ORDER BY featured DESC, created_at DESC"
+        "SELECT * FROM blogs WHERE published=1 ORDER BY featured DESC, created_at DESC LIMIT 50"
     ).fetchall()
     conn.close()
     return render_template('blogs.html', blogs=blogs)
@@ -84,28 +84,30 @@ def dashboard():
 def _dashboard_inner():
     from app import get_db
     from services.lead_scoring import get_hot_leads, calculate_priority
+    from services.workspace_service import get_wid
     conn = get_db()
-    total_sent = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
-    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed')").fetchone()[0]
-    total_opened = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE opened=1").fetchone()[0]
-    total_replied = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE replied=1").fetchone()[0]
-    total_clicks = conn.execute("SELECT COUNT(DISTINCT contact_id) FROM email_clicks WHERE contact_id IS NOT NULL").fetchone()[0]
-    total_contacts = conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0]
+    wid = get_wid()
+    total_sent = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent' AND workspace_id=?", (wid,)).fetchone()[0]
+    total_bounced = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed') AND workspace_id=?", (wid,)).fetchone()[0]
+    total_opened = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE opened=1 AND workspace_id=?", (wid,)).fetchone()[0]
+    total_replied = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE replied=1 AND workspace_id=?", (wid,)).fetchone()[0]
+    total_clicks = conn.execute("SELECT COUNT(DISTINCT contact_id) FROM email_clicks WHERE contact_id IS NOT NULL AND workspace_id=?", (wid,)).fetchone()[0]
+    total_contacts = conn.execute("SELECT COUNT(*) FROM contacts WHERE workspace_id=?", (wid,)).fetchone()[0]
 
     open_rate = round(total_opened / total_sent * 100, 1) if total_sent else 0
     reply_rate = round(total_replied / total_sent * 100, 1) if total_sent else 0
     click_rate = round(total_clicks / total_sent * 100, 1) if total_sent else 0
     bounce_rate = round(total_bounced / total_sent * 100, 1) if total_sent else 0
-    meetings_detected = conn.execute("SELECT COUNT(*) FROM threads WHERE status='meeting'").fetchone()[0]
+    meetings_detected = conn.execute("SELECT COUNT(*) FROM threads WHERE status='meeting' AND workspace_id=?", (wid,)).fetchone()[0]
 
     attention_threads = conn.execute("""
         SELECT t.id, t.status, t.unread_count, t.last_message_at,
                c.name as contact_name, c.company as contact_company, c.email as contact_email,
                (SELECT m2.ai_category FROM messages m2 WHERE m2.thread_id = t.id AND m2.direction='incoming' ORDER BY m2.created_at DESC LIMIT 1) as ai_category
         FROM threads t LEFT JOIN contacts c ON t.contact_id = c.id
-        WHERE t.status IN ('interested','meeting') OR t.unread_count > 0
+        WHERE (t.status IN ('interested','meeting') OR t.unread_count > 0) AND t.workspace_id=?
         ORDER BY t.last_message_at DESC LIMIT 8
-    """).fetchall()
+    """, (wid,)).fetchall()
 
     campaigns = conn.execute("""
         SELECT c.*,
@@ -114,13 +116,14 @@ def _dashboard_inner():
             COUNT(CASE WHEN es.replied=1 THEN 1 END) as replied_count,
             COUNT(CASE WHEN es.status IN ('bounced','failed') THEN 1 END) as bounce_count
         FROM campaigns c LEFT JOIN emails_sent es ON es.campaign_id = c.id
+        WHERE c.workspace_id=?
         GROUP BY c.id ORDER BY c.created_at DESC LIMIT 6
-    """).fetchall()
+    """, (wid,)).fetchall()
 
     smtp_accounts = conn.execute("""
         SELECT id, email, health_score, warmup_stage, active, sent_today, daily_limit
-        FROM smtp_accounts ORDER BY active DESC, health_score DESC
-    """).fetchall()
+        FROM smtp_accounts WHERE workspace_id=? ORDER BY active DESC, health_score DESC
+    """, (wid,)).fetchall()
     smtp_active = sum(1 for a in smtp_accounts if a['active'])
     smtp_at_risk = sum(1 for a in smtp_accounts if a['health_score'] < 50 and a['active'])
     avg_health = round(sum(a['health_score'] for a in smtp_accounts) / len(smtp_accounts), 0) if smtp_accounts else 0
@@ -131,26 +134,31 @@ def _dashboard_inner():
                c.name as contact_name, c.company, t.id as thread_id
         FROM messages m JOIN threads t ON m.thread_id = t.id
         LEFT JOIN contacts c ON t.contact_id = c.id
-        WHERE m.direction='incoming' ORDER BY m.created_at DESC LIMIT 5
-    """).fetchall()
+        WHERE m.direction='incoming' AND t.workspace_id=? ORDER BY m.created_at DESC LIMIT 5
+    """, (wid,)).fetchall()
     for r in recent_replies:
-        activity_feed.append({'type': 'reply', 'time': r['created_at'], 'text': f"{r['contact_name'] or r['sender_email']} replied", 'sub': r['ai_category'] or 'reply', 'link': f"/inbox/{r['thread_id']}", 'company': r['company'] or ''})
+        ts = str(r['created_at']) if r['created_at'] else ''
+        activity_feed.append({'type': 'reply', 'time': ts, 'text': f"{r['contact_name'] or r['sender_email']} replied", 'sub': r['ai_category'] or 'reply', 'link': f"/inbox/{r['thread_id']}", 'company': r['company'] or ''})
 
     recent_sends = conn.execute("""
         SELECT es.sent_at, es.status, c.name, c.company, es.campaign_id
         FROM emails_sent es JOIN contacts c ON es.contact_id=c.id
+        WHERE es.workspace_id=?
         ORDER BY es.sent_at DESC LIMIT 5
-    """).fetchall()
+    """, (wid,)).fetchall()
     for s in recent_sends:
-        activity_feed.append({'type': 'send' if s['status']=='sent' else 'bounce', 'time': s['sent_at'], 'text': f"Email {'sent to' if s['status']=='sent' else 'bounced for'} {s['name']}", 'sub': s['company'] or '', 'link': f"/campaign/{s['campaign_id']}", 'company': s['company'] or ''})
+        ts = str(s['sent_at']) if s['sent_at'] else ''
+        activity_feed.append({'type': 'send' if s['status']=='sent' else 'bounce', 'time': ts, 'text': f"Email {'sent to' if s['status']=='sent' else 'bounced for'} {s['name']}", 'sub': s['company'] or '', 'link': f"/campaign/{s['campaign_id']}", 'company': s['company'] or ''})
 
     recent_clicks = conn.execute("""
         SELECT ec.created_at, c.name, c.company, ec.thread_id
         FROM email_clicks ec LEFT JOIN contacts c ON ec.contact_id=c.id
+        WHERE ec.workspace_id=?
         ORDER BY ec.created_at DESC LIMIT 3
-    """).fetchall()
+    """, (wid,)).fetchall()
     for cl in recent_clicks:
-        activity_feed.append({'type': 'click', 'time': cl['created_at'], 'text': f"{cl['name'] or 'Someone'} clicked a link", 'sub': cl['company'] or '', 'link': f"/inbox/{cl['thread_id']}" if cl['thread_id'] else '#', 'company': cl['company'] or ''})
+        ts = str(cl['created_at']) if cl['created_at'] else ''
+        activity_feed.append({'type': 'click', 'time': ts, 'text': f"{cl['name'] or 'Someone'} clicked a link", 'sub': cl['company'] or '', 'link': f"/inbox/{cl['thread_id']}" if cl['thread_id'] else '#', 'company': cl['company'] or ''})
 
     activity_feed.sort(key=lambda x: x['time'] or '', reverse=True)
     activity_feed = activity_feed[:12]
