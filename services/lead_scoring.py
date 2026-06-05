@@ -51,8 +51,14 @@ def calculate_priority(score):
     return 'cold'
 
 
-def get_hot_leads(limit=20):
-    """Get top leads sorted by score."""
+def get_hot_leads(limit=20, workspace_id=None):
+    """Get top leads sorted by score — workspace scoped."""
+    from services.workspace_service import get_wid
+    if workspace_id is None:
+        try:
+            workspace_id = get_wid()
+        except Exception:
+            workspace_id = 1
     conn = get_db()
     leads = conn.execute("""
         SELECT c.id, c.name, c.company, c.email,
@@ -63,45 +69,49 @@ def get_hot_leads(limit=20):
                (SELECT t3.id FROM threads t3 WHERE t3.contact_id = c.id ORDER BY t3.last_message_at DESC LIMIT 1) as thread_id
         FROM contacts c
         LEFT JOIN emails_sent es ON es.contact_id = c.id AND es.status = 'sent'
-        WHERE COALESCE(c.lead_score, 0) > 0
+        WHERE c.workspace_id=? AND COALESCE(c.lead_score, 0) > 0
         GROUP BY c.id, c.name, c.company, c.email, c.lead_score, c.status
         ORDER BY c.lead_score DESC
         LIMIT ?
-    """, (limit,)).fetchall()
+    """, (workspace_id, limit)).fetchall()
     conn.close()
     return leads
 
 
-def get_click_analytics():
-    """Get click analytics summary."""
+def get_click_analytics(workspace_id=None):
+    """Get click analytics summary — workspace scoped."""
+    from services.workspace_service import get_wid
+    if workspace_id is None:
+        try:
+            workspace_id = get_wid()
+        except Exception:
+            workspace_id = 1
     conn = get_db()
-    total_clicks = conn.execute("SELECT COUNT(*) FROM email_clicks").fetchone()[0]
-    total_sent = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
+    total_clicks = conn.execute("SELECT COUNT(*) FROM email_clicks WHERE workspace_id=?", (workspace_id,)).fetchone()[0]
+    total_sent   = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent' AND workspace_id=?", (workspace_id,)).fetchone()[0]
     ctr = round((total_clicks / total_sent * 100), 1) if total_sent > 0 else 0
 
     top_urls = conn.execute("""
         SELECT clicked_url, COUNT(*) as clicks
-        FROM email_clicks
-        GROUP BY clicked_url
-        ORDER BY clicks DESC
-        LIMIT 10
-    """).fetchall()
+        FROM email_clicks WHERE workspace_id=?
+        GROUP BY clicked_url ORDER BY clicks DESC LIMIT 10
+    """, (workspace_id,)).fetchall()
 
     top_contacts = conn.execute("""
         SELECT c.name, c.company, c.email, COUNT(ec.id) as clicks,
                COALESCE(c.lead_score, 0) as lead_score
         FROM email_clicks ec
         JOIN contacts c ON ec.contact_id = c.id
+        WHERE ec.workspace_id=?
         GROUP BY c.id, c.name, c.company, c.email, c.lead_score
-        ORDER BY clicks DESC
-        LIMIT 10
-    """).fetchall()
+        ORDER BY clicks DESC LIMIT 10
+    """, (workspace_id,)).fetchall()
 
     conn.close()
     return {
-        'total_clicks': total_clicks,
-        'total_sent': total_sent,
-        'ctr': ctr,
-        'top_urls': [dict(r) for r in top_urls],
-        'top_contacts': [dict(r) for r in top_contacts],
+        'total_clicks':  total_clicks,
+        'total_sent':    total_sent,
+        'ctr':           ctr,
+        'top_urls':      [dict(r) for r in top_urls],
+        'top_contacts':  [dict(r) for r in top_contacts],
     }

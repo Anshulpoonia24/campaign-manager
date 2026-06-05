@@ -208,11 +208,13 @@ def api_send_reply(thread_id):
 @login_required
 def api_inbox_stats():
     from app import get_db
+    from services.workspace_service import get_wid
+    wid = get_wid()
     conn = get_db()
-    total = conn.execute("SELECT COUNT(*) FROM threads").fetchone()[0]
-    unread = conn.execute("SELECT COUNT(*) FROM threads WHERE unread_count > 0").fetchone()[0]
-    interested = conn.execute("SELECT COUNT(*) FROM threads WHERE status='interested'").fetchone()[0]
-    meeting = conn.execute("SELECT COUNT(*) FROM threads WHERE status='meeting'").fetchone()[0]
+    total      = conn.execute("SELECT COUNT(*) FROM threads WHERE workspace_id=?", (wid,)).fetchone()[0]
+    unread     = conn.execute("SELECT COUNT(*) FROM threads WHERE unread_count > 0 AND workspace_id=?", (wid,)).fetchone()[0]
+    interested = conn.execute("SELECT COUNT(*) FROM threads WHERE status='interested' AND workspace_id=?", (wid,)).fetchone()[0]
+    meeting    = conn.execute("SELECT COUNT(*) FROM threads WHERE status='meeting' AND workspace_id=?", (wid,)).fetchone()[0]
     conn.close()
     return jsonify({'total': total, 'unread': unread, 'interested': interested, 'meeting': meeting})
 
