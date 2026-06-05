@@ -262,14 +262,17 @@ class User(UserMixin):
 @login_manager.user_loader
 def load_user(user_id):
     try:
-        conn = get_db()
-        row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
-        conn.close()
-        if row:
-            wid = row['workspace_id'] if 'workspace_id' in row.keys() else 1
-            role = row['role'] if 'role' in row.keys() else 'admin'
-            full_name = row['full_name'] if 'full_name' in row.keys() else ''
-            return User(row['id'], row['username'], role, wid, full_name)
+        from utils.db import get_db as _get_db
+        conn = _get_db()
+        try:
+            row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            if row:
+                wid       = row['workspace_id'] if 'workspace_id' in row.keys() else 1
+                role      = row['role']          if 'role'          in row.keys() else 'admin'
+                full_name = row['full_name']      if 'full_name'      in row.keys() else ''
+                return User(row['id'], row['username'], role, wid, full_name)
+        finally:
+            conn.close()
     except Exception:
         pass
     return None
@@ -334,34 +337,40 @@ def get_setting(key):
         wid = getattr(current_user, 'workspace_id', 1) if current_user and current_user.is_authenticated else 1
     except Exception:
         wid = 1
-    conn = get_db()
-    # Single query: workspace-specific first, then global (workspace_id=1)
-    row = conn.execute("""
-        SELECT value FROM settings
-        WHERE key=? AND (workspace_id=? OR workspace_id=1)
-        ORDER BY CASE WHEN workspace_id=? THEN 0 ELSE 1 END
-        LIMIT 1
-    """, (key, wid, wid)).fetchone()
-    conn.close()
-    if row:
-        return row[0]
-    return DEFAULT_SETTINGS.get(key, '')
+    # Use direct connection (not g-cached) to avoid double-close issues
+    from utils.db import get_db as _get_db
+    conn = _get_db()
+    try:
+        row = conn.execute("""
+            SELECT value FROM settings
+            WHERE key=? AND (workspace_id=? OR workspace_id=1)
+            ORDER BY CASE WHEN workspace_id=? THEN 0 ELSE 1 END
+            LIMIT 1
+        """, (key, wid, wid)).fetchone()
+        if row:
+            return row[0]
+        return DEFAULT_SETTINGS.get(key, '')
+    finally:
+        conn.close()
 
 
 def set_setting(key, value):
-    conn = get_db()
+    from utils.db import get_db as _get_db
+    conn = _get_db()
     try:
         from flask_login import current_user
         wid = getattr(current_user, 'workspace_id', 1) if current_user and current_user.is_authenticated else 1
     except Exception:
         wid = 1
-    existing = conn.execute("SELECT key FROM settings WHERE key=? AND workspace_id=?", (key, wid)).fetchone()
-    if existing:
-        conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=?", (value, key, wid))
-    else:
-        conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)", (key, value, wid))
-    conn.commit()
-    conn.close()
+    try:
+        existing = conn.execute("SELECT key FROM settings WHERE key=? AND workspace_id=?", (key, wid)).fetchone()
+        if existing:
+            conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=?", (value, key, wid))
+        else:
+            conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)", (key, value, wid))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_db():
@@ -595,10 +604,13 @@ def inject_tracking_pixel(body, tracking_id, contact_id=None, campaign_id=None, 
 
 def is_unsubscribed(email):
     """Check if email is in suppression list"""
-    conn = get_db()
-    row = conn.execute("SELECT id FROM unsubscribes WHERE email=?", (email.lower(),)).fetchone()
-    conn.close()
-    return row is not None
+    from utils.db import get_db as _get_db
+    conn = _get_db()
+    try:
+        row = conn.execute("SELECT id FROM unsubscribes WHERE email=?", (email.lower(),)).fetchone()
+        return row is not None
+    finally:
+        conn.close()
 
 
 # ==============================
