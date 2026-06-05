@@ -28,12 +28,14 @@ def inject_tracking_pixel(body, tracking_id):
 
 
 def get_smtp_connection():
-    """Create and return authenticated SMTP connection"""
-    smtp_server = get_setting('smtp_server')
-    smtp_port = int(get_setting('smtp_port'))
-    smtp_username = get_setting('smtp_username')
-    smtp_password = get_setting('smtp_password')
-    server = smtplib.SMTP(smtp_server, smtp_port)
+    """Create and return authenticated SMTP connection with timeout."""
+    smtp_server   = get_setting('smtp_server') or ''
+    smtp_port     = int(get_setting('smtp_port') or '587')
+    smtp_username = get_setting('smtp_username') or ''
+    smtp_password = get_setting('smtp_password') or ''
+    if not all([smtp_server, smtp_username, smtp_password]):
+        raise ValueError('SMTP settings incomplete')
+    server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
     server.starttls()
     server.login(smtp_username, smtp_password)
     return server

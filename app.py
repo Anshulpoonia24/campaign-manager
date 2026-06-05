@@ -952,12 +952,14 @@ def call_groq(prompt):
                 headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
                 json={'model': 'llama-3.3-70b-versatile', 'messages': [{'role': 'user', 'content': prompt}],
                       'temperature': 0.7, 'max_tokens': 1000},
-                timeout=30)
+                timeout=15)
             if resp.status_code == 200:
                 return resp.json()['choices'][0]['message']['content'], None
             if resp.status_code == 429:
                 continue
             return None, f'Groq error {resp.status_code}'
+        except requests.exceptions.Timeout:
+            continue
         except Exception as e:
             continue
     return None, 'All Groq keys exhausted'
@@ -972,11 +974,16 @@ def call_gemini(prompt):
         resp = requests.post(
             f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}',
             json={'contents': [{'parts': [{'text': prompt}]}]},
-            timeout=30)
+            timeout=15)
         if resp.status_code == 200:
             data = resp.json()
-            return data['candidates'][0]['content']['parts'][0]['text'], None
+            candidates = data.get('candidates', [])
+            if candidates:
+                return candidates[0]['content']['parts'][0]['text'], None
+            return None, 'Gemini empty response'
         return None, f'Gemini error {resp.status_code}'
+    except requests.exceptions.Timeout:
+        return None, 'Gemini timeout'
     except Exception as e:
         return None, str(e)
 

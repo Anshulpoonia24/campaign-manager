@@ -81,6 +81,14 @@ def upload_contacts():
             flash('Please upload Excel or CSV file', 'error')
             return redirect(url_for('contacts_routes.upload_contacts'))
 
+        # File size guard — 10MB max before pandas load
+        file.seek(0, 2)
+        size = file.tell()
+        file.seek(0)
+        if size > 10 * 1024 * 1024:
+            flash('File too large. Maximum 10MB allowed.', 'error')
+            return redirect(url_for('contacts_routes.upload_contacts'))
+
         if file.filename.endswith('.csv'):
             df = pd.read_csv(file)
         else:
@@ -159,11 +167,11 @@ def upload_contacts():
         from services.workspace_service import get_wid
         wid = get_wid()
         for _, row in df.iterrows():
-            name = str(row.get(col_map.get('name', ''), '')).strip() if 'name' in col_map else ''
-            email = str(row.get(col_map['email'], '')).strip().lower()
-            company = str(row.get(col_map.get('company', ''), '')).strip() if 'company' in col_map else ''
-            designation = str(row.get(col_map.get('designation', ''), '')).strip() if 'designation' in col_map else ''
-            priority = str(row.get(col_map.get('priority', ''), '')).strip() if 'priority' in col_map else ''
+            name        = str(row.get(col_map.get('name', '')) or '').strip() if 'name' in col_map else ''
+            email       = str(row.get(col_map['email']) or '').strip().lower()
+            company     = str(row.get(col_map.get('company', '')) or '').strip() if 'company' in col_map else ''
+            designation = str(row.get(col_map.get('designation', '')) or '').strip() if 'designation' in col_map else ''
+            priority    = str(row.get(col_map.get('priority', '')) or '').strip() if 'priority' in col_map else ''
 
             # Fix nan values
             if name.lower() == 'nan': name = ''
