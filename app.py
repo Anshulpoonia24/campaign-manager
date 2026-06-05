@@ -167,7 +167,7 @@ limiter = Limiter(
     get_remote_address,
     app=app,
     default_limits=["200 per hour"],
-    storage_uri="memory://"
+    storage_uri=os.getenv('REDIS_URL', 'memory://')  # Use Redis when available
 )
 
 # ==============================
@@ -220,6 +220,13 @@ def _close_db(e=None):
             db.close()
         except Exception:
             pass
+
+
+@app.before_request
+def _set_request_id():
+    """Set request correlation ID for distributed tracing."""
+    from flask import g
+    g.request_id = str(uuid.uuid4())[:8]
 
 # ==============================
 # AUTHENTICATION
@@ -439,24 +446,28 @@ except Exception as e:
 # ==============================
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# ── MX cache with TTL (24h expiry, 1000 domain max) ──
+# ── MX cache with TTL (24h expiry, 1000 domain max) — THREAD SAFE ──
 import time as _time
+import threading as _threading
 
 class _MXCache:
     def __init__(self):
-        self._d = {}
-        self._TTL = 86400  # 24 hours
+        self._d    = {}
+        self._TTL  = 86400
+        self._lock = _threading.Lock()
     def __setitem__(self, k, v):
-        if len(self._d) >= 1000:
-            oldest = min(self._d, key=lambda x: self._d[x][1])
-            del self._d[oldest]
-        self._d[k] = (v, _time.time())
+        with self._lock:
+            if len(self._d) >= 1000:
+                oldest = min(self._d, key=lambda x: self._d[x][1])
+                del self._d[oldest]
+            self._d[k] = (v, _time.time())
     def __getitem__(self, k):
-        v, ts = self._d[k]
-        if _time.time() - ts > self._TTL:
-            del self._d[k]
-            raise KeyError(k)
-        return v
+        with self._lock:
+            v, ts = self._d[k]
+            if _time.time() - ts > self._TTL:
+                del self._d[k]
+                raise KeyError(k)
+            return v
     def __contains__(self, k):
         try: self[k]; return True
         except KeyError: return False
@@ -464,7 +475,8 @@ class _MXCache:
         try: return self[k]
         except KeyError: return default
     def clear(self):
-        self._d = {}
+        with self._lock:
+            self._d = {}
 
 mx_cache = _MXCache()
 
@@ -814,15 +826,18 @@ def start_imap_checker():
 
 
 
-# Per-campaign send lock — prevents race condition duplicate sends
-_campaign_send_locks = {}
+# Per-campaign send lock — WeakValueDictionary auto-cleans completed campaigns
+import weakref
+_campaign_send_locks = weakref.WeakValueDictionary()
 _campaign_send_locks_mutex = threading.Lock()
 
 def _get_campaign_lock(campaign_id):
     with _campaign_send_locks_mutex:
-        if campaign_id not in _campaign_send_locks:
-            _campaign_send_locks[campaign_id] = threading.Lock()
-        return _campaign_send_locks[campaign_id]
+        lock = _campaign_send_locks.get(campaign_id)
+        if lock is None:
+            lock = threading.Lock()
+            _campaign_send_locks[campaign_id] = lock
+        return lock
 
 
 # Send progress tracking — keyed by user_id to prevent race conditions
@@ -838,22 +853,25 @@ def _set_send_progress(user_id, data):
 send_progress = {'running': False, 'total': 0, 'done': 0, 'sent': 0, 'failed': 0, 'current': '', 'campaign_id': 0}
 
 
-# ── AI Generated Email Cache (30min TTL, 500 max) ─────────────────
+# ── AI Generated Email Cache (30min TTL, 500 max) — THREAD SAFE ──
 class _AICache:
     def __init__(self):
-        self._d = {}
-        self._TTL = 1800
+        self._d    = {}
+        self._TTL  = 1800
+        self._lock = _threading.Lock()
     def __setitem__(self, k, v):
-        if len(self._d) >= 500:
-            oldest = min(self._d, key=lambda x: self._d[x][1])
-            del self._d[oldest]
-        self._d[k] = (v, _time.time())
+        with self._lock:
+            if len(self._d) >= 500:
+                oldest = min(self._d, key=lambda x: self._d[x][1])
+                del self._d[oldest]
+            self._d[k] = (v, _time.time())
     def __getitem__(self, k):
-        v, ts = self._d[k]
-        if _time.time() - ts > self._TTL:
-            del self._d[k]
-            raise KeyError(k)
-        return v
+        with self._lock:
+            v, ts = self._d[k]
+            if _time.time() - ts > self._TTL:
+                del self._d[k]
+                raise KeyError(k)
+            return v
     def __contains__(self, k):
         try: self[k]; return True
         except KeyError: return False
@@ -861,12 +879,15 @@ class _AICache:
         try: return self[k]
         except KeyError: return default
     def pop(self, k, default=None):
-        try:
-            v = self[k]
-            del self._d[k]
-            return v
-        except KeyError:
-            return default
+        with self._lock:
+            try:
+                v, ts = self._d[k]
+                del self._d[k]
+                if _time.time() - ts > self._TTL:
+                    return default
+                return v
+            except KeyError:
+                return default
 
 ai_generated_cache = _AICache()
 

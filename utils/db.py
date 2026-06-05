@@ -151,7 +151,8 @@ class PgConnection:
             self._conn.run('BEGIN')
             self._in_tx = True
         except Exception:
-            self._in_tx = False
+            # Already in transaction (pooled connection) — that's fine
+            self._in_tx = True
 
     @property
     def raw(self):

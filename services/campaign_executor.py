@@ -394,43 +394,84 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
         mark_send_failure, append_signature
     )
     from utils.db import get_setting
+    import json
 
     set_campaign_status(campaign_id, JobStatus.RUNNING, started_at=datetime.now())
+
+    # Persist contact_ids to DB so resume works after crash
+    try:
+        conn = get_db()
+        conn.execute("UPDATE campaigns SET contact_ids_json=? WHERE id=?",
+                     (json.dumps(contact_ids), campaign_id))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # Column may not exist yet
+
     log(campaign_id, f'Execution started — {len(contact_ids)} contacts',
         'success', workspace_id=workspace_id)
-    app_logger.info(f'[EXEC] _run_campaign_sync START | campaign={campaign_id} contacts={len(contact_ids)}')
+    app_logger.info(f'[EXEC] START | campaign={campaign_id} contacts={len(contact_ids)}')
+
+    # Cache tracking host once for entire campaign
+    tracking_host = get_setting('tracking_host') or 'https://ertyui.online'
+
+    # Cache attachment bytes once for entire campaign
+    attachment_data = None
+    attachment_name = None
+    if attachment_path and os.path.exists(attachment_path):
+        try:
+            import mimetypes as _mt
+            with open(attachment_path, 'rb') as f:
+                attachment_data = f.read()
+            attachment_name = os.path.basename(attachment_path)
+            app_logger.info(f'[EXEC] Attachment cached: {attachment_name} ({len(attachment_data)//1024}KB)')
+        except Exception as e:
+            error_logger.error(f'[EXEC] Attachment read failed: {e}')
 
     sent = failed = skipped = 0
+    sent_buffer = failed_buffer = 0  # In-memory count buffer
+
+    # Get initial SMTP account and reuse connection
+    current_account = get_next_smtp_account(workspace_id=workspace_id)
+    if not current_account:
+        log(campaign_id, 'No active SMTP accounts available', 'error', workspace_id=workspace_id)
+        set_campaign_status(campaign_id, JobStatus.FAILED)
+        return
+
+    smtp_server_conn = None  # Reused SMTP connection
+
+    def _get_smtp_conn(account):
+        """Get or reuse SMTP connection."""
+        try:
+            s = smtplib.SMTP(account['smtp_server'], int(account['smtp_port'] or 587), timeout=10)
+            s.starttls()
+            s.login(account.get('login_username') or account['email'], account['password'])
+            return s
+        except Exception as e:
+            error_logger.error(f'[EXEC] SMTP connect failed: {e}')
+            return None
+
+    smtp_server_conn = _get_smtp_conn(current_account)
 
     for i, contact_id in enumerate(contact_ids):
-        # Heartbeat every iteration
         _update_heartbeat(campaign_id)
 
-        # Check if paused/cancelled before each send
+        # Check pause/cancel
         conn = get_db()
-        camp = conn.execute(
-            "SELECT job_status FROM campaigns WHERE id=?", (campaign_id,)
-        ).fetchone()
+        camp_status = conn.execute("SELECT job_status FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
         conn.close()
-
-        if not camp or camp['job_status'] in (JobStatus.PAUSED, JobStatus.CANCELLED):
-            log(campaign_id,
-                f'Execution {"paused" if camp and camp["job_status"]==JobStatus.PAUSED else "cancelled"} at contact {i+1}/{len(contact_ids)}',
-                'warning', workspace_id=workspace_id)
-            return
+        if not camp_status or camp_status['job_status'] in (JobStatus.PAUSED, JobStatus.CANCELLED):
+            log(campaign_id, f'Execution stopped at {i+1}/{len(contact_ids)}', 'warning', workspace_id=workspace_id)
+            break
 
         conn = get_db()
         contact = conn.execute("SELECT * FROM contacts WHERE id=?", (contact_id,)).fetchone()
         conn.close()
-
         if not contact:
             skipped += 1
             continue
 
-        # Suppression check
         if is_unsubscribed(contact['email']):
-            log(campaign_id, f'Skipped {contact["email"]} — unsubscribed',
-                'warning', contact_id=contact_id, workspace_id=workspace_id)
             skipped += 1
             continue
 
@@ -445,74 +486,98 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
             skipped += 1
             continue
 
-        # Get SMTP account
-        account = get_next_smtp_account(workspace_id=workspace_id)
-        if not account:
-            log(campaign_id, 'No active SMTP accounts available — stopping',
-                'error', workspace_id=workspace_id)
-            set_campaign_status(campaign_id, JobStatus.FAILED)
-            return
+        # Rotate SMTP account every 10 emails
+        if i > 0 and i % 10 == 0:
+            new_account = get_next_smtp_account(workspace_id=workspace_id)
+            if new_account and new_account['id'] != current_account['id']:
+                try:
+                    if smtp_server_conn: smtp_server_conn.quit()
+                except Exception: pass
+                current_account = new_account
+                smtp_server_conn = _get_smtp_conn(current_account)
 
-        smtp_email = account['email']
-        log(campaign_id, f'Inbox selected: {smtp_email} for contact {i+1}/{len(contact_ids)}',
-            'info', contact_id=contact_id, smtp_email=smtp_email, workspace_id=workspace_id)
+        if not smtp_server_conn:
+            smtp_server_conn = _get_smtp_conn(current_account)
+            if not smtp_server_conn:
+                failed += 1
+                failed_buffer += 1
+                _log_bounce(contact, '', '', campaign_id, workspace_id, 'SMTP connection failed')
+                continue
 
-        # Build email content
+        # Build content
         subject = subject_template.replace('{company}', contact['company'] or '').replace('{name}', contact['name'] or '')
-
         if send_mode == 'ai':
-            log(campaign_id, f'AI generation started for {contact["name"]}',
-                'info', contact_id=contact_id, smtp_email=smtp_email, workspace_id=workspace_id)
             body = _generate_ai_body(contact, body_template, workspace_id)
-            if body:
-                log(campaign_id, f'AI generation completed for {contact["name"]}',
-                    'info', contact_id=contact_id, workspace_id=workspace_id)
-            else:
-                log(campaign_id, f'AI fallback to template for {contact["name"]}',
-                    'warning', contact_id=contact_id, workspace_id=workspace_id)
-                body = body_template  # fallback to template
+            if not body:
+                body = body_template
         else:
             body = body_template.replace('{company}', contact['company'] or '').replace('{name}', contact['name'] or '')
+        body = append_signature(body, current_account.get('signature', ''))
 
-        # Append signature
-        body = append_signature(body, account.get('signature', ''))
-
-        # Send
-        log(campaign_id, f'SMTP send started → {contact["email"]} via {smtp_email}',
-            'info', contact_id=contact_id, smtp_email=smtp_email, workspace_id=workspace_id)
-
+        # Send with reused connection
         success, error_msg = _send_one(
             contact, subject, body, campaign_id, workspace_id,
-            account, attachment_path
+            current_account, attachment_path,
+            smtp_conn=smtp_server_conn,
+            attachment_data=attachment_data,
+            attachment_name=attachment_name,
+            tracking_host=tracking_host
         )
 
         if success:
             sent += 1
-            mark_send_success(account['id'])
-            log(campaign_id, f'SMTP send completed — delivered to {contact["email"]}',
-                'success', contact_id=contact_id, smtp_email=smtp_email, workspace_id=workspace_id)
+            sent_buffer += 1
+            mark_send_success(current_account['id'])
+            log(campaign_id, f'Sent → {contact["email"]}', 'success',
+                contact_id=contact_id, smtp_email=current_account['email'], workspace_id=workspace_id)
         else:
             failed += 1
-            mark_send_failure(account['id'])
-            log(campaign_id, f'SMTP send failed {contact["email"]}: {error_msg}',
-                'error', contact_id=contact_id, smtp_email=smtp_email, workspace_id=workspace_id)
+            failed_buffer += 1
+            # On SMTP error, reconnect
+            if 'SMTP' in (error_msg or ''):
+                try:
+                    if smtp_server_conn: smtp_server_conn.quit()
+                except Exception: pass
+                smtp_server_conn = _get_smtp_conn(current_account)
+            mark_send_failure(current_account['id'])
+            log(campaign_id, f'Failed {contact["email"]}: {error_msg}', 'error',
+                contact_id=contact_id, workspace_id=workspace_id)
 
-        # Update counts + heartbeat
-        update_campaign_counts(campaign_id)
+        # Flush count buffer every 10 emails
+        if sent_buffer + failed_buffer >= 10:
+            try:
+                conn = get_db()
+                conn.execute("UPDATE campaigns SET sent_count=sent_count+?, failed_count=failed_count+? WHERE id=?",
+                             (sent_buffer, failed_buffer, campaign_id))
+                conn.commit()
+                conn.close()
+                sent_buffer = failed_buffer = 0
+            except Exception: pass
+
         _update_heartbeat(campaign_id)
-        app_logger.info(f'[EXEC] campaign={campaign_id} progress {i+1}/{len(contact_ids)} sent={sent} failed={failed}')
+        app_logger.info(f'[EXEC] campaign={campaign_id} {i+1}/{len(contact_ids)} sent={sent} failed={failed}')
 
-        # Warmup delay (randomized 5–15s)
         import random
-        delay = random.randint(5, 15)
-        time.sleep(delay)
+        time.sleep(random.randint(5, 15))
 
-    # Done
+    # Close SMTP
+    try:
+        if smtp_server_conn: smtp_server_conn.quit()
+    except Exception: pass
+
+    # Final count flush
+    try:
+        conn = get_db()
+        conn.execute("UPDATE campaigns SET sent_count=sent_count+?, failed_count=failed_count+? WHERE id=?",
+                     (sent_buffer, failed_buffer, campaign_id))
+        conn.commit()
+        conn.close()
+    except Exception: pass
+
     set_campaign_status(campaign_id, JobStatus.COMPLETED, completed_at=datetime.now())
-    log(campaign_id,
-        f'Campaign completed — Sent: {sent}, Failed: {failed}, Skipped: {skipped}',
+    log(campaign_id, f'Completed — Sent:{sent} Failed:{failed} Skipped:{skipped}',
         'success', workspace_id=workspace_id)
-    app_logger.info(f'[EXEC] _run_campaign_sync DONE | campaign={campaign_id} sent={sent} failed={failed} skipped={skipped}')
+    app_logger.info(f'[EXEC] DONE | campaign={campaign_id} sent={sent} failed={failed} skipped={skipped}')
 
 
 def _generate_ai_body(contact, body_template: str, workspace_id: int) -> str:
@@ -564,8 +629,12 @@ Rules:
 
 
 def _send_one(contact, subject: str, body: str, campaign_id: int,
-              workspace_id: int, account: dict, attachment_path: str = '') -> tuple:
-    """Send one email. Returns (success, error_msg)."""
+              workspace_id: int, account: dict, attachment_path: str = '',
+              smtp_conn=None, attachment_data: bytes = None,
+              attachment_name: str = None, tracking_host: str = None) -> tuple:
+    """Send one email. Returns (success, error_msg).
+    Accepts pre-loaded attachment bytes and reused SMTP connection.
+    """
     import uuid, mimetypes, os
     from utils.db import get_workspace_only_setting, get_setting as _fallback
 
@@ -602,22 +671,32 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
             msg['Bcc'] = bcc
         msg.add_alternative(body, subtype='html')
 
-        # Attachment
-        if attachment_path and os.path.exists(attachment_path):
+        # Use pre-loaded attachment bytes (cached at campaign start)
+        if attachment_data and attachment_name:
+            mt, _ = mimetypes.guess_type(attachment_name)
+            maintype, subtype = mt.split('/', 1) if mt else ('application', 'octet-stream')
+            msg.add_attachment(attachment_data, maintype=maintype, subtype=subtype,
+                               filename=attachment_name)
+        elif attachment_path and os.path.exists(attachment_path):
             mt, _ = mimetypes.guess_type(attachment_path)
             maintype, subtype = mt.split('/', 1) if mt else ('application', 'octet-stream')
             with open(attachment_path, 'rb') as f:
                 msg.add_attachment(f.read(), maintype=maintype, subtype=subtype,
                                    filename=os.path.basename(attachment_path))
 
-        # Use login_username for Brevo/custom SMTP (may differ from from_email)
-        smtp_login = account.get('login_username') or account['email']
-        app_logger.info(f'[EXEC] SMTP connecting: server={account["smtp_server"]}:{account["smtp_port"]} login={smtp_login} from={account["email"]}')
-        server = smtplib.SMTP(account['smtp_server'], int(account['smtp_port'] or 587), timeout=10)
-        server.starttls()
-        server.login(smtp_login, account['password'])
+        # Use reused SMTP connection or create new one
+        server = smtp_conn
+        own_server = False
+        if server is None:
+            smtp_login = account.get('login_username') or account['email']
+            server = smtplib.SMTP(account['smtp_server'], int(account['smtp_port'] or 587), timeout=10)
+            server.starttls()
+            server.login(smtp_login, account['password'])
+            own_server = True
+
         server.send_message(msg)
-        server.quit()
+        if own_server:
+            server.quit()
 
         # Log to emails_sent
         conn = get_db()
@@ -631,7 +710,6 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
         conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (contact['id'],))
         conn.commit()
         conn.close()
-        app_logger.info(f'[EXEC] DB commit completed | campaign={campaign_id} contact={contact["id"]}')
 
         # Thread system
         try:
@@ -654,6 +732,8 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
         return False, 'SMTP Authentication Failed'
     except smtplib.SMTPConnectError:
         return False, 'SMTP Connection Failed'
+    except smtplib.SMTPServerDisconnected:
+        return False, 'SMTP Disconnected'
     except Exception as e:
         _log_bounce(contact, subject, body, campaign_id, workspace_id, str(e), status='failed')
         return False, str(e)[:150]

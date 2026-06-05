@@ -345,6 +345,9 @@ CREATE INDEX IF NOT EXISTS idx_te_contact ON tracking_events(contact_id);
 CREATE INDEX IF NOT EXISTS idx_te_campaign ON tracking_events(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_te_event_type ON tracking_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_te_created ON tracking_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_es_campaign_status ON emails_sent(campaign_id, status);
+CREATE INDEX IF NOT EXISTS idx_es_workspace_sent_at ON emails_sent(workspace_id, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_es_contact_campaign ON emails_sent(contact_id, campaign_id);
 """
 
 
@@ -359,5 +362,6 @@ def init_pg(conn):
     migrations = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT DEFAULT ''",
         "ALTER TABLE smtp_accounts ADD COLUMN IF NOT EXISTS login_username TEXT DEFAULT ''",
+        "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS contact_ids_json TEXT DEFAULT '[]'",
     ]
     conn.executescript(';'.join(migrations))
