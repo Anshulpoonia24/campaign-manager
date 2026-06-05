@@ -194,16 +194,17 @@ def export_data(export_type):
     conn    = get_db()
     db_conn = conn.raw if hasattr(conn, 'raw') else conn
     ph      = '%s' if (USE_POSTGRES and hasattr(conn, 'raw')) else '?'
+    # pd.read_sql needs native connection - use params as positional
     if export_type == 'sent':
-        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.subject, es.status, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status='sent' AND es.workspace_id={ph}", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.subject, es.status, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status='sent' AND es.workspace_id={ph}", db_conn, params=[wid])
     elif export_type == 'bounced':
-        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.bounce_reason, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status IN ('bounced','failed') AND es.workspace_id={ph}", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT c.name, c.company, es.email, es.bounce_reason, es.sent_at FROM emails_sent es JOIN contacts c ON es.contact_id=c.id WHERE es.status IN ('bounced','failed') AND es.workspace_id={ph}", db_conn, params=[wid])
     elif export_type == 'follow_ups':
-        df = pd.read_sql(f"SELECT * FROM follow_ups WHERE workspace_id={ph}", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT * FROM follow_ups WHERE workspace_id={ph}", db_conn, params=[wid])
     elif export_type == 'invalid':
-        df = pd.read_sql(f"SELECT name, company, email, validation_reason FROM contacts WHERE email_valid=0 AND workspace_id={ph}", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT name, company, email, validation_reason FROM contacts WHERE email_valid=0 AND workspace_id={ph}", db_conn, params=[wid])
     else:
-        df = pd.read_sql(f"SELECT * FROM contacts WHERE workspace_id={ph}", db_conn, params=(wid,))
+        df = pd.read_sql(f"SELECT * FROM contacts WHERE workspace_id={ph}", db_conn, params=[wid])
     conn.close()
     filepath = os.path.join(tempfile.gettempdir(), f"export_{export_type}_{uuid.uuid4().hex[:8]}.xlsx")
     df.to_excel(filepath, index=False)

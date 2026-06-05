@@ -358,7 +358,7 @@ def get_db():
 def _table_exists(conn, table_name):
     from utils.db import USE_POSTGRES
     if USE_POSTGRES:
-        row = conn.execute("SELECT 1 FROM information_schema.tables WHERE table_name=%s", (table_name,)).fetchone()
+        row = conn.execute("SELECT 1 FROM information_schema.tables WHERE table_name=?", (table_name,)).fetchone()
     else:
         row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,)).fetchone()
     return row is not None
