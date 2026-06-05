@@ -639,7 +639,13 @@ def launch_campaign_route(campaign_id):
         attachment_path = os.path.join(UPLOAD_DIR, fname)
         uploaded.save(attachment_path)
     elif request.form.get('attachment'):
-        attachment_path = os.path.join(UPLOAD_DIR, request.form.get('attachment'))
+        from werkzeug.utils import secure_filename
+        safe_name = secure_filename(request.form.get('attachment', ''))
+        if safe_name:
+            attachment_path = os.path.join(UPLOAD_DIR, safe_name)
+            # Path traversal guard
+            if not os.path.abspath(attachment_path).startswith(os.path.abspath(UPLOAD_DIR)):
+                attachment_path = ''
 
     if not contact_ids:
         flash('No contacts selected.', 'error')

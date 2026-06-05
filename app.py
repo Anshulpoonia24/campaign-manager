@@ -209,6 +209,18 @@ def file_too_large(e):
     flash('File too large! Maximum 16MB allowed.', 'error')
     return redirect(request.referrer or url_for('dash.dashboard'))
 
+
+@app.teardown_appcontext
+def _close_db(e=None):
+    """Close DB connection at end of each request."""
+    from flask import g
+    db = g.pop('_db', None)
+    if db is not None:
+        try:
+            db.close()
+        except Exception:
+            pass
+
 # ==============================
 # AUTHENTICATION
 # ==============================
@@ -351,7 +363,16 @@ def set_setting(key, value):
 
 
 def get_db():
+    """Get DB connection — cached per request via Flask g to prevent connection exhaustion."""
     from utils.db import get_db as _utils_get_db
+    try:
+        from flask import g, has_request_context
+        if has_request_context():
+            if not hasattr(g, '_db'):
+                g._db = _utils_get_db()
+            return g._db
+    except Exception:
+        pass
     return _utils_get_db()
 
 

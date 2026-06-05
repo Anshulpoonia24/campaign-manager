@@ -168,33 +168,32 @@ def update_campaign_counts(campaign_id: int):
 
 
 def get_campaign_status(campaign_id: int) -> dict:
-    """Get full campaign execution status for UI polling."""
-    # Side-effect: check for stalled campaigns
-    check_stalled_campaigns()
-
+    """Get full campaign execution status for UI polling.
+    Uses single aggregated query instead of 6 separate queries.
+    """
     conn = get_db()
-    camp = conn.execute("SELECT * FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
+    # Single aggregated query — replaces 5 separate COUNT queries
+    camp = conn.execute("""
+        SELECT c.*,
+            COUNT(CASE WHEN es.status='sent' THEN 1 END) as _sent,
+            COUNT(CASE WHEN es.status IN ('failed','bounced') THEN 1 END) as _failed,
+            COUNT(CASE WHEN es.opened=1 THEN 1 END) as _opened,
+            COUNT(CASE WHEN es.replied=1 THEN 1 END) as _replied
+        FROM campaigns c
+        LEFT JOIN emails_sent es ON es.campaign_id = c.id
+        WHERE c.id=?
+        GROUP BY c.id
+    """, (campaign_id,)).fetchone()
+
     if not camp:
         conn.close()
         return {}
 
     total    = camp['total_contacts'] or 0
-    sent     = conn.execute(
-        "SELECT COUNT(*) FROM emails_sent WHERE campaign_id=? AND status='sent'",
-        (campaign_id,)
-    ).fetchone()[0]
-    failed   = conn.execute(
-        "SELECT COUNT(*) FROM emails_sent WHERE campaign_id=? AND status IN ('failed','bounced')",
-        (campaign_id,)
-    ).fetchone()[0]
-    opened   = conn.execute(
-        "SELECT COUNT(*) FROM emails_sent WHERE campaign_id=? AND opened=1",
-        (campaign_id,)
-    ).fetchone()[0]
-    replied  = conn.execute(
-        "SELECT COUNT(*) FROM emails_sent WHERE campaign_id=? AND replied=1",
-        (campaign_id,)
-    ).fetchone()[0]
+    sent     = camp['_sent']   or 0
+    failed   = camp['_failed'] or 0
+    opened   = camp['_opened'] or 0
+    replied  = camp['_replied'] or 0
     done     = sent + failed
     pending  = max(0, total - done)
     pct      = round(done / total * 100) if total else 0
@@ -351,7 +350,25 @@ def _run_campaign_sync(campaign_id: int, contact_ids: list,
     """
     Execute campaign synchronously.
     Fully resumable — checks DB status before each send.
+    Outer try/except ensures status is always updated on crash.
     """
+    try:
+        _run_campaign_inner(campaign_id, contact_ids, subject_template, body_template,
+                           send_mode, workspace_id, attachment_path)
+    except Exception as e:
+        error_logger.exception(f'[EXEC] Campaign {campaign_id} CRASHED: {e}')
+        try:
+            set_campaign_status(campaign_id, JobStatus.FAILED)
+            log(campaign_id, f'Campaign crashed unexpectedly: {str(e)[:200]}',
+                'error', workspace_id=workspace_id)
+        except Exception:
+            pass
+
+
+def _run_campaign_inner(campaign_id: int, contact_ids: list,
+                        subject_template: str, body_template: str,
+                        send_mode: str, workspace_id: int,
+                        attachment_path: str = ''):
     from services.smtp_rotation import (
         get_next_smtp_account, mark_send_success,
         mark_send_failure, append_signature
@@ -515,7 +532,7 @@ Rules:
                 json={'model': 'llama-3.3-70b-versatile',
                       'messages': [{'role': 'user', 'content': prompt}],
                       'max_tokens': 500},
-                timeout=45  # Hard timeout — prevents infinite hang
+                timeout=15  # Hard timeout — prevents infinite hang
             )
             if r.status_code == 200:
                 return r.json()['choices'][0]['message']['content'].strip()
@@ -576,7 +593,7 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
         # Use login_username for Brevo/custom SMTP (may differ from from_email)
         smtp_login = account.get('login_username') or account['email']
         app_logger.info(f'[EXEC] SMTP connecting: server={account["smtp_server"]}:{account["smtp_port"]} login={smtp_login} from={account["email"]}')
-        server = smtplib.SMTP(account['smtp_server'], account['smtp_port'], timeout=30)
+        server = smtplib.SMTP(account['smtp_server'], int(account['smtp_port'] or 587), timeout=10)
         server.starttls()
         server.login(smtp_login, account['password'])
         server.send_message(msg)
