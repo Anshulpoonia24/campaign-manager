@@ -328,18 +328,20 @@ def _get_reply_to():
 
 
 def get_setting(key):
-    """Get setting for current workspace (falls back to global)."""
+    """Get setting for current workspace — single query with workspace fallback."""
     try:
         from flask_login import current_user
         wid = getattr(current_user, 'workspace_id', 1) if current_user and current_user.is_authenticated else 1
     except Exception:
         wid = 1
     conn = get_db()
-    # Try workspace-specific first
-    row = conn.execute("SELECT value FROM settings WHERE key=? AND workspace_id=?", (key, wid)).fetchone()
-    if not row:
-        # Fall back to global (workspace_id=1 or NULL)
-        row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    # Single query: workspace-specific first, then global (workspace_id=1)
+    row = conn.execute("""
+        SELECT value FROM settings
+        WHERE key=? AND (workspace_id=? OR workspace_id=1)
+        ORDER BY CASE WHEN workspace_id=? THEN 0 ELSE 1 END
+        LIMIT 1
+    """, (key, wid, wid)).fetchone()
     conn.close()
     if row:
         return row[0]
@@ -644,6 +646,7 @@ def check_replies():
 
     try:
         mail = imaplib.IMAP4_SSL(imap_server, imap_port)
+        mail.socket().settimeout(30)  # 30s timeout on IMAP operations
         mail.login(imap_username, imap_password)
         mail.select('INBOX')
 
@@ -1066,6 +1069,8 @@ if __name__ == '__main__':
     start_imap_checker()
     start_daily_reset()
     start_automation_worker()
+    from services.campaign_executor import start_stall_checker
+    start_stall_checker()
     from services.copilot.autonomous import start_autonomous_worker
     start_autonomous_worker()
     print(f"\n=== Email Campaign Manager ===")
@@ -1080,6 +1085,8 @@ else:
         start_imap_checker()
         start_daily_reset()
         start_automation_worker()
+        from services.campaign_executor import start_stall_checker
+        start_stall_checker()
         from services.copilot.autonomous import start_autonomous_worker
         start_autonomous_worker()
         print('[STARTUP] Background workers started (gunicorn mode)')

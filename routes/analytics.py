@@ -129,14 +129,18 @@ def api_ai_usage():
 @login_required
 def logs_page():
     from app import get_db
+    from services.workspace_service import get_wid
+    wid = get_wid()
     conn = get_db()
     logs = conn.execute("""
         SELECT es.*, c.name, c.company, camp.name as campaign_name
         FROM emails_sent es
         JOIN contacts c ON es.contact_id = c.id
         JOIN campaigns camp ON es.campaign_id = camp.id
+        WHERE es.workspace_id=?
         ORDER BY es.sent_at DESC
-    """).fetchall()
+        LIMIT 500
+    """, (wid,)).fetchall()
 
     sent     = sum(1 for l in logs if l['status'] == 'sent')
     failed   = sum(1 for l in logs if l['status'] == 'failed')

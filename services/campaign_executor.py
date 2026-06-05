@@ -44,20 +44,24 @@ STALL_TIMEOUT_SECONDS = 60
 # ── LOGGING ───────────────────────────────────────────────────
 
 def log(campaign_id: int, message: str, level: str = 'info',
-        contact_id: int = None, smtp_email: str = '', workspace_id: int = 1):
-    """Persist a log entry to campaign_logs table + emit to stdout."""
+        contact_id: int = None, smtp_email: str = '', workspace_id: int = 1,
+        _conn=None):
+    """Persist a log entry to campaign_logs table.
+    Pass _conn to reuse existing connection and avoid connection per log call.
+    """
     try:
-        conn = get_db()
+        own_conn = _conn is None
+        conn = get_db() if own_conn else _conn
         conn.execute("""
             INSERT INTO campaign_logs
               (campaign_id, workspace_id, contact_id, level, message, smtp_email)
             VALUES (?,?,?,?,?,?)
         """, (campaign_id, workspace_id, contact_id, level, message, smtp_email))
         conn.commit()
-        conn.close()
+        if own_conn:
+            conn.close()
     except Exception as e:
         error_logger.error(f'[EXEC] log write failed: {e}')
-    # Also emit to app_logger so worker stdout shows progress
     app_logger.info(f'[CAMPAIGN {campaign_id}] [{level}] {message}')
 
 
@@ -167,6 +171,22 @@ def update_campaign_counts(campaign_id: int):
     conn.close()
 
 
+def start_stall_checker():
+    """Background thread: check for stalled campaigns every 5 minutes.
+    Moved out of get_campaign_status to avoid DB hit on every UI poll.
+    """
+    import threading, time as _time
+    def _run():
+        while True:
+            try:
+                check_stalled_campaigns()
+            except Exception as e:
+                error_logger.error(f'[STALL] checker error: {e}')
+            _time.sleep(300)  # every 5 minutes
+    t = threading.Thread(target=_run, daemon=True, name='stall-checker')
+    t.start()
+
+
 def get_campaign_status(campaign_id: int) -> dict:
     """Get full campaign execution status for UI polling.
     Uses single aggregated query instead of 6 separate queries.
@@ -227,7 +247,7 @@ def get_campaign_status(campaign_id: int) -> dict:
     """, (campaign_id,)).fetchall()
 
     # Contact execution table
-    contacts = conn.execute("""
+    contact_rows = conn.execute("""
         SELECT es.contact_id, es.email, es.status, es.opened, es.replied,
                es.bounce_reason, es.sent_at,
                c.name, c.company,
@@ -274,7 +294,7 @@ def get_campaign_status(campaign_id: int) -> dict:
         'completed_at': str(camp['completed_at']) if camp['completed_at'] else None,
         'last_heartbeat': last_hb,
         'logs':         [dict(l) for l in logs],
-        'contacts':     [dict(c) for c in contacts],
+        'contacts':     [dict(c) for c in contact_rows],
         'smtp_accounts':[dict(s) for s in smtp_accounts],
         'running':      camp['job_status'] == JobStatus.RUNNING,
         'completed':    camp['job_status'] in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.STALLED),
@@ -663,29 +683,30 @@ def pause_campaign(campaign_id: int, workspace_id: int):
 
 
 def resume_campaign(campaign_id: int, workspace_id: int):
-    """Resume a paused campaign — re-queue remaining contacts."""
+    """Resume a paused campaign — re-queue contacts not yet successfully sent."""
     conn = get_db()
-    camp = conn.execute("SELECT * FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
-    if not camp:
+    try:
+        camp = conn.execute("SELECT * FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
+        if not camp:
+            return False
+
+        # Get ALL contacts that were part of this campaign
+        # (from send_reservations or emails_sent, whichever has data)
+        sent_ids = set(
+            r['contact_id'] for r in conn.execute(
+                "SELECT contact_id FROM emails_sent WHERE campaign_id=? AND status='sent'",
+                (campaign_id,)
+            ).fetchall()
+        )
+
+        # Get workspace contacts eligible for this campaign (not yet sent)
+        all_eligible = conn.execute(
+            "SELECT id FROM contacts WHERE workspace_id=? AND email_valid=1",
+            (workspace_id,)
+        ).fetchall()
+        remaining = [r['id'] for r in all_eligible if r['id'] not in sent_ids]
+    finally:
         conn.close()
-        return False
-
-    # Find contacts not yet sent
-    sent_ids = [r['contact_id'] for r in conn.execute(
-        "SELECT contact_id FROM emails_sent WHERE campaign_id=? AND status='sent'",
-        (campaign_id,)
-    ).fetchall()]
-    conn.close()
-
-    # Get original contact list from emails_sent (pending = not in sent)
-    conn2 = get_db()
-    all_contacts = conn2.execute(
-        "SELECT DISTINCT contact_id FROM emails_sent WHERE campaign_id=?",
-        (campaign_id,)
-    ).fetchall()
-    conn2.close()
-
-    remaining = [r['contact_id'] for r in all_contacts if r['contact_id'] not in sent_ids]
 
     if not remaining:
         set_campaign_status(campaign_id, JobStatus.COMPLETED, completed_at=datetime.now())
