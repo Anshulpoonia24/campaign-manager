@@ -22,7 +22,7 @@ beautifulsoup4==4.13.4
 python-dotenv==1.2.2
 
 # ── DATABASE ─────────────────────────────────────────────────
-psycopg2-binary>=2.9.10     # PostgreSQL driver (works on Python 3.12)
+pg8000>=1.30.0              # Pure Python PostgreSQL — no C extension, no signal crash
 
 # ── ASYNC TASK QUEUE ──────────────────────────────────────────
 celery==5.4.0

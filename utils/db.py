@@ -1,8 +1,8 @@
 """
 utils/db.py — OutreachOS Database Layer
 ========================================
-PostgreSQL (primary) with SQLite fallback for local dev.
-Python 3.12 + psycopg2-binary — fully compatible.
+PostgreSQL via pg8000 (pure Python) — no C extension, no signal crash.
+SQLite fallback for local dev.
 """
 import os
 import sqlite3
@@ -41,30 +41,53 @@ DB_PATH  = os.path.join(DATA_DIR, 'campaigns.db')
 
 
 # ── POSTGRES CONFIG ───────────────────────────────────────────
-def _build_pg_dsn():
-    if DATABASE_URL:
-        url = DATABASE_URL.strip()
-        if url.startswith('postgres://'):
-            url = 'postgresql://' + url[len('postgres://'):]
-        if 'sslmode' not in url:
-            sep = '&' if '?' in url else '?'
-            url += sep + 'sslmode=require'
-        return url
-    return (
-        f"host={os.getenv('DB_HOST','localhost')} "
-        f"port={os.getenv('DB_PORT','5432')} "
-        f"dbname={os.getenv('DB_NAME','outreachos')} "
-        f"user={os.getenv('DB_USER','postgres')} "
-        f"password={os.getenv('DB_PASSWORD','')} "
-        f"connect_timeout=10"
-    )
+def _parse_pg_url():
+    """Parse DATABASE_URL into pg8000 kwargs. Handles @ in password correctly."""
+    url = DATABASE_URL.strip()
+    if url.startswith('postgres://'):
+        url = 'postgresql://' + url[len('postgres://'):]
+
+    # Remove scheme
+    rest = url.split('://', 1)[1]  # user:password@host:port/dbname
+
+    # Split on LAST @ to handle @ in password
+    at_idx   = rest.rfind('@')
+    creds    = rest[:at_idx]
+    hostpart = rest[at_idx + 1:]
+
+    # Split credentials on FIRST :
+    colon_idx = creds.find(':')
+    from urllib.parse import unquote
+    user     = unquote(creds[:colon_idx])
+    password = unquote(creds[colon_idx + 1:])
+
+    # Split host:port/dbname
+    slash_idx = hostpart.find('/')
+    hostport  = hostpart[:slash_idx]
+    database  = hostpart[slash_idx + 1:].split('?')[0]  # remove ?sslmode=...
+
+    if ':' in hostport:
+        host, port = hostport.rsplit(':', 1)
+        port = int(port)
+    else:
+        host = hostport
+        port = 5432
+
+    return {
+        'host':        host,
+        'port':        port,
+        'database':    database,
+        'user':        user,
+        'password':    password,
+        'ssl_context': True,
+    }
 
 
 def _connect_pg():
-    """Create a fresh psycopg2 connection."""
-    import psycopg2
-    dsn = _build_pg_dsn()
-    conn = psycopg2.connect(dsn, connect_timeout=10)
+    """Create a fresh pg8000 connection."""
+    import pg8000.native
+    kwargs = _parse_pg_url()
+    conn = pg8000.native.Connection(**kwargs)
     return conn
 
 
@@ -72,8 +95,8 @@ def _connect_pg():
 class PgRow:
     __slots__ = ('_data', '_keys')
 
-    def __init__(self, cursor, row):
-        self._keys = [d[0] for d in cursor.description]
+    def __init__(self, keys, row):
+        self._keys = list(keys)
         self._data = dict(zip(self._keys, row))
 
     def __getitem__(self, key):
@@ -97,9 +120,18 @@ class PgRow:
         return f'PgRow({self._data})'
 
 
-class PgCursor:
-    def __init__(self, cursor):
-        self._cur = cursor
+# ── CONNECTION WRAPPER ────────────────────────────────────────
+class PgConnection:
+    def __init__(self, raw_conn):
+        self._conn         = raw_conn
+        self._last_rows    = []
+        self._last_columns = []
+        # Start transaction
+        self._conn.run('BEGIN')
+
+    @property
+    def raw(self):
+        return self._conn
 
     def _convert(self, sql):
         import re
@@ -116,15 +148,25 @@ class PgCursor:
 
     def execute(self, sql, params=None):
         converted = self._convert(sql)
-        if params is None:
-            self._cur.execute(converted)
-        else:
-            self._cur.execute(converted, tuple(params))
+        try:
+            if params is None:
+                rows = self._conn.run(converted)
+            else:
+                rows = self._conn.run(converted, *list(params))
+            self._last_rows    = rows or []
+            self._last_columns = [c['name'] for c in (self._conn.columns or [])]
+        except Exception:
+            self._last_rows    = []
+            self._last_columns = []
+            raise
         return self
 
     def executemany(self, sql, seq):
         converted = self._convert(sql)
-        self._cur.executemany(converted, [tuple(p) for p in seq])
+        for params in seq:
+            self._conn.run(converted, *list(params))
+        self._last_rows    = []
+        self._last_columns = []
         return self
 
     def executescript(self, script):
@@ -132,73 +174,45 @@ class PgCursor:
             stmt = stmt.strip()
             if stmt:
                 try:
-                    self._cur.execute(stmt)
+                    self._conn.run(stmt)
                 except Exception:
                     pass
         return self
 
     def fetchone(self):
-        row = self._cur.fetchone()
-        if row is None:
+        if not self._last_rows:
             return None
-        return PgRow(self._cur, row)
+        return PgRow(self._last_columns, self._last_rows[0])
 
     def fetchall(self):
-        rows = self._cur.fetchall()
-        return [PgRow(self._cur, r) for r in rows]
-
-    @property
-    def description(self):
-        return self._cur.description
-
-    @property
-    def rowcount(self):
-        return self._cur.rowcount
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self._cur.close()
-
-
-class PgConnection:
-    def __init__(self, raw_conn):
-        self._conn = raw_conn
-        self._conn.autocommit = False
-        self.row_factory = None
-
-    @property
-    def raw(self):
-        return self._conn
-
-    def execute(self, sql, params=None):
-        cur = self._conn.cursor()
-        wrapped = PgCursor(cur)
-        wrapped.execute(sql, params)
-        return wrapped
-
-    def executescript(self, script):
-        cur = self._conn.cursor()
-        wrapped = PgCursor(cur)
-        wrapped.executescript(script)
-        self._conn.commit()
-        return wrapped
-
-    def cursor(self):
-        return PgCursor(self._conn.cursor())
+        return [PgRow(self._last_columns, r) for r in self._last_rows]
 
     def commit(self):
-        self._conn.commit()
+        try:
+            self._conn.run('COMMIT')
+            self._conn.run('BEGIN')
+        except Exception:
+            pass
 
     def rollback(self):
-        self._conn.rollback()
+        try:
+            self._conn.run('ROLLBACK')
+            self._conn.run('BEGIN')
+        except Exception:
+            pass
 
     def close(self):
+        try:
+            self._conn.run('COMMIT')
+        except Exception:
+            pass
         try:
             self._conn.close()
         except Exception:
             pass
+
+    def cursor(self):
+        return self
 
     def __enter__(self):
         return self
@@ -236,8 +250,8 @@ def is_postgres():
     return USE_POSTGRES
 
 
-def _build_pg_dsn_export():
-    return _build_pg_dsn()
+def _build_pg_dsn():
+    return DATABASE_URL
 
 
 def get_workspace_only_setting(key, workspace_id, default=''):
@@ -275,8 +289,7 @@ def is_unsubscribed(email):
 def get_db_url():
     if USE_POSTGRES:
         import re
-        url = DATABASE_URL or ''
-        return re.sub(r':([^@]+)@', ':***@', url)
+        return re.sub(r':([^@]+)@', ':***@', DATABASE_URL or '')
     return f'sqlite:///{DB_PATH}'
 
 
