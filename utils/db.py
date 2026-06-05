@@ -40,31 +40,26 @@ DATA_DIR = _resolve_data_dir()
 DB_PATH  = os.path.join(DATA_DIR, 'campaigns.db')
 
 
-# ── POSTGRES CONFIG ───────────────────────────────────────────
+# ── POSTGRES URL PARSER ───────────────────────────────────────
 def _parse_pg_url():
-    """Parse DATABASE_URL into pg8000 kwargs. Handles @ in password correctly."""
+    """Parse DATABASE_URL into pg8000 kwargs. Handles @ in password via rfind."""
     url = DATABASE_URL.strip()
     if url.startswith('postgres://'):
         url = 'postgresql://' + url[len('postgres://'):]
 
-    # Remove scheme
-    rest = url.split('://', 1)[1]  # user:password@host:port/dbname
-
-    # Split on LAST @ to handle @ in password
+    rest     = url.split('://', 1)[1]
     at_idx   = rest.rfind('@')
     creds    = rest[:at_idx]
     hostpart = rest[at_idx + 1:]
 
-    # Split credentials on FIRST :
     colon_idx = creds.find(':')
     from urllib.parse import unquote
     user     = unquote(creds[:colon_idx])
     password = unquote(creds[colon_idx + 1:])
 
-    # Split host:port/dbname
     slash_idx = hostpart.find('/')
     hostport  = hostpart[:slash_idx]
-    database  = hostpart[slash_idx + 1:].split('?')[0]  # remove ?sslmode=...
+    database  = hostpart[slash_idx + 1:].split('?')[0]
 
     if ':' in hostport:
         host, port = hostport.rsplit(':', 1)
@@ -73,22 +68,38 @@ def _parse_pg_url():
         host = hostport
         port = 5432
 
-    return {
-        'host':        host,
-        'port':        port,
-        'database':    database,
-        'user':        user,
-        'password':    password,
-        'ssl_context': True,
-    }
+    return {'host': host, 'port': port, 'database': database,
+            'user': user, 'password': password, 'ssl_context': True}
 
 
 def _connect_pg():
-    """Create a fresh pg8000 connection."""
     import pg8000.native
-    kwargs = _parse_pg_url()
-    conn = pg8000.native.Connection(**kwargs)
-    return conn
+    return pg8000.native.Connection(**_parse_pg_url())
+
+
+# ── SQL CONVERSION ────────────────────────────────────────────
+def _convert_sql(sql):
+    """Convert SQLite SQL to PostgreSQL-compatible SQL for pg8000.
+    - ? → $1, $2, $3 (pg8000 uses numbered params)
+    - INSERT OR IGNORE → INSERT ... ON CONFLICT DO NOTHING
+    - SQLite-specific syntax → PostgreSQL
+    """
+    import re
+    is_ignore = bool(re.search(r'INSERT\s+OR\s+IGNORE', sql, re.IGNORECASE))
+    sql = re.sub(r'INSERT\s+OR\s+IGNORE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
+    sql = re.sub(r'INSERT\s+OR\s+REPLACE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
+    # ? → $1, $2 ...
+    counter = [0]
+    def _repl(m):
+        counter[0] += 1
+        return f'${counter[0]}'
+    sql = re.sub(r'\?', _repl, sql)
+    if is_ignore and 'ON CONFLICT' not in sql.upper():
+        sql = sql.rstrip().rstrip(';') + ' ON CONFLICT DO NOTHING'
+    sql = re.sub(r'INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT', 'SERIAL PRIMARY KEY', sql, flags=re.IGNORECASE)
+    sql = re.sub(r"datetime\('now'\)", 'CURRENT_TIMESTAMP', sql, flags=re.IGNORECASE)
+    sql = re.sub(r"DATE\('now'\)", 'CURRENT_DATE', sql, flags=re.IGNORECASE)
+    return sql
 
 
 # ── ROW WRAPPER ───────────────────────────────────────────────
@@ -122,37 +133,32 @@ class PgRow:
 
 # ── CONNECTION WRAPPER ────────────────────────────────────────
 class PgConnection:
+    """
+    Wraps pg8000.native.Connection to match sqlite3 interface.
+    - execute(sql, params) — converts ? to $1,$2 and runs query
+    - executescript(sql)   — DDL only, runs each stmt with autocommit
+    - commit() / rollback() / close()
+    """
     def __init__(self, raw_conn):
         self._conn         = raw_conn
         self._last_rows    = []
         self._last_columns = []
-        # Start transaction
-        self._conn.run('BEGIN')
+        self._in_tx        = False
+        self._begin()
+
+    def _begin(self):
+        try:
+            self._conn.run('BEGIN')
+            self._in_tx = True
+        except Exception:
+            self._in_tx = False
 
     @property
     def raw(self):
         return self._conn
 
-    def _convert(self, sql):
-        import re
-        is_ignore = bool(re.search(r'INSERT\s+OR\s+IGNORE', sql, re.IGNORECASE))
-        sql = re.sub(r'INSERT\s+OR\s+IGNORE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
-        sql = re.sub(r'INSERT\s+OR\s+REPLACE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
-        # Convert ? to $1, $2, $3... for pg8000
-        counter = [0]
-        def replace_placeholder(m):
-            counter[0] += 1
-            return f'${counter[0]}'
-        sql = re.sub(r'\?', replace_placeholder, sql)
-        if is_ignore and 'ON CONFLICT' not in sql.upper():
-            sql = sql.rstrip().rstrip(';') + ' ON CONFLICT DO NOTHING'
-        sql = re.sub(r'INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT', 'SERIAL PRIMARY KEY', sql, flags=re.IGNORECASE)
-        sql = re.sub(r"datetime\('now'\)", 'CURRENT_TIMESTAMP', sql, flags=re.IGNORECASE)
-        sql = re.sub(r"DATE\('now'\)", 'CURRENT_DATE', sql, flags=re.IGNORECASE)
-        return sql
-
     def execute(self, sql, params=None):
-        converted = self._convert(sql)
+        converted = _convert_sql(sql)
         try:
             if params is None:
                 rows = self._conn.run(converted)
@@ -167,7 +173,7 @@ class PgConnection:
         return self
 
     def executemany(self, sql, seq):
-        converted = self._convert(sql)
+        converted = _convert_sql(sql)
         for params in seq:
             self._conn.run(converted, *list(params))
         self._last_rows    = []
@@ -175,13 +181,25 @@ class PgConnection:
         return self
 
     def executescript(self, script):
+        """DDL-safe: commits current tx, runs each stmt standalone, restarts tx."""
+        # Commit any pending transaction first
+        try:
+            self._conn.run('COMMIT')
+        except Exception:
+            pass
+        self._in_tx = False
+
         for stmt in script.split(';'):
             stmt = stmt.strip()
-            if stmt:
-                try:
-                    self._conn.run(stmt)
-                except Exception:
-                    pass
+            if not stmt:
+                continue
+            try:
+                self._conn.run(stmt)
+            except Exception:
+                pass  # IF NOT EXISTS etc — safe to ignore
+
+        # Restart transaction for subsequent DML
+        self._begin()
         return self
 
     def fetchone(self):
@@ -195,16 +213,16 @@ class PgConnection:
     def commit(self):
         try:
             self._conn.run('COMMIT')
-            self._conn.run('BEGIN')
         except Exception:
             pass
+        self._begin()
 
     def rollback(self):
         try:
             self._conn.run('ROLLBACK')
-            self._conn.run('BEGIN')
         except Exception:
             pass
+        self._begin()
 
     def close(self):
         try:
@@ -234,8 +252,7 @@ class PgConnection:
 def get_db():
     if USE_POSTGRES:
         try:
-            raw  = _connect_pg()
-            return PgConnection(raw)
+            return PgConnection(_connect_pg())
         except Exception as e:
             print(f'[DB] PostgreSQL FAILED: {e}')
             logger.error(f'[DB] PostgreSQL connection failed: {e}')

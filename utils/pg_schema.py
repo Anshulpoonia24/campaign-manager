@@ -349,34 +349,15 @@ CREATE INDEX IF NOT EXISTS idx_te_created ON tracking_events(created_at DESC);
 
 
 def init_pg(conn):
-    """Initialize PostgreSQL schema — all tables + indexes + defaults."""
-    # Create tables
-    for stmt in PG_SCHEMA.split(';'):
-        stmt = stmt.strip()
-        if stmt:
-            try:
-                conn.execute(stmt)
-            except Exception:
-                pass
-    conn.commit()
-
-    # Create indexes
-    for stmt in PG_INDEXES.split(';'):
-        stmt = stmt.strip()
-        if stmt:
-            try:
-                conn.execute(stmt)
-            except Exception:
-                pass
-    conn.commit()
+    """Initialize PostgreSQL schema — all tables + indexes + defaults.
+    Uses executescript() which handles DDL autocommit correctly for pg8000.
+    """
+    conn.executescript(PG_SCHEMA)
+    conn.executescript(PG_INDEXES)
 
     # Safe column migrations for existing DBs
-    for migration in [
+    migrations = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT DEFAULT ''",
         "ALTER TABLE smtp_accounts ADD COLUMN IF NOT EXISTS login_username TEXT DEFAULT ''",
-    ]:
-        try:
-            conn.execute(migration)
-        except Exception:
-            pass
-    conn.commit()
+    ]
+    conn.executescript(';'.join(migrations))
