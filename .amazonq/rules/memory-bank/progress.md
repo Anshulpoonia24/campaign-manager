@@ -1,5 +1,5 @@
 # OutreachOS — Living Development Document
-> Last updated: 2026-06-04 | Read this FIRST in every new session
+> Last updated: 2026-06-24 | Read this FIRST in every new session
 
 ---
 
@@ -20,6 +20,7 @@
 
 ## ⚠️ CRITICAL PRODUCTION NOTES (READ BEFORE ANY CODE CHANGE)
 
+- **pg8000 version**: must be pinned to `==1.30.4` — 1.31+ changed `run()` from `*args` to `**kwargs`, breaking ALL parameterized queries
 - **Python version on Render: 3.14** — psycopg2 ke saath incompatibility hai
 - **psycopg2 params**: hamesha `list(params)` pass karo, kabhi `tuple` ya `params or ()` nahi
 - **`INSERT OR IGNORE`**: SQLite syntax hai — `_convert()` in `utils/db.py` auto-converts to `ON CONFLICT DO NOTHING` for PostgreSQL
@@ -332,6 +333,29 @@ conn.execute("SELECT * FROM contacts WHERE workspace_id=?", (wid,))
 ---
 
 ## 📝 SESSION NOTES
+
+### 2026-06-24 Session 6 — Production Crash Fix (pg8000 API Break + IMAP UnboundLocalError)
+
+**Root causes identified from live logs:**
+
+1. `IndexError: list index out of range` in pg8000 `make_vals()` — pg8000 >=1.31 changed `native.Connection.run()` API from `*args` (positional) to `**kwargs` (named). Our `_convert_sql()` generates `$1, $2...` for pg8000's old `*args` style. Result: ALL parameterized queries crash on production.
+2. `UnboundLocalError: cannot access local variable 'interval'` in `run_checker` — `interval` was assigned inside `try` block, but `time.sleep(interval)` is outside — if `try` raises, `interval` is never set.
+
+**Files changed:**
+
+| File | Change | Why |
+|---|---|---|
+| `requirements.txt` | `pg8000>=1.30.0` → `pg8000==1.30.4` | Pin to last version with `*args` style `run()` API — 1.31+ breaks all queries |
+| `app.py` | `run_checker`: moved `interval = 180` before `while` loop | Fix `UnboundLocalError` — `time.sleep(interval)` needs fallback value if `try` throws |
+
+---
+
+### 2026-06-05 Session 5 — New Session Start
+
+- Session started, progress.md read and confirmed up to date
+- Awaiting user tasks
+
+---
 
 ### 2026-06-04 Session 4 — Production Bug Fixing (Live Log Monitoring)
 

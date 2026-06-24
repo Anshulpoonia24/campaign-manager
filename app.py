@@ -338,22 +338,27 @@ def _get_reply_to():
 
 
 def get_setting(key):
-    """Get setting for current workspace — single query with workspace fallback."""
+    """Get setting for current workspace — workspace-specific first, then global fallback."""
     try:
         from flask_login import current_user
         wid = getattr(current_user, 'workspace_id', 1) if current_user and current_user.is_authenticated else 1
     except Exception:
         wid = 1
-    # Use direct connection (not g-cached) to avoid double-close issues
     from utils.db import get_db as _get_db
     conn = _get_db()
     try:
-        row = conn.execute("""
-            SELECT value FROM settings
-            WHERE key=? AND (workspace_id=? OR workspace_id=1)
-            ORDER BY CASE WHEN workspace_id=? THEN 0 ELSE 1 END
-            LIMIT 1
-        """, (key, wid, wid)).fetchone()
+        # Try workspace-specific first
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key=? AND workspace_id=?",
+            (key, wid)
+        ).fetchone()
+        if row:
+            return row[0]
+        # Fall back to workspace 1 (global)
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key=? AND workspace_id=1",
+            (key,)
+        ).fetchone()
         if row:
             return row[0]
         return DEFAULT_SETTINGS.get(key, '')
@@ -427,8 +432,18 @@ try:
             print('[STARTUP] PostgreSQL connection test OK')
         except Exception as pg_err:
             print(f'[STARTUP] PostgreSQL connection FAILED: {pg_err}')
-    init_db()
-    # Ensure tracking_events table exists
+    # Retry init_db up to 3 times on network error
+    for _attempt in range(3):
+        try:
+            init_db()
+            break
+        except Exception as e:
+            if _attempt < 2:
+                print(f'[STARTUP] DB init attempt {_attempt+1} failed: {e} — retrying...')
+                import time as _t; _t.sleep(2)
+            else:
+                print(f'[STARTUP] DB init failed after 3 attempts: {e}')
+                import traceback; traceback.print_exc()
     from services.tracking import ensure_tracking_table
     ensure_tracking_table()
     if USE_POSTGRES:
@@ -800,6 +815,7 @@ def start_imap_checker():
     def run_checker():
         global imap_checker_running
         app_logger.info('IMAP reply checker started')
+        interval = 180
         while imap_checker_running:
             try:
                 interval = int(get_setting('imap_check_interval') or 180)

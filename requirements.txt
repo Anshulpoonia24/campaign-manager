@@ -22,7 +22,7 @@ beautifulsoup4==4.13.4
 python-dotenv==1.2.2
 
 # ── DATABASE ─────────────────────────────────────────────────
-pg8000>=1.30.0              # Pure Python PostgreSQL — no C extension, no signal crash
+pg8000==1.30.4              # Pure Python PostgreSQL — pinned: 1.31+ changed run() API to **kwargs
 
 # ── ASYNC TASK QUEUE ──────────────────────────────────────────
 celery==5.4.0
