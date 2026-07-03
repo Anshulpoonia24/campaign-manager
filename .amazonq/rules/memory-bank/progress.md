@@ -20,7 +20,8 @@
 
 ## ⚠️ CRITICAL PRODUCTION NOTES (READ BEFORE ANY CODE CHANGE)
 
-- **pg8000 version**: must be pinned to `==1.30.4` — 1.31+ changed `run()` from `*args` to `**kwargs`, breaking ALL parameterized queries
+- **pg8000 version**: ~~must be pinned to `==1.30.4`~~ **REMOVED** — replaced with psycopg2-binary which uses simple query protocol
+- **psycopg2**: use `psycopg2-binary>=2.9.10` — simple query protocol, Supabase pooler compatible, no extended query issues
 - **Python version on Render: 3.14** — psycopg2 ke saath incompatibility hai
 - **psycopg2 params**: hamesha `list(params)` pass karo, kabhi `tuple` ya `params or ()` nahi
 - **`INSERT OR IGNORE`**: SQLite syntax hai — `_convert()` in `utils/db.py` auto-converts to `ON CONFLICT DO NOTHING` for PostgreSQL
@@ -333,6 +334,64 @@ conn.execute("SELECT * FROM contacts WHERE workspace_id=?", (wid,))
 ---
 
 ## 📝 SESSION NOTES
+
+### 2026-07-03 Session 9 — pg8000 → psycopg2 Migration (Final Login Fix)
+
+**Root cause:**
+pg8000's `conn.run(sql)` — even without params — uses extended query protocol (Parse/Bind/Execute messages). Supabase transaction pooler drops the connection between Parse and Bind steps, causing `bind message supplies 0 parameters` and `unnamed prepared statement does not exist` errors. No pg8000 setting can force simple query protocol.
+
+**Fix:**
+Replaced pg8000 entirely with psycopg2. psycopg2 uses simple query protocol with `%s` params — single round-trip, Supabase pooler handles it correctly.
+
+**Files changed:**
+
+| File | Change | Why |
+|---|---|---|
+| `requirements.txt` | `pg8000==1.30.4` → `psycopg2-binary>=2.9.10` | psycopg2 uses simple query protocol |
+| `utils/db.py` | Complete rewrite of PG layer: `_connect_pg()` uses psycopg2, `_convert_sql()` converts `?`→`%s`, `PgConnection` wraps psycopg2 with `RealDictCursor`, `autocommit=True` | Supabase pooler compatible |
+
+**Commit:** `b6f3d60` pushed `devvvvvvvvvv → main`
+
+---
+
+
+**Root cause:**
+When `init_db()` fails at startup (3 retries all fail with `bind message supplies 0 parameters`), the pg8000 connection is left in an **aborted transaction state**. The session pooler reuses this connection for the next request (login POST). `PgConnection.__init__` calls `_begin()` → `run('BEGIN')` fails silently (caught), but the connection is now in error state. Any subsequent `run(sql, *params)` fails with `bind message supplies 0 parameters, but prepared statement requires 1` — even though params are correctly passed.
+
+**Files changed:**
+
+| File | Change | Why |
+|---|---|---|
+| `utils/db.py` | `_begin()` — on exception, ROLLBACK first then retry BEGIN | Clear aborted state before starting new transaction |
+| `utils/db.py` | `execute()` — on `bind message supplies 0 parameters` or `transaction is aborted` error, auto ROLLBACK+BEGIN+retry | Self-healing: recovers from pooler giving back broken connection |
+
+**Commit:** `54e621e` pushed `devvvvvvvvvv → main`
+
+**Follow-up fix (commit `8b8288a`):**
+New error after deploy: `pg8000.exceptions.InterfaceError: network error` on every request. Root cause: `get_db()` in `app.py` was caching the connection in Flask `g` per request. Supabase session pooler closes idle connections — the cached connection was dead by the time the first real request used it. Fix: removed `g` caching entirely. Each `get_db()` call now opens a fresh connection from the pooler. Callers are responsible for closing.
+
+| File | Change | Why |
+|---|---|---|
+| `app.py` | `get_db()` — removed Flask `g` caching, now always calls `_utils_get_db()` directly | Supabase pooler closes idle connections; caching caused `network error` on reuse |
+| `app.py` | `_close_db()` teardown — simplified to no-op | No longer needed since connections aren't cached in `g` |
+
+---
+
+
+
+**Root cause:**
+`utils/logger.py` hardcoded `LOG_DIR` to a local relative path and called `RotatingFileHandler` without any error handling. On Render, if the path wasn't writable, this threw at **module import time** — crashing the entire app since `services/tracking.py` imports `app_logger`/`error_logger` at the top level. Every route including `/login` returned 500.
+
+**Files changed:**
+
+| File | Change | Why |
+|---|---|---|
+| `utils/logger.py` | `_resolve_log_dir()` — tries `/home/logs`, `/opt/render/project/src/logs`, local fallback | Same pattern as `db.py` — dynamic path resolution for Render/Azure/local |
+| `utils/logger.py` | Wrapped `RotatingFileHandler` in `try/except` with `NullHandler` fallback | App must never crash just because log files aren't writable |
+
+**Commit:** `921f9ee` pushed `devvvvvvvvvv → main`
+
+---
 
 ### 2026-06-24 Session 6 — Production Crash Fix (pg8000 API Break + IMAP UnboundLocalError)
 
