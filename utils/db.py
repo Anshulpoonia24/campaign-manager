@@ -157,7 +157,12 @@ class PgConnection:
             self._conn.run('BEGIN')
             self._in_tx = True
         except Exception:
-            # Already in transaction (pooled connection) — that's fine
+            # Connection may be in aborted state — rollback and retry
+            try:
+                self._conn.run('ROLLBACK')
+                self._conn.run('BEGIN')
+            except Exception:
+                pass
             self._in_tx = True
 
     @property
@@ -173,7 +178,23 @@ class PgConnection:
                 rows = self._conn.run(converted, *list(params))
             self._last_rows    = rows or []
             self._last_columns = [c['name'] for c in (self._conn.columns or [])]
-        except Exception:
+        except Exception as e:
+            # If connection is in aborted state, rollback and retry once
+            err_str = str(e)
+            if 'bind message supplies 0 parameters' in err_str or 'transaction is aborted' in err_str.lower():
+                try:
+                    self._conn.run('ROLLBACK')
+                    self._conn.run('BEGIN')
+                    self._in_tx = True
+                    if params is None:
+                        rows = self._conn.run(converted)
+                    else:
+                        rows = self._conn.run(converted, *list(params))
+                    self._last_rows    = rows or []
+                    self._last_columns = [c['name'] for c in (self._conn.columns or [])]
+                    return self
+                except Exception:
+                    pass
             self._last_rows    = []
             self._last_columns = []
             raise
