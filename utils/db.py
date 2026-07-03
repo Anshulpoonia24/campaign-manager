@@ -135,19 +135,24 @@ class PgConnection:
 
     def executescript(self, script):
         """DDL: run each statement individually, ignore errors (safe migrations)."""
-        import psycopg2
+        # Set session-level timeout so no single DDL can hang startup
+        try:
+            cur = self._conn.cursor()
+            cur.execute('SET statement_timeout = 8000')
+            cur.close()
+        except Exception:
+            pass
         for stmt in script.split(';'):
             stmt = stmt.strip()
             if not stmt:
                 continue
             try:
-                # Each DDL needs its own autocommit cursor to avoid transaction abort
                 cur = self._conn.cursor()
                 cur.execute(stmt)
                 cur.close()
             except Exception:
-                pass
-        self._cursor = None  # reset cursor after DDL
+                pass  # Column/table already exists, or timeout — skip
+        self._cursor = None
         return self
 
     def fetchone(self):
