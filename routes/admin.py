@@ -394,6 +394,32 @@ def api_stats():
     })
 
 
+# ── FIX CONTACTS WORKSPACE ───────────────────────────────────
+@admin_bp.route('/fix_contacts_workspace', methods=['POST'])
+@admin_required
+def fix_contacts_workspace():
+    conn = get_db()
+    conn.execute("UPDATE contacts SET workspace_id=1 WHERE workspace_id IS NULL")
+    conn.execute("UPDATE users SET workspace_id=1 WHERE workspace_id IS NULL")
+    conn.commit()
+    total = conn.execute("SELECT COUNT(*) FROM contacts WHERE workspace_id=1").fetchone()[0]
+    conn.close()
+    return jsonify({'success': True, 'contacts_in_workspace_1': total})
+
+
+@admin_bp.route('/workspace_debug')
+@admin_required
+def workspace_debug():
+    conn = get_db()
+    users = conn.execute('SELECT id, username, workspace_id FROM users ORDER BY id').fetchall()
+    contact_dist = conn.execute('SELECT workspace_id, COUNT(*) as cnt FROM contacts GROUP BY workspace_id ORDER BY workspace_id').fetchall()
+    conn.close()
+    return jsonify({
+        'users': [{'id': u['id'], 'username': u['username'], 'workspace_id': u['workspace_id']} for u in users],
+        'contacts_by_workspace': [{'workspace_id': r['workspace_id'], 'count': r['cnt']} for r in contact_dist]
+    })
+
+
 # ── BLOG MANAGEMENT ───────────────────────────────────────────
 import re as _re
 

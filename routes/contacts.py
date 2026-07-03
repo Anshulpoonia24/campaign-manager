@@ -58,12 +58,12 @@ def add_contact():
             website = f'https://{domain}'
 
     conn = get_db()
-    existing = conn.execute("SELECT id, name FROM contacts WHERE email=?", (email,)).fetchone()
+    from services.workspace_service import get_wid
+    wid = get_wid()
+    existing = conn.execute("SELECT id, name FROM contacts WHERE email=? AND workspace_id=?", (email, wid)).fetchone()
     if existing:
         flash(f'{email} already exists as "{existing["name"]}"!', 'error')
     else:
-        from services.workspace_service import get_wid
-        wid = get_wid()
         conn.execute("INSERT OR IGNORE INTO contacts (name, company, email, designation, website, workspace_id) VALUES (?,?,?,?,?,?)",
                      (name, company, email, designation, website, wid))
         conn.commit()
@@ -198,7 +198,7 @@ def upload_contacts():
                 contact_name = name if name else single_email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
                 contact_name = contact_name.strip().title()
 
-                existing = conn.execute("SELECT id, name FROM contacts WHERE email=?", (single_email,)).fetchone()
+                existing = conn.execute("SELECT id, name FROM contacts WHERE email=? AND workspace_id=?", (single_email, wid)).fetchone()
                 if existing:
                     skipped += 1
                     skipped_names.append(f"{existing['name']} ({single_email})")

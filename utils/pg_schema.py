@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS contacts (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     company TEXT,
-    email TEXT UNIQUE NOT NULL,
+    email TEXT NOT NULL,
     designation TEXT,
     priority TEXT,
     status TEXT DEFAULT 'new',
@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS contacts (
     lead_source TEXT DEFAULT '',
     enrichment_status TEXT DEFAULT 'pending',
     last_enriched_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(email, workspace_id)
 );
 
 CREATE TABLE IF NOT EXISTS campaigns (
@@ -352,9 +353,7 @@ CREATE INDEX IF NOT EXISTS idx_es_contact_campaign ON emails_sent(contact_id, ca
 
 
 def init_pg(conn):
-    """Initialize PostgreSQL schema — all tables + indexes + defaults.
-    Uses executescript() which handles DDL autocommit correctly for pg8000.
-    """
+    """Initialize PostgreSQL schema — all tables + indexes + defaults."""
     conn.executescript(PG_SCHEMA)
     conn.executescript(PG_INDEXES)
 
@@ -363,5 +362,12 @@ def init_pg(conn):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT DEFAULT ''",
         "ALTER TABLE smtp_accounts ADD COLUMN IF NOT EXISTS login_username TEXT DEFAULT ''",
         "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS contact_ids_json TEXT DEFAULT '[]'",
+        # Fix contacts unique constraint: global email -> per-workspace (email, workspace_id)
+        "ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_key",
+        "ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_workspace_id_key",
+        "ALTER TABLE contacts ADD CONSTRAINT contacts_email_workspace_id_key UNIQUE (email, workspace_id)",
+        # Fix NULL workspace_ids — assign to workspace 1
+        "UPDATE contacts SET workspace_id=1 WHERE workspace_id IS NULL",
+        "UPDATE users SET workspace_id=1 WHERE workspace_id IS NULL",
     ]
     conn.executescript(';'.join(migrations))
