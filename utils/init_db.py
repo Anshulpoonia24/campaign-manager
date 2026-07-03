@@ -15,6 +15,8 @@ def init_db(get_db, DEFAULT_SETTINGS):
     if is_pg:
         from utils.pg_schema import init_pg
         init_pg(conn)
+        conn.close()  # DDL leaves connection in inconsistent state — get a fresh one
+        conn = get_db()
         existing_user = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
         if not existing_user:
             default_hash = _hash_pw('admin123')

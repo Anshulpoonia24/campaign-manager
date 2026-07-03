@@ -210,9 +210,12 @@ class PgConnection:
 
     def executescript(self, script):
         """DDL-safe: commits current tx, runs each stmt standalone, restarts tx."""
-        # Commit any pending transaction first
         try:
             self._conn.run('COMMIT')
+        except Exception:
+            pass
+        try:
+            self._conn.run('ROLLBACK')
         except Exception:
             pass
         self._in_tx = False
@@ -226,7 +229,11 @@ class PgConnection:
             except Exception:
                 pass  # IF NOT EXISTS etc — safe to ignore
 
-        # Restart transaction for subsequent DML
+        # Force clean state before restarting transaction
+        try:
+            self._conn.run('ROLLBACK')
+        except Exception:
+            pass
         self._begin()
         return self
 
