@@ -81,22 +81,36 @@ def _parse_pg_url():
 def _connect_pg():
     import pg8000.native
     conn = pg8000.native.Connection(**_parse_pg_url())
-    conn.autocommit = True  # Let PostgreSQL handle transactions — avoids BEGIN state bugs
+    conn.autocommit = True
     return conn
+
+
+def _run(conn, sql, params=None):
+    """Run SQL using simple query protocol to avoid extended query issues with Supabase pooler."""
+    if params:
+        # Inline params manually to use simple query protocol
+        import re
+        def _sub(m):
+            idx = int(m.group(1)) - 1
+            val = params[idx]
+            if val is None:
+                return 'NULL'
+            if isinstance(val, bool):
+                return 'TRUE' if val else 'FALSE'
+            if isinstance(val, (int, float)):
+                return str(val)
+            return "'" + str(val).replace("'", "''") + "'"
+        sql = re.sub(r'\$(\d+)', _sub, sql)
+    return conn.run(sql)
 
 
 # ── SQL CONVERSION ────────────────────────────────────────────
 def _convert_sql(sql):
-    """Convert SQLite SQL to PostgreSQL-compatible SQL for pg8000.
-    - ? → $1, $2, $3 (pg8000 uses numbered params)
-    - INSERT OR IGNORE → INSERT ... ON CONFLICT DO NOTHING
-    - SQLite-specific syntax → PostgreSQL
-    """
+    """Convert SQLite SQL to PostgreSQL-compatible SQL."""
     import re
     is_ignore = bool(re.search(r'INSERT\s+OR\s+IGNORE', sql, re.IGNORECASE))
     sql = re.sub(r'INSERT\s+OR\s+IGNORE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
     sql = re.sub(r'INSERT\s+OR\s+REPLACE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
-    # ? → $1, $2 ...
     counter = [0]
     def _repl(m):
         counter[0] += 1
@@ -157,10 +171,7 @@ class PgConnection:
 
     def execute(self, sql, params=None):
         converted = _convert_sql(sql)
-        if params is None:
-            rows = self._conn.run(converted)
-        else:
-            rows = self._conn.run(converted, *list(params))
+        rows = _run(self._conn, converted, list(params) if params else None)
         self._last_rows    = rows or []
         self._last_columns = [c['name'] for c in (self._conn.columns or [])]
         return self
@@ -168,21 +179,21 @@ class PgConnection:
     def executemany(self, sql, seq):
         converted = _convert_sql(sql)
         for params in seq:
-            self._conn.run(converted, *list(params))
+            _run(self._conn, converted, list(params))
         self._last_rows    = []
         self._last_columns = []
         return self
 
     def executescript(self, script):
-        """DDL: run each statement individually (autocommit handles it)."""
+        """DDL: run each statement individually."""
         for stmt in script.split(';'):
             stmt = stmt.strip()
             if not stmt:
                 continue
             try:
-                self._conn.run(stmt)
+                _run(self._conn, stmt)
             except Exception:
-                pass  # IF NOT EXISTS — safe to ignore
+                pass
         return self
 
     def fetchone(self):
