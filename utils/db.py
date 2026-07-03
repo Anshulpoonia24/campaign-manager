@@ -68,8 +68,14 @@ def _parse_pg_url():
         host = hostport
         port = 5432
 
+    # SSL context — disable cert verification for Supabase pooler
+    import ssl
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+
     return {'host': host, 'port': port, 'database': database,
-            'user': user, 'password': password, 'ssl_context': True}
+            'user': user, 'password': password, 'ssl_context': ssl_ctx}
 
 
 def _connect_pg():
