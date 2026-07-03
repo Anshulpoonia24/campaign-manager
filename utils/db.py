@@ -80,7 +80,9 @@ def _parse_pg_url():
 
 def _connect_pg():
     import pg8000.native
-    return pg8000.native.Connection(**_parse_pg_url())
+    conn = pg8000.native.Connection(**_parse_pg_url())
+    conn.autocommit = True  # Let PostgreSQL handle transactions — avoids BEGIN state bugs
+    return conn
 
 
 # ── SQL CONVERSION ────────────────────────────────────────────
@@ -140,30 +142,14 @@ class PgRow:
 # ── CONNECTION WRAPPER ────────────────────────────────────────
 class PgConnection:
     """
-    Wraps pg8000.native.Connection to match sqlite3 interface.
-    - execute(sql, params) — converts ? to $1,$2 and runs query
-    - executescript(sql)   — DDL only, runs each stmt with autocommit
-    - commit() / rollback() / close()
+    Wraps pg8000.native.Connection (autocommit=True) to match sqlite3 interface.
+    autocommit=True avoids all BEGIN/transaction state bugs with Supabase pooler.
+    commit() is a no-op (each statement auto-commits).
     """
     def __init__(self, raw_conn):
         self._conn         = raw_conn
         self._last_rows    = []
         self._last_columns = []
-        self._in_tx        = False
-        self._begin()
-
-    def _begin(self):
-        try:
-            self._conn.run('BEGIN')
-            self._in_tx = True
-        except Exception:
-            # Connection may be in aborted state — rollback and retry
-            try:
-                self._conn.run('ROLLBACK')
-                self._conn.run('BEGIN')
-            except Exception:
-                pass
-            self._in_tx = True
 
     @property
     def raw(self):
@@ -171,33 +157,12 @@ class PgConnection:
 
     def execute(self, sql, params=None):
         converted = _convert_sql(sql)
-        try:
-            if params is None:
-                rows = self._conn.run(converted)
-            else:
-                rows = self._conn.run(converted, *list(params))
-            self._last_rows    = rows or []
-            self._last_columns = [c['name'] for c in (self._conn.columns or [])]
-        except Exception as e:
-            # If connection is in aborted state, rollback and retry once
-            err_str = str(e)
-            if 'bind message supplies 0 parameters' in err_str or 'transaction is aborted' in err_str.lower():
-                try:
-                    self._conn.run('ROLLBACK')
-                    self._conn.run('BEGIN')
-                    self._in_tx = True
-                    if params is None:
-                        rows = self._conn.run(converted)
-                    else:
-                        rows = self._conn.run(converted, *list(params))
-                    self._last_rows    = rows or []
-                    self._last_columns = [c['name'] for c in (self._conn.columns or [])]
-                    return self
-                except Exception:
-                    pass
-            self._last_rows    = []
-            self._last_columns = []
-            raise
+        if params is None:
+            rows = self._conn.run(converted)
+        else:
+            rows = self._conn.run(converted, *list(params))
+        self._last_rows    = rows or []
+        self._last_columns = [c['name'] for c in (self._conn.columns or [])]
         return self
 
     def executemany(self, sql, seq):
@@ -209,17 +174,7 @@ class PgConnection:
         return self
 
     def executescript(self, script):
-        """DDL-safe: commits current tx, runs each stmt standalone, restarts tx."""
-        try:
-            self._conn.run('COMMIT')
-        except Exception:
-            pass
-        try:
-            self._conn.run('ROLLBACK')
-        except Exception:
-            pass
-        self._in_tx = False
-
+        """DDL: run each statement individually (autocommit handles it)."""
         for stmt in script.split(';'):
             stmt = stmt.strip()
             if not stmt:
@@ -227,14 +182,7 @@ class PgConnection:
             try:
                 self._conn.run(stmt)
             except Exception:
-                pass  # IF NOT EXISTS etc — safe to ignore
-
-        # Force clean state before restarting transaction
-        try:
-            self._conn.run('ROLLBACK')
-        except Exception:
-            pass
-        self._begin()
+                pass  # IF NOT EXISTS — safe to ignore
         return self
 
     def fetchone(self):
@@ -246,24 +194,12 @@ class PgConnection:
         return [PgRow(self._last_columns, r) for r in self._last_rows]
 
     def commit(self):
-        try:
-            self._conn.run('COMMIT')
-        except Exception:
-            pass
-        self._begin()
+        pass  # autocommit=True — each statement commits immediately
 
     def rollback(self):
-        try:
-            self._conn.run('ROLLBACK')
-        except Exception:
-            pass
-        self._begin()
+        pass  # autocommit=True — nothing to roll back
 
     def close(self):
-        try:
-            self._conn.run('COMMIT')
-        except Exception:
-            pass
         try:
             self._conn.close()
         except Exception:
@@ -276,10 +212,6 @@ class PgConnection:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type:
-            self.rollback()
-        else:
-            self.commit()
         self.close()
 
 
