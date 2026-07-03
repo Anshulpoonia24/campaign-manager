@@ -22,7 +22,7 @@ beautifulsoup4==4.13.4
 python-dotenv==1.2.2
 
 # ── DATABASE ─────────────────────────────────────────────────
-pg8000==1.30.4              # Pure Python PostgreSQL — pinned: 1.31+ changed run() API to **kwargs
+psycopg2-binary>=2.9.10     # PostgreSQL driver — simple query protocol, Supabase pooler compatible
 
 # ── ASYNC TASK QUEUE ──────────────────────────────────────────
 celery==5.4.0

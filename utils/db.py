@@ -1,7 +1,7 @@
 """
 utils/db.py — OutreachOS Database Layer
 ========================================
-PostgreSQL via pg8000 (pure Python) — no C extension, no signal crash.
+PostgreSQL via psycopg2 — simple query protocol, Supabase pooler compatible.
 SQLite fallback for local dev.
 """
 import os
@@ -40,82 +40,27 @@ DATA_DIR = _resolve_data_dir()
 DB_PATH  = os.path.join(DATA_DIR, 'campaigns.db')
 
 
-# ── POSTGRES URL PARSER ───────────────────────────────────────
-def _parse_pg_url():
-    """Parse DATABASE_URL into pg8000 kwargs. Handles @ in password via rfind."""
-    url = DATABASE_URL.strip()
-    if url.startswith('postgres://'):
-        url = 'postgresql://' + url[len('postgres://'):]
-
-    rest     = url.split('://', 1)[1]
-    at_idx   = rest.rfind('@')
-    creds    = rest[:at_idx]
-    hostpart = rest[at_idx + 1:]
-
-    colon_idx = creds.find(':')
-    from urllib.parse import unquote
-    user     = unquote(creds[:colon_idx])
-    password = unquote(creds[colon_idx + 1:])
-
-    slash_idx = hostpart.find('/')
-    hostport  = hostpart[:slash_idx]
-    database  = hostpart[slash_idx + 1:].split('?')[0]
-
-    if ':' in hostport:
-        host, port = hostport.rsplit(':', 1)
-        port = int(port)
-    else:
-        host = hostport
-        port = 5432
-
-    # SSL context — disable cert verification for Supabase pooler
-    import ssl
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_NONE
-
-    return {'host': host, 'port': port, 'database': database,
-            'user': user, 'password': password, 'ssl_context': ssl_ctx}
-
-
+# ── POSTGRES CONNECTION ───────────────────────────────────────
 def _connect_pg():
-    import pg8000.native
-    conn = pg8000.native.Connection(**_parse_pg_url())
+    """Open a psycopg2 connection with RealDictCursor and autocommit."""
+    import psycopg2
+    import psycopg2.extras
+    dsn = DATABASE_URL.strip()
+    if dsn.startswith('postgres://'):
+        dsn = 'postgresql://' + dsn[len('postgres://'):]
+    conn = psycopg2.connect(dsn, sslmode='require', connect_timeout=10)
     conn.autocommit = True
     return conn
 
 
-def _run(conn, sql, params=None):
-    """Run SQL using simple query protocol to avoid extended query issues with Supabase pooler."""
-    if params:
-        # Inline params manually to use simple query protocol
-        import re
-        def _sub(m):
-            idx = int(m.group(1)) - 1
-            val = params[idx]
-            if val is None:
-                return 'NULL'
-            if isinstance(val, bool):
-                return 'TRUE' if val else 'FALSE'
-            if isinstance(val, (int, float)):
-                return str(val)
-            return "'" + str(val).replace("'", "''") + "'"
-        sql = re.sub(r'\$(\d+)', _sub, sql)
-    return conn.run(sql)
-
-
 # ── SQL CONVERSION ────────────────────────────────────────────
 def _convert_sql(sql):
-    """Convert SQLite SQL to PostgreSQL-compatible SQL."""
+    """Convert SQLite SQL to PostgreSQL-compatible SQL (%s params)."""
     import re
     is_ignore = bool(re.search(r'INSERT\s+OR\s+IGNORE', sql, re.IGNORECASE))
     sql = re.sub(r'INSERT\s+OR\s+IGNORE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
     sql = re.sub(r'INSERT\s+OR\s+REPLACE\s+INTO', 'INSERT INTO', sql, flags=re.IGNORECASE)
-    counter = [0]
-    def _repl(m):
-        counter[0] += 1
-        return f'${counter[0]}'
-    sql = re.sub(r'\?', _repl, sql)
+    sql = sql.replace('?', '%s')
     if is_ignore and 'ON CONFLICT' not in sql.upper():
         sql = sql.rstrip().rstrip(';') + ' ON CONFLICT DO NOTHING'
     sql = re.sub(r'INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT', 'SERIAL PRIMARY KEY', sql, flags=re.IGNORECASE)
@@ -130,7 +75,9 @@ class PgRow:
 
     def __init__(self, keys, row):
         self._keys = list(keys)
-        self._data = dict(zip(self._keys, row))
+        self._data = dict(zip(self._keys, row)) if not isinstance(row, dict) else row
+        if isinstance(row, dict):
+            self._keys = list(row.keys())
 
     def __getitem__(self, key):
         if isinstance(key, int):
@@ -156,61 +103,79 @@ class PgRow:
 # ── CONNECTION WRAPPER ────────────────────────────────────────
 class PgConnection:
     """
-    Wraps pg8000.native.Connection (autocommit=True) to match sqlite3 interface.
-    autocommit=True avoids all BEGIN/transaction state bugs with Supabase pooler.
-    commit() is a no-op (each statement auto-commits).
+    Wraps psycopg2 connection with RealDictCursor to match sqlite3 interface.
+    autocommit=True — no transaction state issues with Supabase pooler.
     """
     def __init__(self, raw_conn):
-        self._conn         = raw_conn
-        self._last_rows    = []
-        self._last_columns = []
+        self._conn   = raw_conn
+        self._cursor = None
 
     @property
     def raw(self):
         return self._conn
 
+    def _cur(self):
+        import psycopg2.extras
+        if self._cursor is None or self._cursor.closed:
+            self._cursor = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        return self._cursor
+
     def execute(self, sql, params=None):
         converted = _convert_sql(sql)
-        rows = _run(self._conn, converted, list(params) if params else None)
-        self._last_rows    = rows or []
-        self._last_columns = [c['name'] for c in (self._conn.columns or [])]
+        cur = self._cur()
+        cur.execute(converted, list(params) if params else None)
         return self
 
     def executemany(self, sql, seq):
         converted = _convert_sql(sql)
+        cur = self._cur()
         for params in seq:
-            _run(self._conn, converted, list(params))
-        self._last_rows    = []
-        self._last_columns = []
+            cur.execute(converted, list(params))
         return self
 
     def executescript(self, script):
-        """DDL: run each statement individually."""
+        """DDL: run each statement individually, ignore errors (safe migrations)."""
+        import psycopg2
         for stmt in script.split(';'):
             stmt = stmt.strip()
             if not stmt:
                 continue
             try:
-                _run(self._conn, stmt)
+                # Each DDL needs its own autocommit cursor to avoid transaction abort
+                cur = self._conn.cursor()
+                cur.execute(stmt)
+                cur.close()
             except Exception:
                 pass
+        self._cursor = None  # reset cursor after DDL
         return self
 
     def fetchone(self):
-        if not self._last_rows:
+        if self._cursor is None:
             return None
-        return PgRow(self._last_columns, self._last_rows[0])
+        row = self._cursor.fetchone()
+        if row is None:
+            return None
+        return PgRow(list(row.keys()), row)
 
     def fetchall(self):
-        return [PgRow(self._last_columns, r) for r in self._last_rows]
+        if self._cursor is None:
+            return []
+        rows = self._cursor.fetchall()
+        return [PgRow(list(r.keys()), r) for r in rows]
 
     def commit(self):
-        pass  # autocommit=True — each statement commits immediately
+        pass  # autocommit=True
 
     def rollback(self):
-        pass  # autocommit=True — nothing to roll back
+        pass  # autocommit=True
 
     def close(self):
+        try:
+            if self._cursor and not self._cursor.closed:
+                self._cursor.close()
+        except Exception:
+            pass
         try:
             self._conn.close()
         except Exception:
