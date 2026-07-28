@@ -227,7 +227,7 @@ body { background: linear-gradient(160deg, #f8fafc 0%, #f1f5ff 60%, #f8fafc 100%
     <div class="camp-info">
       <div class="camp-name">{{ c.name }}</div>
       <div class="camp-meta">
-        <span><i class="fas fa-calendar-alt" style="font-size:10px;"></i> {{ c.created_at[:10] if c.created_at else '—' }}</span>
+        <span><i class="fas fa-calendar-alt" style="font-size:10px;"></i> {{ c.created_at | string | truncate(10, True, '') if c.created_at else '—' }}</span>
         {% if c.description %}<span style="color:#d1d5db;">·</span><span>{{ c.description[:40] }}{% if c.description|length > 40 %}…{% endif %}</span>{% endif %}
         <span style="color:#d1d5db;">·</span>
         <span class="ai-badge"><i class="fas fa-robot" style="font-size:9px;"></i> AI</span>
