@@ -265,7 +265,7 @@ def api_update_smtp_account(account_id):
         if col in data:
             fields.append(f'{col}=?')
             params.append(data[col])
-    if 'password' in data and data['password'].strip():
+    if 'password' in data and data['password'].strip() and not data['password'].startswith('***'):
         fields.append('password=?')
         params.append(data['password'].strip())
     if not fields:
@@ -273,6 +273,20 @@ def api_update_smtp_account(account_id):
         return jsonify({'success': False, 'error': 'No fields to update'})
     params.append(account_id)
     conn.execute(f"UPDATE smtp_accounts SET {', '.join(fields)} WHERE id=?", params)
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@settings_bp.route('/api/smtp_accounts/<int:account_id>/set_password', methods=['POST'])
+@login_required
+def api_set_smtp_password(account_id):
+    """Dedicated endpoint to update password/API key — never masked."""
+    password = (request.json or {}).get('password', '').strip()
+    if not password or password.startswith('***'):
+        return jsonify({'success': False, 'error': 'Provide the real password/API key'})
+    conn = get_db()
+    conn.execute("UPDATE smtp_accounts SET password=? WHERE id=?", (password, account_id))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
