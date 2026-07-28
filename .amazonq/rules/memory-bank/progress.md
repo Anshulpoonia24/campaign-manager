@@ -1,5 +1,5 @@
 # OutreachOS — Living Development Document
-> Last updated: 2026-06-24 | Read this FIRST in every new session
+> Last updated: 2026-07-04 | Read this FIRST in every new session
 
 ---
 
@@ -147,9 +147,8 @@ auth-system/              # Next.js Supabase auth (separate, not used in Flask)
 ## ✅ COMPLETED FEATURES
 
 ### Core Platform
-- [x] Multi-tenant workspaces (workspace_id isolation on all tables)
+- [x] Single-admin (no workspace_id)
 - [x] Flask-login session auth + Google OAuth via Supabase
-- [x] Super admin panel (`/admin`) — tenant management, API key management
 - [x] Settings UI — SMTP, IMAP, AI, tracking, prompts
 
 ### Campaign System
@@ -463,29 +462,44 @@ New error after deploy: `pg8000.exceptions.InterfaceError: network error` on eve
 - Added `blogs` table to `PG_SCHEMA` in `pg_schema.py`
 - Fixed `created_at[:10]` Jinja2 slicing crash — PostgreSQL returns `datetime` object, not string
 
-### 2026-06-03 (Latest)
-- Fixed auth routes `url_for` for blueprint architecture
-- Implemented Google OAuth via Supabase (`/auth/google`, `/auth/google/callback`)
-- Added `render.yaml` for Render deployment
-- Fixed `startup.sh` for Render (uses `$PORT`)
-- Fixed tracking pixel URL (was `localhost:5000`, now `ertyui.online`)
-- Fixed `Message-ID` header on outbound emails for IMAP reply matching
-- Fixed `inject_tracking_pixel` click rewriting
-- Fixed `api/settings/save` — never wipes passwords with empty values
-- Added `/api/diagnostics` endpoint
-- Added industry detection (`services/industry_detector.py`)
-- Added `contact_sequence_state`, `campaign_logs`, `lead_intelligence` tables
-- App refactored from 3000+ line monolith to 12 blueprints (~1028 lines)
+### 2026-07-05 Session 11 — Attachment Persistence + Contact Upload Fixes
 
-### Previous Sessions
-- Multi-step sequence engine (Phase 1-10)
-- Campaign execution system (backend-driven, browser-independent)
-- SMTP full sender identity (reply_to, bcc, signature per inbox)
-- Inbox redesign (Gmail-style 3-panel)
-- Tracking infrastructure (HMAC tokens, bot filtering, temperature engine)
-- Multi-tenant workspaces
-- Admin panel (separate session system)
-- UI redesign (OutreachOS branding, light glassmorphism)
-- Contact intelligence (industry detection, ICP scoring)
-- Sequence builder UI (3-panel visual builder)
-- Production audit + bug fixes (reply rate, click rate, tracking host)
+**Files changed:**
+
+| File | Change | Why |
+|---|---|---|
+| `routes/contacts.py` | Upload: added website column detection in `col_map` | Website from Excel was never mapped |
+| `routes/contacts.py` | Upload: extract `website` per row, include in INSERT | Website column was missing from INSERT |
+| `routes/contacts.py` | Upload: on duplicate contact, UPDATE website if missing | Re-uploading old sheet now patches website |
+| `routes/contacts.py` | `api_bulk_enrich_intelligence`: also picks up `failed` contacts in non-force mode | Failed contacts were stuck forever |
+| `templates/contacts.html` | `enrichAll()` now calls `/api/contacts/bulk_enrich_intelligence` instead of `/api/enrich_all` | Old endpoint used basic Groq call, not full SDR pipeline |
+| `templates/campaign_detail.html` | Pre-fill subject + body from `campaign.subject_template` / `campaign.body_template` | Fields showed hardcoded defaults on reopen |
+| `templates/campaign_detail.html` | Show saved attachment as green badge with hidden field on reopen | Attachment appeared gone on reopen |
+| `templates/campaign_detail.html` | Fix Windows path splitting for attachment filename | `split('/')` failed on Windows backslash paths |
+| `campaigns.db` (local only) | Added all missing campaigns columns via migration script | `subject_template`, `body_template`, `attachment_path`, `job_status`, etc. were missing — executor UPDATE silently failed |
+
+**Root cause of attachment issue:**
+Local `campaigns.db` was missing all executor columns (`subject_template`, `body_template`, `attachment_path`, `job_status`, etc.) — they existed in `init_db.py` migrations but the DB predated them. `launch_campaign()` UPDATE silently did nothing. Production PostgreSQL already had all columns via `pg_schema.py`.
+
+---
+
+### 2026-07-04 Session 10 — Multi-Tenant → Single-Admin Refactor (Part 1)
+
+**Goal:** Remove all `workspace_id` references, `get_wid()` calls, and workspace-related filters while preserving functionality.
+
+**Files changed:**
+
+| File | Change | Why |
+|---|---|---|
+| `routes/analytics.py` | Removed all `workspace_id` filters, `get_wid()` calls | Single-admin version |
+| `routes/sequences.py` | Removed `workspace_id` parameter from `add_step()`, `enroll_contacts_task`, `get_due_contacts()` | Single-admin version |
+| `routes/dashboard.py` | Removed all `workspace_id` filters, `get_wid()` calls | Single-admin version |
+| `routes/settings.py` | Removed `workspace_id` parameter from `get_next_smtp_account()`, removed ownership checks | Single-admin version |
+| `routes/automations.py` | No changes needed | Already clean |
+| `routes/campaigns.py` | Previously rewritten | Single-admin version |
+| `routes/contacts.py` | Previously rewritten | Single-admin version |
+| `routes/inbox.py` | Previously rewritten | Single-admin version |
+
+**Progress:** Routes complete. Next: services and tasks.
+
+---

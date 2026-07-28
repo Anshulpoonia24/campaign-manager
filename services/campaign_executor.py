@@ -6,6 +6,7 @@ All state persisted in DB. Workers pick up from where they left off.
 
 Job statuses: draft → queued → running → paused → completed → failed → cancelled → stalled
 """
+import os
 import uuid
 import smtplib
 import time
@@ -44,7 +45,7 @@ STALL_TIMEOUT_SECONDS = 60
 # ── LOGGING ───────────────────────────────────────────────────
 
 def log(campaign_id: int, message: str, level: str = 'info',
-        contact_id: int = None, smtp_email: str = '', workspace_id: int = 1,
+        contact_id: int = None, smtp_email: str = '',
         _conn=None):
     """Persist a log entry to campaign_logs table.
     Pass _conn to reuse existing connection and avoid connection per log call.
@@ -54,9 +55,9 @@ def log(campaign_id: int, message: str, level: str = 'info',
         conn = get_db() if own_conn else _conn
         conn.execute("""
             INSERT INTO campaign_logs
-              (campaign_id, workspace_id, contact_id, level, message, smtp_email)
-            VALUES (?,?,?,?,?,?)
-        """, (campaign_id, workspace_id, contact_id, level, message, smtp_email))
+              (campaign_id, contact_id, level, message, smtp_email)
+            VALUES (?,?,?,?,?)
+        """, (campaign_id, contact_id, level, message, smtp_email))
         conn.commit()
         if own_conn:
             conn.close()
@@ -141,8 +142,8 @@ def check_stalled_campaigns():
                 (camp['id'],)
             )
             conn.execute("""
-                INSERT INTO campaign_logs (campaign_id, workspace_id, level, message)
-                VALUES (?, 1, 'error', ?)
+                INSERT INTO campaign_logs (campaign_id, level, message)
+                VALUES (?, 'error', ?)
             """, (camp['id'], f'Campaign stalled — no progress for {elapsed}s. Worker may have died.'))
             app_logger.warning(f'[STALL] Campaign {camp["id"]} marked stalled after {elapsed}s')
         if stalled:
@@ -304,7 +305,7 @@ def get_campaign_status(campaign_id: int) -> dict:
 # ── LAUNCH ────────────────────────────────────────────────────
 
 def launch_campaign(campaign_id: int, contact_ids: list, subject_template: str,
-                    body_template: str, send_mode: str, workspace_id: int,
+                    body_template: str, send_mode: str,
                     attachment_path: str = '') -> dict:
     """
     Queue a campaign for backend execution.
@@ -323,8 +324,7 @@ def launch_campaign(campaign_id: int, contact_ids: list, subject_template: str,
     conn.commit()
     conn.close()
 
-    log(campaign_id, f'Campaign queued — {len(contact_ids)} contacts, mode={send_mode}',
-        'info', workspace_id=workspace_id)
+    log(campaign_id, f'Campaign queued — {len(contact_ids)} contacts, mode={send_mode}')
 
     # Try Celery async first
     try:
@@ -333,31 +333,28 @@ def launch_campaign(campaign_id: int, contact_ids: list, subject_template: str,
             from tasks.email_tasks import execute_campaign_task
             result = execute_campaign_task.apply_async(
                 args=[campaign_id, contact_ids, subject_template,
-                      body_template, send_mode, workspace_id, attachment_path],
+                      body_template, send_mode, attachment_path],
                 queue='send_email_queue',
                 priority=9,
             )
-            log(campaign_id, f'Task dispatched to Celery (task_id={result.id})',
-                'info', workspace_id=workspace_id)
+            log(campaign_id, f'Task dispatched to Celery (task_id={result.id})')
             app_logger.info(f'[EXEC] Task queued to send_email_queue | campaign={campaign_id} task_id={result.id}')
             return {'success': True, 'mode': 'celery', 'task_id': result.id}
     except Exception as e:
         error_logger.warning(f'[EXEC] Celery unavailable: {e}')
-        log(campaign_id, f'Celery unavailable ({e}), falling back to thread',
-            'warning', workspace_id=workspace_id)
+        log(campaign_id, f'Celery unavailable ({e}), falling back to thread', 'warning')
 
     # Fallback: threading (still browser-independent)
     import threading
     t = threading.Thread(
         target=_run_campaign_sync,
         args=(campaign_id, contact_ids, subject_template,
-              body_template, send_mode, workspace_id, attachment_path),
+              body_template, send_mode, attachment_path),
         daemon=False,
         name=f'campaign-{campaign_id}'
     )
     t.start()
-    log(campaign_id, 'Running in background thread (Redis unavailable)',
-        'info', workspace_id=workspace_id)
+    log(campaign_id, 'Running in background thread (Redis unavailable)')
     return {'success': True, 'mode': 'thread'}
 
 
@@ -365,7 +362,7 @@ def launch_campaign(campaign_id: int, contact_ids: list, subject_template: str,
 
 def _run_campaign_sync(campaign_id: int, contact_ids: list,
                        subject_template: str, body_template: str,
-                       send_mode: str, workspace_id: int,
+                       send_mode: str,
                        attachment_path: str = ''):
     """
     Execute campaign synchronously.
@@ -374,20 +371,20 @@ def _run_campaign_sync(campaign_id: int, contact_ids: list,
     """
     try:
         _run_campaign_inner(campaign_id, contact_ids, subject_template, body_template,
-                           send_mode, workspace_id, attachment_path)
+                           send_mode, attachment_path)
     except Exception as e:
         error_logger.exception(f'[EXEC] Campaign {campaign_id} CRASHED: {e}')
         try:
             set_campaign_status(campaign_id, JobStatus.FAILED)
             log(campaign_id, f'Campaign crashed unexpectedly: {str(e)[:200]}',
-                'error', workspace_id=workspace_id)
+                'error')
         except Exception:
             pass
 
 
 def _run_campaign_inner(campaign_id: int, contact_ids: list,
                         subject_template: str, body_template: str,
-                        send_mode: str, workspace_id: int,
+                        send_mode: str,
                         attachment_path: str = ''):
     from services.smtp_rotation import (
         get_next_smtp_account, mark_send_success,
@@ -409,7 +406,7 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
         pass  # Column may not exist yet
 
     log(campaign_id, f'Execution started — {len(contact_ids)} contacts',
-        'success', workspace_id=workspace_id)
+        'success')
     app_logger.info(f'[EXEC] START | campaign={campaign_id} contacts={len(contact_ids)}')
 
     # Cache tracking host once for entire campaign
@@ -432,9 +429,9 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
     sent_buffer = failed_buffer = 0  # In-memory count buffer
 
     # Get initial SMTP account and reuse connection
-    current_account = get_next_smtp_account(workspace_id=workspace_id)
+    current_account = get_next_smtp_account()
     if not current_account:
-        log(campaign_id, 'No active SMTP accounts available', 'error', workspace_id=workspace_id)
+        log(campaign_id, 'No active SMTP accounts available', 'error')
         set_campaign_status(campaign_id, JobStatus.FAILED)
         return
 
@@ -461,7 +458,7 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
         camp_status = conn.execute("SELECT job_status FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
         conn.close()
         if not camp_status or camp_status['job_status'] in (JobStatus.PAUSED, JobStatus.CANCELLED):
-            log(campaign_id, f'Execution stopped at {i+1}/{len(contact_ids)}', 'warning', workspace_id=workspace_id)
+            log(campaign_id, f'Execution stopped at {i+1}/{len(contact_ids)}', 'warning')
             break
 
         conn = get_db()
@@ -488,7 +485,7 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
 
         # Rotate SMTP account every 10 emails
         if i > 0 and i % 10 == 0:
-            new_account = get_next_smtp_account(workspace_id=workspace_id)
+            new_account = get_next_smtp_account()
             if new_account and new_account['id'] != current_account['id']:
                 try:
                     if smtp_server_conn: smtp_server_conn.quit()
@@ -501,13 +498,13 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
             if not smtp_server_conn:
                 failed += 1
                 failed_buffer += 1
-                _log_bounce(contact, '', '', campaign_id, workspace_id, 'SMTP connection failed')
+                _log_bounce(contact, '', '', campaign_id, 'SMTP connection failed')
                 continue
 
         # Build content
         subject = subject_template.replace('{company}', contact['company'] or '').replace('{name}', contact['name'] or '')
         if send_mode == 'ai':
-            body = _generate_ai_body(contact, body_template, workspace_id)
+            body = _generate_ai_body(contact, body_template)
             if not body:
                 body = body_template
         else:
@@ -516,7 +513,7 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
 
         # Send with reused connection
         success, error_msg = _send_one(
-            contact, subject, body, campaign_id, workspace_id,
+            contact, subject, body, campaign_id,
             current_account, attachment_path,
             smtp_conn=smtp_server_conn,
             attachment_data=attachment_data,
@@ -529,7 +526,7 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
             sent_buffer += 1
             mark_send_success(current_account['id'])
             log(campaign_id, f'Sent → {contact["email"]}', 'success',
-                contact_id=contact_id, smtp_email=current_account['email'], workspace_id=workspace_id)
+                contact_id=contact_id, smtp_email=current_account['email'])
         else:
             failed += 1
             failed_buffer += 1
@@ -541,7 +538,7 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
                 smtp_server_conn = _get_smtp_conn(current_account)
             mark_send_failure(current_account['id'])
             log(campaign_id, f'Failed {contact["email"]}: {error_msg}', 'error',
-                contact_id=contact_id, workspace_id=workspace_id)
+                contact_id=contact_id)
 
         # Flush count buffer every 10 emails
         if sent_buffer + failed_buffer >= 10:
@@ -576,19 +573,15 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
 
     set_campaign_status(campaign_id, JobStatus.COMPLETED, completed_at=datetime.now())
     log(campaign_id, f'Completed — Sent:{sent} Failed:{failed} Skipped:{skipped}',
-        'success', workspace_id=workspace_id)
+        'success')
     app_logger.info(f'[EXEC] DONE | campaign={campaign_id} sent={sent} failed={failed} skipped={skipped}')
 
 
-def _generate_ai_body(contact, body_template: str, workspace_id: int) -> str:
-    """Generate AI-personalized body with timeout protection. Falls back to None on failure."""
+def _generate_ai_body(contact, body_template: str) -> str:
+    """Generate AI-personalized email using deep research brief. Falls back to None on failure."""
     try:
-        from utils.db import get_workspace_only_setting, get_setting as _fallback
+        from utils.db import get_setting
         import requests as _req
-
-        def _ws_setting(key):
-            val = get_workspace_only_setting(key, workspace_id)
-            return val if val else _fallback(key)
 
         context     = contact['context']     if 'context'     in contact.keys() else ''
         designation = contact['designation'] if 'designation' in contact.keys() else 'founder/executive'
@@ -596,69 +589,83 @@ def _generate_ai_body(contact, body_template: str, workspace_id: int) -> str:
             app_logger.info(f'[EXEC] AI skip — no context for contact {contact["id"]}')
             return None
 
-        prompt = f"""Write a cold outreach email to {contact['name']}, {designation} at {contact['company']}.
+        prompt_template = get_setting('email_prompt') or body_template
 
-Context: {context}
+        prompt = f"""You are a senior SDR at Shiksha Infotech writing a cold outreach email.
+You have completed deep research on this prospect. Use ONLY verified facts from the research brief below.
 
-Base template: {body_template[:400]}
+CONTACT: {contact['name']} | ROLE: {designation} | COMPANY: {contact['company']}
 
-Rules:
-- Personalize the opening using the context
-- Keep it short (4-5 sentences max)
-- Casual, direct tone
-- Output as HTML with <p> tags"""
+=== RESEARCH BRIEF ===
+{context}
 
-        keys_str = _ws_setting('groq_api_keys') or ''
+=== EMAIL TEMPLATE / STRUCTURE TO FOLLOW ===
+{prompt_template[:800]}
+
+=== WRITING INSTRUCTIONS ===
+1. Opening sentence: Reference ONE specific verified fact from PERSONALIZATION HOOKS or VERIFIED SIGNALS.
+   - Must be traceable to something in the research brief above.
+   - Do NOT use generic openers like "I came across your company" or "I noticed you're growing".
+2. Bridge: Connect that fact to why engineering talent matters for them right now.
+   - Use OUTREACH ANGLE if provided.
+   - Reference their TECH STACK or GROWTH SIGNALS if relevant.
+3. Value prop: 1-2 sentences on what Shiksha Infotech offers (pre-vetted engineers, fast placement).
+4. CTA: One soft ask — a 15-min call or reply.
+5. If confidence is low (see NOTE in brief): use a role-based opener instead of company-specific facts.
+
+FORMAT RULES:
+- 4-5 sentences total. No fluff.
+- Casual, direct, founder-to-founder tone.
+- Output as HTML with <p> tags only. No subject line.
+- Do NOT invent facts not present in the research brief."""
+
+        keys_str = get_setting('groq_api_keys') or ''
         keys = [k.strip() for k in keys_str.split(',') if k.strip()]
-        if keys:
-            r = _req.post(
-                'https://api.groq.com/openai/v1/chat/completions',
-                headers={'Authorization': f'Bearer {keys[0]}', 'Content-Type': 'application/json'},
-                json={'model': 'llama-3.3-70b-versatile',
-                      'messages': [{'role': 'user', 'content': prompt}],
-                      'max_tokens': 500},
-                timeout=15  # Hard timeout — prevents infinite hang
-            )
-            if r.status_code == 200:
-                return r.json()['choices'][0]['message']['content'].strip()
-            else:
-                error_logger.warning(f'[EXEC] AI returned {r.status_code} for contact {contact["id"]}')
+        for key in keys:
+            try:
+                r = _req.post(
+                    'https://api.groq.com/openai/v1/chat/completions',
+                    headers={'Authorization': f'Bearer {key}',
+                             'Content-Type': 'application/json'},
+                    json={'model': 'llama-3.3-70b-versatile',
+                          'messages': [{'role': 'user', 'content': prompt}],
+                          'max_tokens': 700,
+                          'temperature': 0.3},
+                    timeout=25
+                )
+                if r.status_code == 200:
+                    return r.json()['choices'][0]['message']['content'].strip()
+                if r.status_code == 429:
+                    err_body = r.text
+                    if 'per day' in err_body or 'tokens per day' in err_body or 'TPD' in err_body:
+                        continue  # daily limit exhausted, try next key
+                    time.sleep(1)
+            except Exception:
+                continue
     except Exception as e:
         error_logger.warning(f'[EXEC] AI generation failed for contact {contact.get("id","?")}: {e}')
     return None
 
 
 def _send_one(contact, subject: str, body: str, campaign_id: int,
-              workspace_id: int, account: dict, attachment_path: str = '',
+              account: dict, attachment_path: str = '',
               smtp_conn=None, attachment_data: bytes = None,
               attachment_name: str = None, tracking_host: str = None) -> tuple:
-    """Send one email. Returns (success, error_msg).
-    Accepts pre-loaded attachment bytes and reused SMTP connection.
-    """
+    """Send one email. Returns (success, error_msg)."""
     import uuid, mimetypes, os
-    from utils.db import get_workspace_only_setting, get_setting as _fallback
-
-    def _ws_setting(key):
-        val = get_workspace_only_setting(key, workspace_id)
-        return val if val else _fallback(key)
+    from utils.db import get_setting
 
     try:
         tracking_id = str(uuid.uuid4())
 
-        # Inject tracking pixel
         try:
             from app import inject_tracking_pixel
-            body = inject_tracking_pixel(
-                body, tracking_id,
-                contact_id=contact['id'],
-                campaign_id=campaign_id,
-                workspace_id=workspace_id
-            )
+            body = inject_tracking_pixel(body, tracking_id, contact_id=contact['id'], campaign_id=campaign_id)
         except Exception:
             pass
 
-        reply_to = account.get('reply_to') or _ws_setting('reply_to') or _ws_setting('imap_username') or account.get('email', '')
-        bcc      = account.get('bcc_emails') or _ws_setting('bcc_emails')
+        reply_to = account.get('reply_to') or get_setting('reply_to') or account.get('email', '')
+        bcc      = account.get('bcc_emails') or get_setting('bcc_emails')
 
         msg = EmailMessage()
         msg['Subject']    = subject
@@ -703,10 +710,10 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
         conn.execute("""
             INSERT INTO emails_sent
               (campaign_id, contact_id, email, subject, body,
-               status, tracking_id, sent_at, workspace_id)
-            VALUES (?,?,?,?,?,'sent',?,?,?)
+               status, tracking_id, sent_at)
+            VALUES (?,?,?,?,?,'sent',?,?)
         """, (campaign_id, contact['id'], contact['email'],
-              subject, body, tracking_id, datetime.now(), workspace_id))
+              subject, body, tracking_id, datetime.now()))
         conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (contact['id'],))
         conn.commit()
         conn.close()
@@ -726,7 +733,7 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
         return True, None
 
     except smtplib.SMTPRecipientsRefused as e:
-        _log_bounce(contact, subject, body, campaign_id, workspace_id, str(e))
+        _log_bounce(contact, subject, body, campaign_id, str(e))
         return False, f'Bounced: {str(e)[:100]}'
     except smtplib.SMTPAuthenticationError:
         return False, 'SMTP Authentication Failed'
@@ -735,20 +742,20 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
     except smtplib.SMTPServerDisconnected:
         return False, 'SMTP Disconnected'
     except Exception as e:
-        _log_bounce(contact, subject, body, campaign_id, workspace_id, str(e), status='failed')
+        _log_bounce(contact, subject, body, campaign_id, str(e), status='failed')
         return False, str(e)[:150]
 
 
-def _log_bounce(contact, subject, body, campaign_id, workspace_id, reason, status='bounced'):
+def _log_bounce(contact, subject, body, campaign_id, reason, status='bounced'):
     try:
         conn = get_db()
         conn.execute("""
             INSERT INTO emails_sent
               (campaign_id, contact_id, email, subject, body,
-               status, bounce_reason, sent_at, workspace_id)
-            VALUES (?,?,?,?,?,?,?,?,?)
+               status, bounce_reason, sent_at)
+            VALUES (?,?,?,?,?,?,?,?)
         """, (campaign_id, contact['id'], contact['email'],
-              subject, body, status, reason[:200], datetime.now(), workspace_id))
+              subject, body, status, reason[:200], datetime.now()))
         conn.commit()
         conn.close()
     except Exception:
@@ -757,12 +764,12 @@ def _log_bounce(contact, subject, body, campaign_id, workspace_id, reason, statu
 
 # ── CONTROL ACTIONS ───────────────────────────────────────────
 
-def pause_campaign(campaign_id: int, workspace_id: int):
+def pause_campaign(campaign_id: int):
     set_campaign_status(campaign_id, JobStatus.PAUSED)
-    log(campaign_id, 'Campaign paused by user', 'warning', workspace_id=workspace_id)
+    log(campaign_id, 'Campaign paused by user', 'warning')
 
 
-def resume_campaign(campaign_id: int, workspace_id: int):
+def resume_campaign(campaign_id: int):
     """Resume a paused campaign — re-queue contacts not yet successfully sent."""
     conn = get_db()
     try:
@@ -781,8 +788,7 @@ def resume_campaign(campaign_id: int, workspace_id: int):
 
         # Get workspace contacts eligible for this campaign (not yet sent)
         all_eligible = conn.execute(
-            "SELECT id FROM contacts WHERE workspace_id=? AND email_valid=1",
-            (workspace_id,)
+            "SELECT id FROM contacts WHERE email_valid=1"
         ).fetchall()
         remaining = [r['id'] for r in all_eligible if r['id'] not in sent_ids]
     finally:
@@ -793,18 +799,17 @@ def resume_campaign(campaign_id: int, workspace_id: int):
         return True
 
     set_campaign_status(campaign_id, JobStatus.QUEUED)
-    log(campaign_id, f'Resuming — {len(remaining)} contacts remaining', 'info', workspace_id=workspace_id)
+    log(campaign_id, f'Resuming — {len(remaining)} contacts remaining', 'info')
 
     return launch_campaign(
         campaign_id, remaining,
         camp['subject_template'] or '',
         camp['body_template'] or '',
         camp['send_mode'] or 'template',
-        workspace_id,
         camp['attachment_path'] if 'attachment_path' in camp.keys() else ''
     )
 
 
-def cancel_campaign(campaign_id: int, workspace_id: int):
+def cancel_campaign(campaign_id: int):
     set_campaign_status(campaign_id, JobStatus.CANCELLED, completed_at=datetime.now())
-    log(campaign_id, 'Campaign cancelled by user', 'error', workspace_id=workspace_id)
+    log(campaign_id, 'Campaign cancelled by user', 'error')

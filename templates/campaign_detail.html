@@ -221,7 +221,7 @@
             <label class="form-label mb-0" style="font-size:12px;font-weight:600;color:#374151;">Subject Line</label>
             <span id="subjectScore" style="font-size:11px;font-weight:700;color:#10b981;"></span>
           </div>
-          <input type="text" name="subject" id="subjectInput" class="form-control" value="Helping {company} scale engineering faster" oninput="updateQuality()" required>
+          <input type="text" name="subject" id="subjectInput" class="form-control" value="{{ campaign.subject_template or 'Helping {company} scale engineering faster' }}" oninput="updateQuality()" required>
         </div>
 
         <!-- BODY EDITOR -->
@@ -231,7 +231,7 @@
             <small class="text-muted" style="font-size:11px;">HTML supported · {variables} auto-replaced</small>
           </div>
           <!-- EDITOR MODE -->
-          <textarea name="body" id="emailBody" class="email-editor" oninput="updateQuality(); updatePreview();" required><p>Hi {name},</p>
+          <textarea name="body" id="emailBody" class="email-editor" oninput="updateQuality(); updatePreview();" required>{% if campaign.body_template %}{{ campaign.body_template }}{% else %}<p>Hi {name},</p>
 
 <p>{company} is doing solid work. Scaling engineering at this stage usually means you need reliable talent, fast.</p>
 
@@ -249,7 +249,7 @@
 <p>Best,<br>
 Anshul<br>
 <b>Shiksha Infotech</b> | Est. 2009<br>
-<a href="https://shikshainfotech.com">shikshainfotech.com</a></p></textarea>
+<a href="https://shikshainfotech.com">shikshainfotech.com</a></p>{% endif %}</textarea>
           <!-- PREVIEW MODE (hidden by default) -->
           <div id="previewMode" style="display:none;border:1px solid #e2e8f0;border-radius:8px;padding:16px;background:#fff;min-height:280px;font-size:13.5px;line-height:1.7;"></div>
         </div>
@@ -257,7 +257,18 @@ Anshul<br>
         <!-- ATTACHMENT -->
         <div class="mb-3">
           <label class="form-label" style="font-size:12px;font-weight:600;color:#374151;">Attachment <small class="text-muted fw-normal">(optional)</small></label>
-          <input type="file" name="attachment_file" class="form-control form-control-sm">
+          {% if campaign.attachment_path %}
+          {% set saved_filename = campaign.attachment_path.replace('\\', '/')|split('/')|last %}
+          <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:7px 12px;margin-bottom:6px;" id="savedAttachment">
+            <i class="fas fa-paperclip" style="color:#15803d;font-size:11px;"></i>
+            <span style="font-size:12px;font-weight:600;color:#15803d;">{{ saved_filename }}</span>
+            <small class="text-muted ms-1">already attached</small>
+            <button type="button" onclick="clearAttachment()" style="margin-left:auto;background:none;border:none;color:#dc2626;font-size:11px;cursor:pointer;">✕ Remove</button>
+          </div>
+          <input type="hidden" name="attachment" id="attachmentHidden" value="{{ saved_filename }}">
+          {% endif %}
+          <input type="file" name="attachment_file" class="form-control form-control-sm" id="attachmentFileInput" onchange="onNewFileSelected()">
+          <small class="text-muted" style="font-size:11px;">Upload a new file to replace the existing attachment</small>
         </div>
 
         <!-- HIDDEN for AI send -->
@@ -741,6 +752,21 @@ fetch('/api/smtp_accounts').then(r=>r.json()).then(d=>{
   document.getElementById('deliv-risk').textContent = avgHealth>=70?'Low ✓':avgHealth>=40?'Medium':'High ⚠';
   document.getElementById('deliv-risk').style.color = avgHealth>=70?'#10b981':avgHealth>=40?'#f59e0b':'#ef4444';
 }).catch(()=>{});
+
+// ── ATTACHMENT HELPERS ──
+function clearAttachment() {
+  const saved = document.getElementById('savedAttachment');
+  const hidden = document.getElementById('attachmentHidden');
+  if(saved) saved.remove();
+  if(hidden) hidden.value = '';
+}
+function onNewFileSelected() {
+  // If user picks a new file, clear the saved attachment hidden field so new file wins
+  const hidden = document.getElementById('attachmentHidden');
+  if(hidden) hidden.value = '';
+  const saved = document.getElementById('savedAttachment');
+  if(saved) saved.style.opacity = '0.4';
+}
 
 // ── INIT ──
 updatePreview();

@@ -12,10 +12,9 @@ inbox_bp = Blueprint('inbox_routes', __name__)
 @inbox_bp.route('/inbox', endpoint='inbox')
 @login_required
 def inbox():
-    from services.workspace_service import get_wid, ws_threads
-    wid = get_wid()
+    from services.workspace_service import ws_threads
     status_filter = request.args.get('status', None)
-    threads = ws_threads(wid, status_filter)
+    threads = ws_threads(status_filter)
     return render_template('inbox.html', threads=threads, status_filter=status_filter)
 
 
@@ -58,14 +57,12 @@ def api_update_thread_status(thread_id):
 @login_required
 def api_generate_inbox_reply(thread_id):
     from services.inbox_service import generate_ai_reply_draft
-    from services.workspace_service import get_wid
     from app import get_db
-    wid = get_wid()
     conn = get_db()
     thread = conn.execute("""
         SELECT t.*, c.name as contact_name, c.company as contact_company, c.context as contact_context
-        FROM threads t LEFT JOIN contacts c ON t.contact_id = c.id WHERE t.id = ? AND t.workspace_id=?
-    """, (thread_id, wid)).fetchone()
+        FROM threads t LEFT JOIN contacts c ON t.contact_id = c.id WHERE t.id = ?
+    """, (thread_id,)).fetchone()
     conn.close()
     if not thread:
         return jsonify({'success': False, 'error': 'Thread not found'}), 404
@@ -208,13 +205,11 @@ def api_send_reply(thread_id):
 @login_required
 def api_inbox_stats():
     from app import get_db
-    from services.workspace_service import get_wid
-    wid = get_wid()
     conn = get_db()
-    total      = conn.execute("SELECT COUNT(*) FROM threads WHERE workspace_id=?", (wid,)).fetchone()[0]
-    unread     = conn.execute("SELECT COUNT(*) FROM threads WHERE unread_count > 0 AND workspace_id=?", (wid,)).fetchone()[0]
-    interested = conn.execute("SELECT COUNT(*) FROM threads WHERE status='interested' AND workspace_id=?", (wid,)).fetchone()[0]
-    meeting    = conn.execute("SELECT COUNT(*) FROM threads WHERE status='meeting' AND workspace_id=?", (wid,)).fetchone()[0]
+    total      = conn.execute("SELECT COUNT(*) FROM threads").fetchone()[0]
+    unread     = conn.execute("SELECT COUNT(*) FROM threads WHERE unread_count > 0").fetchone()[0]
+    interested = conn.execute("SELECT COUNT(*) FROM threads WHERE status='interested'").fetchone()[0]
+    meeting    = conn.execute("SELECT COUNT(*) FROM threads WHERE status='meeting'").fetchone()[0]
     conn.close()
     return jsonify({'total': total, 'unread': unread, 'interested': interested, 'meeting': meeting})
 

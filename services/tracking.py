@@ -86,14 +86,14 @@ def _sign(payload: str) -> str:
     return hmac.HMAC(_SECRET, payload.encode(), hashlib.sha256).hexdigest()[:16]
 
 
-def generate_token(workspace_id: int, contact_id: int, campaign_id: int,
+def generate_token(contact_id: int, campaign_id: int,
                    email_sent_id: int = 0, thread_id: int = 0) -> str:
     """
     Generate a signed tracking token.
     Format: base64(wid:cid:camp:esid:tid:ts):signature
     """
     ts = int(datetime.now().timestamp())
-    payload = f"{workspace_id}:{contact_id}:{campaign_id}:{email_sent_id}:{thread_id}:{ts}"
+    payload = f"{contact_id}:{campaign_id}:{email_sent_id}:{thread_id}:{ts}"
     sig = _sign(payload)
     token = base64.urlsafe_b64encode(f"{payload}:{sig}".encode()).decode().rstrip('=')
     return token
@@ -109,10 +109,10 @@ def decode_token(token: str) -> dict | None:
         padded = token + '=' * (4 - len(token) % 4)
         decoded = base64.urlsafe_b64decode(padded).decode()
         parts = decoded.split(':')
-        if len(parts) != 7:
+        if len(parts) != 6:
             return None
-        wid, cid, camp, esid, tid, ts, sig = parts
-        payload = f"{wid}:{cid}:{camp}:{esid}:{tid}:{ts}"
+        cid, camp, esid, tid, ts, sig = parts
+        payload = f"{cid}:{camp}:{esid}:{tid}:{ts}"
         expected_sig = _sign(payload)
         if not hmac.compare_digest(sig, expected_sig):
             return None
@@ -120,7 +120,6 @@ def decode_token(token: str) -> dict | None:
         if datetime.now().timestamp() - int(ts) > 90 * 86400:
             return None
         return {
-            'workspace_id':  int(wid),
             'contact_id':    int(cid),
             'campaign_id':   int(camp),
             'email_sent_id': int(esid),
@@ -166,7 +165,7 @@ def is_safe_url(url: str) -> bool:
 # EVENT LOGGING
 # ══════════════════════════════════════════════════════════════
 
-def log_event(event_type: str, workspace_id: int, contact_id: int = None,
+def log_event(event_type: str, contact_id: int = None,
               campaign_id: int = None, thread_id: int = None,
               email_sent_id: int = None, metadata: dict = None,
               ip_address: str = None, user_agent: str = None) -> int | None:
@@ -181,26 +180,26 @@ def log_event(event_type: str, workspace_id: int, contact_id: int = None,
         if USE_POSTGRES and hasattr(conn, 'raw'):
             row = conn.execute("""
                 INSERT INTO tracking_events
-                  (workspace_id, contact_id, campaign_id, thread_id, email_sent_id,
+                  (contact_id, campaign_id, thread_id, email_sent_id,
                    event_type, metadata, ip_address, user_agent, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?)
                 RETURNING id
-            """, (workspace_id, contact_id, campaign_id, thread_id, email_sent_id,
+            """, (contact_id, campaign_id, thread_id, email_sent_id,
                   event_type, meta_json, ip_address, user_agent, datetime.now())).fetchone()
             conn.commit()
             event_id = row[0] if row else None
         else:
             conn.execute("""
                 INSERT INTO tracking_events
-                  (workspace_id, contact_id, campaign_id, thread_id, email_sent_id,
+                  (contact_id, campaign_id, thread_id, email_sent_id,
                    event_type, metadata, ip_address, user_agent, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
-            """, (workspace_id, contact_id, campaign_id, thread_id, email_sent_id,
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """, (contact_id, campaign_id, thread_id, email_sent_id,
                   event_type, meta_json, ip_address, user_agent, datetime.now()))
             conn.commit()
             row = conn.execute("SELECT last_insert_rowid()").fetchone()
             event_id = row[0] if row else None
-        app_logger.info(f'[TRACK] {event_type} | workspace={workspace_id} contact={contact_id}')
+        app_logger.info(f'[TRACK] {event_type} | contact={contact_id}')
         return event_id
     except Exception as e:
         error_logger.error(f'[TRACK] log_event failed: {e}')
@@ -245,7 +244,6 @@ def process_open(token: str, ip: str, user_agent: str) -> bool:
         event_type = Event.EMAIL_OPEN if is_first_open else 'multiple_opens'
         log_event(
             event_type=event_type,
-            workspace_id=data['workspace_id'],
             contact_id=data['contact_id'],
             campaign_id=data['campaign_id'],
             thread_id=data['thread_id'],
@@ -285,7 +283,6 @@ def _process_legacy_open(tracking_id: str, ip: str, user_agent: str) -> bool:
         event_type = Event.EMAIL_OPEN if is_first else 'multiple_opens'
         log_event(
             event_type=event_type,
-            workspace_id=wid,
             contact_id=row['contact_id'],
             campaign_id=row['campaign_id'],
             email_sent_id=row['id'],
@@ -342,15 +339,14 @@ def process_click(click_token: str, original_url: str, tracking_id: str,
 
         # Log to email_clicks (backward compat)
         conn.execute("""
-            INSERT INTO email_clicks (email_sent_id, thread_id, contact_id, clicked_url, token, workspace_id)
-            VALUES (?,?,?,?,?,?)
-        """, (esid, thread_id, contact_id, decoded_url, click_token, wid))
+            INSERT INTO email_clicks (email_sent_id, thread_id, contact_id, clicked_url, token)
+            VALUES (?,?,?,?,?)
+        """, (esid, thread_id, contact_id, decoded_url, click_token))
         conn.commit()
 
         # Log to tracking_events
         log_event(
             event_type=Event.LINK_CLICK,
-            workspace_id=wid,
             contact_id=contact_id,
             campaign_id=campaign_id,
             thread_id=thread_id,
@@ -422,7 +418,7 @@ def get_temperature_color(temp: str) -> str:
 # ACTIVITY TIMELINE
 # ══════════════════════════════════════════════════════════════
 
-def get_contact_timeline(contact_id: int, workspace_id: int, limit: int = 20) -> list:
+def get_contact_timeline(contact_id: int, limit: int = 20) -> list:
     """
     Get unified engagement timeline for a contact.
     Returns list of events sorted newest first.
@@ -432,10 +428,10 @@ def get_contact_timeline(contact_id: int, workspace_id: int, limit: int = 20) ->
         events = conn.execute("""
             SELECT event_type, metadata, ip_address, created_at
             FROM tracking_events
-            WHERE contact_id = ? AND workspace_id = ?
+            WHERE contact_id = ?
             ORDER BY created_at DESC
             LIMIT ?
-        """, (contact_id, workspace_id, limit)).fetchall()
+        """, (contact_id, limit)).fetchall()
 
         timeline = []
         for e in events:
@@ -460,7 +456,7 @@ def get_contact_timeline(contact_id: int, workspace_id: int, limit: int = 20) ->
         conn.close()
 
 
-def get_workspace_timeline(workspace_id: int, limit: int = 50) -> list:
+def get_workspace_timeline(limit: int = 50) -> list:
     """Get recent events across entire workspace."""
     conn = get_db()
     try:
@@ -470,10 +466,9 @@ def get_workspace_timeline(workspace_id: int, limit: int = 50) -> list:
                    te.contact_id, te.campaign_id
             FROM tracking_events te
             LEFT JOIN contacts c ON te.contact_id = c.id
-            WHERE te.workspace_id = ?
             ORDER BY te.created_at DESC
             LIMIT ?
-        """, (workspace_id, limit)).fetchall()
+        """, (limit,)).fetchall()
 
         timeline = []
         for e in events:
@@ -556,7 +551,7 @@ def _event_color(event_type: str) -> str:
 # ANALYTICS AGGREGATION
 # ══════════════════════════════════════════════════════════════
 
-def get_engagement_stats(workspace_id: int, days: int = 30) -> dict:
+def get_engagement_stats(days: int = 30) -> dict:
     """Get engagement stats for a workspace over N days."""
     conn = get_db()
     try:
@@ -564,14 +559,13 @@ def get_engagement_stats(workspace_id: int, days: int = 30) -> dict:
         rows = conn.execute("""
             SELECT event_type, COUNT(*) as count
             FROM tracking_events
-            WHERE workspace_id = ? AND created_at >= ?
+            WHERE created_at >= ?
             GROUP BY event_type
-        """, (workspace_id, since)).fetchall()
+        """, (since,)).fetchall()
 
         stats = {r['event_type']: r['count'] for r in rows}
         total_sent = conn.execute(
-            "SELECT COUNT(*) FROM emails_sent WHERE workspace_id=? AND status='sent'",
-            (workspace_id,)
+            "SELECT COUNT(*) FROM emails_sent WHERE status='sent'"
         ).fetchone()[0]
 
         opens  = stats.get(Event.EMAIL_OPEN, 0) + stats.get('multiple_opens', 0)

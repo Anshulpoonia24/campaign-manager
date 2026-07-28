@@ -54,7 +54,7 @@ def get_all_steps(campaign_id: int) -> list:
         conn.close()
 
 
-def add_step(campaign_id: int, workspace_id: int, step_order: int,
+def add_step(campaign_id: int, step_order: int,
              step_type: str, delay_days: int, subject: str,
              body: str, ai_enabled: bool = False) -> int:
     """Insert a new sequence step. Returns new step id."""
@@ -64,20 +64,20 @@ def add_step(campaign_id: int, workspace_id: int, step_order: int,
         if is_postgres():
             row = conn.execute("""
                 INSERT INTO sequence_steps
-                  (campaign_id, workspace_id, step_order, step_type,
+                  (campaign_id, step_order, step_type,
                    delay_days, subject, body, ai_enabled)
-                VALUES (?,?,?,?,?,?,?,?) RETURNING id
-            """, (campaign_id, workspace_id, step_order, step_type,
+                VALUES (?,?,?,?,?,?,?) RETURNING id
+            """, (campaign_id, step_order, step_type,
                   delay_days, subject, body, 1 if ai_enabled else 0)).fetchone()
             conn.commit()
             return row[0]
         else:
             conn.execute("""
                 INSERT INTO sequence_steps
-                  (campaign_id, workspace_id, step_order, step_type,
+                  (campaign_id, step_order, step_type,
                    delay_days, subject, body, ai_enabled)
-                VALUES (?,?,?,?,?,?,?,?)
-            """, (campaign_id, workspace_id, step_order, step_type,
+                VALUES (?,?,?,?,?,?,?)
+            """, (campaign_id, step_order, step_type,
                   delay_days, subject, body, 1 if ai_enabled else 0))
             conn.commit()
             return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -134,8 +134,7 @@ def reorder_steps(campaign_id: int, ordered_ids: list):
 # ENROLLMENT
 # ══════════════════════════════════════════════════════════════
 
-def enroll_contact(contact_id: int, campaign_id: int,
-                   workspace_id: int) -> bool:
+def enroll_contact(contact_id: int, campaign_id: int) -> bool:
     """
     Enroll a contact into a campaign sequence.
     Idempotent — skips if already enrolled.
@@ -149,7 +148,6 @@ def enroll_contact(contact_id: int, campaign_id: int,
         """, (contact_id, campaign_id)).fetchone()
 
         if existing:
-            # Re-activate if previously completed/paused
             if existing['status'] in ('completed', 'paused'):
                 conn.execute("""
                     UPDATE contact_sequence_state
@@ -162,13 +160,11 @@ def enroll_contact(contact_id: int, campaign_id: int,
                 return True
             return False
 
-        # First enrollment — schedule first step immediately
         conn.execute("""
             INSERT INTO contact_sequence_state
-              (workspace_id, contact_id, campaign_id, current_step,
-               status, next_run_at)
-            VALUES (?,?,?,1,'active',?)
-        """, (workspace_id, contact_id, campaign_id, datetime.now()))
+              (contact_id, campaign_id, current_step, status, next_run_at)
+            VALUES (?,?,1,'active',?)
+        """, (contact_id, campaign_id, datetime.now()))
         conn.commit()
         app_logger.info(f'[SEQ] Enrolled contact {contact_id} in campaign {campaign_id}')
         return True
@@ -176,13 +172,12 @@ def enroll_contact(contact_id: int, campaign_id: int,
         conn.close()
 
 
-def enroll_contacts_bulk(contact_ids: list, campaign_id: int,
-                         workspace_id: int) -> dict:
+def enroll_contacts_bulk(contact_ids: list, campaign_id: int) -> dict:
     """Enroll multiple contacts. Returns {enrolled, skipped}."""
     enrolled = 0
     skipped  = 0
     for cid in contact_ids:
-        if enroll_contact(cid, campaign_id, workspace_id):
+        if enroll_contact(cid, campaign_id):
             enrolled += 1
         else:
             skipped += 1
@@ -390,7 +385,7 @@ def mark_completed(contact_id: int, campaign_id: int):
 # DUE CONTACTS QUERY
 # ══════════════════════════════════════════════════════════════
 
-def get_due_contacts(workspace_id: int, limit: int = 100) -> list:
+def get_due_contacts(limit: int = 100) -> list:
     """
     Return contacts whose next_run_at is due and status is active.
     Used by the Celery processor every N minutes.
@@ -402,12 +397,11 @@ def get_due_contacts(workspace_id: int, limit: int = 100) -> list:
                    c.context, c.designation, c.lead_score
             FROM contact_sequence_state css
             JOIN contacts c ON css.contact_id = c.id
-            WHERE css.workspace_id = ?
-              AND css.status = 'active'
+            WHERE css.status = 'active'
               AND css.next_run_at <= ?
             ORDER BY css.next_run_at ASC
             LIMIT ?
-        """, (workspace_id, datetime.now(), limit)).fetchall()
+        """, (datetime.now(), limit)).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -555,19 +549,14 @@ def get_campaign_contacts_state(campaign_id: int) -> list:
 DAILY_SEQUENCE_CAP = 200  # max sequence emails per workspace per day
 
 
-def is_sequence_cap_reached(workspace_id: int) -> bool:
-    """Check if workspace has hit daily sequence sending cap."""
+def is_sequence_cap_reached() -> bool:
+    """Check if daily sequence sending cap is reached."""
     conn = get_db()
     try:
         today_sent = conn.execute("""
-            SELECT COUNT(*) FROM emails_sent es
-            JOIN contact_sequence_state css
-              ON es.contact_id = css.contact_id
-             AND es.campaign_id = css.campaign_id
-            WHERE es.workspace_id = ?
-              AND DATE(es.sent_at) = DATE('now')
-              AND es.status = 'sent'
-        """, (workspace_id,)).fetchone()[0]
+            SELECT COUNT(*) FROM emails_sent
+            WHERE DATE(sent_at) = DATE('now') AND status = 'sent'
+        """).fetchone()[0]
         return today_sent >= DAILY_SEQUENCE_CAP
     except Exception:
         return False
@@ -591,19 +580,14 @@ def is_duplicate_sequence_send(contact_id: int, campaign_id: int,
         conn.close()
 
 
-def get_sequence_safety_status(workspace_id: int) -> dict:
-    """Return safety system status for a workspace."""
+def get_sequence_safety_status() -> dict:
+    """Return safety system status."""
     conn = get_db()
     try:
         today_sent = conn.execute("""
-            SELECT COUNT(*) FROM emails_sent es
-            JOIN contact_sequence_state css
-              ON es.contact_id = css.contact_id
-             AND es.campaign_id = css.campaign_id
-            WHERE es.workspace_id = ?
-              AND DATE(es.sent_at) = DATE('now')
-              AND es.status = 'sent'
-        """, (workspace_id,)).fetchone()[0]
+            SELECT COUNT(*) FROM emails_sent
+            WHERE DATE(sent_at) = DATE('now') AND status = 'sent'
+        """).fetchone()[0]
         return {
             'today_sent':  today_sent,
             'daily_cap':   DAILY_SEQUENCE_CAP,

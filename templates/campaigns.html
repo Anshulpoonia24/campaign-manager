@@ -203,10 +203,11 @@ body { background: linear-gradient(160deg, #f8fafc 0%, #f1f5ff 60%, #f8fafc 100%
   <div id="campList">
   {% if campaigns %}
   {% for c in campaigns %}
-  {% set sent = c.sent_count or 0 %}
-  {% set opened = c.opened_count or 0 %}
-  {% set replied = c.replied_count or 0 %}
-  {% set bounced = c.bounce_count or 0 %}
+  {% set s = stats[c.id] %}
+  {% set sent = s.sent_count or 0 %}
+  {% set opened = s.opened_count or 0 %}
+  {% set replied = s.replied_count or 0 %}
+  {% set bounced = s.bounce_count or 0 %}
   {% set open_rate = ((opened / sent * 100) | round(1)) if sent > 0 else 0 %}
   {% set reply_rate = ((replied / sent * 100) | round(1)) if sent > 0 else 0 %}
   {% set health = [100 - (bounced / sent * 100 * 3 if sent > 0 else 0) + (open_rate * 0.5), 0] | max %}

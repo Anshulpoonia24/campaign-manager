@@ -36,13 +36,11 @@ def api_sequence_steps(campaign_id):
 def api_sequence_add_step(campaign_id):
     from app import app_logger
     from services.sequence_engine import add_step, get_all_steps
-    from services.workspace_service import get_wid
     data = request.json or {}
-    wid = get_wid()
     steps = get_all_steps(campaign_id)
     next_order = max((s['step_order'] for s in steps), default=0) + 1
     step_id = add_step(
-        campaign_id=campaign_id, workspace_id=wid,
+        campaign_id=campaign_id,
         step_order=int(data.get('step_order', next_order)),
         step_type=data.get('step_type', 'email'),
         delay_days=int(data.get('delay_days', 3)),
@@ -92,9 +90,7 @@ def api_sequence_reorder_steps(campaign_id):
 def api_sequence_enroll(campaign_id):
     from app import get_db, app_logger, CELERY_AVAILABLE, has_active_workers
     from services.sequence_engine import enroll_contacts_bulk, get_steps
-    from services.workspace_service import get_wid
     data = request.json or {}
-    wid = get_wid()
 
     steps = get_steps(campaign_id)
     if not steps:
@@ -102,7 +98,7 @@ def api_sequence_enroll(campaign_id):
 
     if data.get('enroll_all'):
         conn = get_db()
-        rows = conn.execute("SELECT id FROM contacts WHERE workspace_id=? AND email_valid=1", (wid,)).fetchall()
+        rows = conn.execute("SELECT id FROM contacts WHERE email_valid=1").fetchall()
         conn.close()
         contact_ids = [r['id'] for r in rows]
     else:
@@ -113,11 +109,11 @@ def api_sequence_enroll(campaign_id):
 
     if CELERY_AVAILABLE and has_active_workers():
         from tasks.sequence_tasks import enroll_contacts_task
-        result = enroll_contacts_task.apply_async(args=[contact_ids, campaign_id, wid], queue='automation_queue')
+        result = enroll_contacts_task.apply_async(args=[contact_ids, campaign_id], queue='automation_queue')
         app_logger.info(f'[SEQ] Enroll queued | campaign {campaign_id} | {len(contact_ids)} contacts | task {result.id}')
         return jsonify({'success': True, 'queued': True, 'task_id': result.id, 'total': len(contact_ids)})
 
-    result = enroll_contacts_bulk(contact_ids, campaign_id, wid)
+    result = enroll_contacts_bulk(contact_ids, campaign_id)
     app_logger.info(f'[SEQ] Enrolled sync | campaign {campaign_id} | {result}')
     return jsonify({'success': True, 'queued': False, **result})
 
@@ -175,8 +171,6 @@ def api_sequence_contact_history(campaign_id, contact_id):
 @login_required
 def api_sequence_trigger(campaign_id):
     from app import CELERY_AVAILABLE, has_active_workers
-    from services.workspace_service import get_wid
-    wid = get_wid()
 
     if CELERY_AVAILABLE and has_active_workers():
         from tasks.sequence_tasks import process_sequences_task
@@ -184,7 +178,7 @@ def api_sequence_trigger(campaign_id):
         return jsonify({'success': True, 'queued': True, 'task_id': result.id})
 
     from services.sequence_engine import get_due_contacts, check_stop_conditions, mark_stopped
-    due = get_due_contacts(wid, limit=50)
+    due = get_due_contacts(limit=50)
     due = [d for d in due if d['campaign_id'] == campaign_id]
     processed = 0
     for cs in due:

@@ -270,15 +270,10 @@ class CopilotOrchestrator:
             finally:
                 conn.close()
 
-        # Try copilot-specific keys first, then email keys as fallback
-        def _get(key):
-            val = _get_setting(f'copilot_{key}')
-            return val if val else _get_setting(f'email_{key}')
-
         # Groq
-        keys_str = _get('groq_keys') or ''
+        keys_str = _get_setting('groq_api_keys') or ''
         keys = [k.strip() for k in keys_str.split(',') if k.strip()]
-        model = _get_setting('copilot_model_groq') or 'llama-3.3-70b-versatile'
+        model = 'llama-3.3-70b-versatile'
 
         for key in keys:
             try:
@@ -313,9 +308,9 @@ class CopilotOrchestrator:
                 continue
 
         # Gemini fallback
-        gemini_key = _get('gemini_key')
+        gemini_key = _get_setting('gemini_api_key')
         if gemini_key:
-            gemini_model = _get_setting('copilot_model_gemini') or 'gemini-2.0-flash'
+            gemini_model = 'gemini-2.0-flash'
             try:
                 _start = _time.time()
                 full_prompt = f"{system_prompt}\n\nUSER: {user_message}\n\nRespond with valid JSON only."

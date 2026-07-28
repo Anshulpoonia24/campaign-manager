@@ -213,6 +213,19 @@ Rules:
 
 # ── MAIN ENRICHMENT FUNCTION ──────────────────────────────────
 def enrich_contact_intelligence(contact_id: int) -> dict:
+    """Delegates to deep SDR research engine."""
+    try:
+        from services.sdr_researcher import research_contact
+        result = research_contact(contact_id)
+        return result.get('research', {}) if result.get('success') else {}
+    except Exception as e:
+        error_logger.error(f'[INDUSTRY] enrich_contact_intelligence error: {e}')
+        return {}
+
+
+def _enrich_contact_intelligence_legacy(contact_id: int) -> dict:
+    """Legacy shallow enrichment — kept as fallback."""
+    # (original implementation below)
     """
     Full intelligence enrichment for a contact.
     Scrapes website + AI analysis + stores results.
@@ -342,7 +355,7 @@ def enrich_contact_intelligence(contact_id: int) -> dict:
 
 
 # ── BULK ENRICHMENT ───────────────────────────────────────────
-def enrich_contacts_bulk_intelligence(contact_ids: list, workspace_id: int) -> dict:
+def enrich_contacts_bulk_intelligence(contact_ids: list) -> dict:
     """Enrich multiple contacts. Returns {enriched, failed}."""
     import time
     enriched = failed = 0
@@ -357,8 +370,8 @@ def enrich_contacts_bulk_intelligence(contact_ids: list, workspace_id: int) -> d
 
 
 # ── GET INDUSTRY STATS ────────────────────────────────────────
-def get_industry_breakdown(workspace_id: int) -> list:
-    """Get contact count by industry for a workspace."""
+def get_industry_breakdown() -> list:
+    """Get contact count by industry."""
     conn = get_db()
     try:
         rows = conn.execute("""
@@ -366,10 +379,9 @@ def get_industry_breakdown(workspace_id: int) -> list:
                 COALESCE(NULLIF(industry,''), 'Unknown') as industry,
                 COUNT(*) as count
             FROM contacts
-            WHERE workspace_id=?
             GROUP BY industry
             ORDER BY count DESC
-        """, (workspace_id,)).fetchall()
+        """).fetchall()
         return [{'industry': r['industry'], 'count': r['count'],
                  'style': get_industry_style(r['industry'])} for r in rows]
     finally:
@@ -377,7 +389,7 @@ def get_industry_breakdown(workspace_id: int) -> list:
 
 
 # ── FILTER CONTACTS ───────────────────────────────────────────
-def filter_contacts(workspace_id: int, filters: dict, page: int = 1,
+def filter_contacts(filters: dict, page: int = 1,
                     per_page: int = 50) -> dict:
     """
     Filter contacts with multiple criteria.
@@ -385,8 +397,8 @@ def filter_contacts(workspace_id: int, filters: dict, page: int = 1,
     """
     conn = get_db()
     try:
-        sql = "SELECT * FROM contacts WHERE workspace_id=?"
-        params = [workspace_id]
+        sql = "SELECT * FROM contacts WHERE 1=1"
+        params = []
 
         if filters.get('industry'):
             sql += " AND industry=?"

@@ -41,30 +41,23 @@ QUEUE  = 'automation_queue'
 def process_sequences_task(self):
     """
     Master sequence processor.
-    Finds all workspaces, gets due contacts, dispatches per-contact tasks.
+    Gets due contacts, dispatches per-contact tasks.
     """
     try:
-        conn = get_db()
-        workspaces = conn.execute(
-            "SELECT id FROM workspaces"
-        ).fetchall()
-        conn.close()
+        from services.sequence_engine import get_due_contacts, is_sequence_cap_reached
+        if is_sequence_cap_reached():
+            logger.info('[SEQ] Daily cap reached, skipping')
+            return {'success': True, 'dispatched': 0}
 
+        due = get_due_contacts(limit=200)
         total_dispatched = 0
-        for ws in workspaces:
-            wid = ws['id']
-            from services.sequence_engine import get_due_contacts, is_sequence_cap_reached
-            if is_sequence_cap_reached(wid):
-                logger.info(f'[SEQ] Daily cap reached for workspace {wid}, skipping')
-                continue
-            due = get_due_contacts(wid, limit=200)
-            for contact_state in due:
-                process_single_contact_task.apply_async(
-                    args=[contact_state['contact_id'], contact_state['campaign_id'], wid],
-                    queue=QUEUE,
-                    priority=7,
-                )
-                total_dispatched += 1
+        for contact_state in due:
+            process_single_contact_task.apply_async(
+                args=[contact_state['contact_id'], contact_state['campaign_id']],
+                queue=QUEUE,
+                priority=7,
+            )
+            total_dispatched += 1
 
         logger.info(f'[SEQ] Dispatched {total_dispatched} contact tasks')
         return {'success': True, 'dispatched': total_dispatched}
@@ -89,8 +82,7 @@ def process_sequences_task(self):
     acks_late=True,
     priority=7,
 )
-def process_single_contact_task(self, contact_id: int,
-                                 campaign_id: int, workspace_id: int):
+def process_single_contact_task(self, contact_id: int, campaign_id: int):
     """
     Process one contact's next sequence step.
     1. Check stop conditions
@@ -185,13 +177,12 @@ def process_single_contact_task(self, contact_id: int,
         body    = _render(step['body'], contact)
 
         if step['ai_enabled']:
-            ai_body = _generate_ai_body(contact, step, workspace_id)
+            ai_body = _generate_ai_body(contact, step)
             if ai_body:
                 body = ai_body
 
         # ── 6. Send via SMTP ──────────────────────────────────
-        sent, error = _send_email(contact, subject, body,
-                                  campaign_id, workspace_id)
+        sent, error = _send_email(contact, subject, body, campaign_id)
 
         if sent:
             # ── 7. Advance to next step ───────────────────────
@@ -226,11 +217,10 @@ def process_single_contact_task(self, contact_id: int,
     acks_late=True,
     priority=6,
 )
-def enroll_contacts_task(contact_ids: list, campaign_id: int,
-                          workspace_id: int) -> dict:
+def enroll_contacts_task(contact_ids: list, campaign_id: int) -> dict:
     """Async bulk enrollment — called from API."""
     from services.sequence_engine import enroll_contacts_bulk
-    result = enroll_contacts_bulk(contact_ids, campaign_id, workspace_id)
+    result = enroll_contacts_bulk(contact_ids, campaign_id)
     logger.info(f'[SEQ] Enrolled {result["enrolled"]} contacts in campaign {campaign_id}')
     return result
 
@@ -269,7 +259,7 @@ def _advance_to_next(contact_id: int, campaign_id: int, steps: list,
     advance_state(contact_id, campaign_id, next_step['step_order'], next_run)
 
 
-def _generate_ai_body(contact, step: dict, workspace_id: int) -> str | None:
+def _generate_ai_body(contact, step: dict) -> str | None:
     """Generate AI-personalized email body for a sequence step."""
     try:
         from utils.db import get_setting
@@ -319,8 +309,7 @@ Rules:
     return None
 
 
-def _send_email(contact, subject: str, body: str,
-                campaign_id: int, workspace_id: int) -> tuple:
+def _send_email(contact, subject: str, body: str, campaign_id: int) -> tuple:
     """
     Send email via SMTP rotation.
     Returns (success: bool, error: str | None)
@@ -373,7 +362,6 @@ def _send_email(contact, subject: str, body: str,
             body_with_sig, tracking_id,
             contact_id=contact['id'],
             campaign_id=campaign_id,
-            workspace_id=workspace_id
         )
 
         reply_to_val = reply_to or get_setting('reply_to')
@@ -405,10 +393,10 @@ def _send_email(contact, subject: str, body: str,
         conn.execute("""
             INSERT INTO emails_sent
               (campaign_id, contact_id, email, subject, body,
-               status, tracking_id, sent_at, workspace_id)
-            VALUES (?,?,?,?,?,'sent',?,?,?)
+               status, tracking_id, sent_at)
+            VALUES (?,?,?,?,?,'sent',?,?)
         """, (campaign_id, contact['id'], contact['email'],
-              subject, body, tracking_id, datetime.now(), workspace_id))
+              subject, body, tracking_id, datetime.now()))
         conn.execute(
             "UPDATE contacts SET status='sent' WHERE id=?", (contact['id'],)
         )
@@ -437,7 +425,7 @@ def _send_email(contact, subject: str, body: str,
 
     except smtplib.SMTPRecipientsRefused as e:
         # Log bounce
-        _log_bounce(contact, subject, body, campaign_id, workspace_id, str(e))
+        _log_bounce(contact, subject, body, campaign_id, str(e))
         from services.sequence_engine import mark_stopped
         mark_stopped(contact['id'], campaign_id, 'bounced')
         if account_id:
@@ -449,17 +437,17 @@ def _send_email(contact, subject: str, body: str,
 
 
 def _log_bounce(contact, subject: str, body: str,
-                campaign_id: int, workspace_id: int, reason: str):
+                campaign_id: int, reason: str):
     """Log a bounce to emails_sent."""
     try:
         conn = get_db()
         conn.execute("""
             INSERT INTO emails_sent
               (campaign_id, contact_id, email, subject, body,
-               status, bounce_reason, sent_at, workspace_id)
-            VALUES (?,?,?,?,?,'bounced',?,?,?)
+               status, bounce_reason, sent_at)
+            VALUES (?,?,?,?,?,'bounced',?,?)
         """, (campaign_id, contact['id'], contact['email'],
-              subject, body, reason[:200], datetime.now(), workspace_id))
+              subject, body, reason[:200], datetime.now()))
         conn.commit()
         conn.close()
     except Exception:

@@ -1,9 +1,8 @@
 """
-routes/admin.py — Tenant Management Admin Panel
-================================================
-Completely separate from tenant login.
-Admin login: /admin/login  (username: admin, password: admin123)
-Tenant login: /login
+routes/admin.py — Single Admin Panel
+=====================================
+Simplified admin panel for single admin application.
+No tenant management - all settings are global.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, session
 from functools import wraps
@@ -43,8 +42,8 @@ def admin_login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         # Check ONLY against .env — no DB, no tenant access
-        admin_user = os.getenv('ADMIN_USERNAME', 'superadmin')
-        admin_pass = os.getenv('ADMIN_PASSWORD', 'OutreachOS@2025')
+        admin_user = os.getenv('ADMIN_USERNAME', 'admin')
+        admin_pass = os.getenv('ADMIN_PASSWORD', 'admin123')
         if username == admin_user and password == admin_pass:
             session[ADMIN_SESSION_KEY] = True
             session['admin_username'] = username
@@ -63,23 +62,21 @@ def admin_logout():
     return redirect(url_for('admin.admin_login'))
 
 
-# ── TENANT LIST ───────────────────────────────────────────────
+# ── ADMIN DASHBOARD ───────────────────────────────────────────
 @admin_bp.route('/')
 @admin_required
 def admin_dashboard():
-    """Platform Super Admin Dashboard — infrastructure overview."""
+    """Single Admin Dashboard — application overview."""
     conn = get_db()
     stats = {
-        'total_workspaces': conn.execute("SELECT COUNT(*) FROM workspaces").fetchone()[0],
-        'total_users': conn.execute("SELECT COUNT(*) FROM users").fetchone()[0],
         'total_contacts': conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0],
         'total_sent': conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0],
         'total_failed': conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('failed','bounced')").fetchone()[0],
         'total_campaigns': conn.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0],
         'active_campaigns': conn.execute("SELECT COUNT(*) FROM campaigns WHERE job_status IN ('running','queued')").fetchone()[0],
     }
-    # SMTP health across all tenants
-    smtp_accounts = conn.execute("SELECT email, health_score, active, sent_today, daily_limit, workspace_id FROM smtp_accounts ORDER BY health_score ASC").fetchall()
+    # SMTP health
+    smtp_accounts = conn.execute("SELECT email, health_score, active, sent_today, daily_limit FROM smtp_accounts ORDER BY health_score ASC").fetchall()
     stats['smtp_total'] = len(smtp_accounts)
     stats['smtp_active'] = sum(1 for s in smtp_accounts if s['active'])
     stats['smtp_at_risk'] = sum(1 for s in smtp_accounts if s['health_score'] < 50 and s['active'])
@@ -91,21 +88,10 @@ def admin_dashboard():
 
     # Recent failed jobs
     failed_campaigns = conn.execute("""
-        SELECT c.id, c.name, c.job_status, c.failed_count, w.name as workspace_name
-        FROM campaigns c LEFT JOIN workspaces w ON c.workspace_id = w.id
-        WHERE c.job_status IN ('failed','cancelled') OR c.failed_count > 5
-        ORDER BY c.started_at DESC LIMIT 10
-    """).fetchall()
-
-    # Top workspaces by volume
-    top_workspaces = conn.execute("""
-        SELECT w.id, w.name, w.plan,
-            COUNT(DISTINCT es.id) as send_count,
-            COUNT(DISTINCT c.id) as contact_count
-        FROM workspaces w
-        LEFT JOIN emails_sent es ON es.workspace_id = w.id
-        LEFT JOIN contacts c ON c.workspace_id = w.id
-        GROUP BY w.id, w.name, w.plan ORDER BY send_count DESC LIMIT 10
+        SELECT id, name, job_status, failed_count
+        FROM campaigns
+        WHERE job_status IN ('failed','cancelled') OR failed_count > 5
+        ORDER BY started_at DESC LIMIT 10
     """).fetchall()
 
     # System logs (last 20)
@@ -131,214 +117,62 @@ def admin_dashboard():
 
     return render_template('admin/dashboard.html',
         stats=stats, smtp_accounts=smtp_accounts,
-        failed_campaigns=failed_campaigns, top_workspaces=top_workspaces,
+        failed_campaigns=failed_campaigns,
         sys_logs=sys_logs, infra=infra)
 
 
-@admin_bp.route('/workspaces')
-@admin_required
-def tenant_list():
-    conn = get_db()
-    workspaces = conn.execute("""
-        SELECT w.id, w.name, w.slug, w.plan, w.created_at, w.updated_at,
-            COUNT(DISTINCT u.id)  as user_count,
-            COUNT(DISTINCT c.id)  as contact_count,
-            COUNT(DISTINCT ca.id) as campaign_count,
-            COUNT(DISTINCT s.id)  as smtp_count
-        FROM workspaces w
-        LEFT JOIN users u         ON u.workspace_id  = w.id
-        LEFT JOIN contacts c      ON c.workspace_id  = w.id
-        LEFT JOIN campaigns ca    ON ca.workspace_id = w.id
-        LEFT JOIN smtp_accounts s ON s.workspace_id  = w.id
-        GROUP BY w.id, w.name, w.slug, w.plan, w.created_at, w.updated_at
-        ORDER BY w.created_at DESC
-    """).fetchall()
-    conn.close()
-    return render_template('admin/tenants.html', workspaces=workspaces)
-
-
-# ── CREATE TENANT ─────────────────────────────────────────────
-@admin_bp.route('/create', methods=['GET', 'POST'])
-@admin_required
-def create_tenant():
-    if request.method == 'POST':
-        workspace_name = request.form.get('workspace_name', '').strip()
-        username       = request.form.get('username', '').strip()
-        password       = request.form.get('password', '').strip()
-        plan           = request.form.get('plan', 'free')
-
-        if not workspace_name or not username or not password:
-            flash('All fields required.', 'error')
-            return render_template('admin/create_tenant.html')
-
-        if len(password) < 6:
-            flash('Password must be at least 6 characters.', 'error')
-            return render_template('admin/create_tenant.html')
-
-        conn = get_db()
-
-        # Check username unique
-        if conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone():
-            conn.close()
-            flash(f'Username "{username}" already exists.', 'error')
-            return render_template('admin/create_tenant.html')
-
-        # Create workspace
-        from services.workspace_service import create_workspace
-        import importlib, sys
-        # Re-import to get fresh module
-        wid = create_workspace(workspace_name)
-
-        # Update plan
-        conn.execute("UPDATE workspaces SET plan=? WHERE id=?", (plan, wid))
-
-        # Create user
-        conn.execute(
-            "INSERT INTO users (username, password_hash, role, workspace_id) VALUES (?,?,?,?)",
-            (username, generate_password_hash(password), 'admin', wid)
-        )
-
-        # Copy default settings
-        from app import DEFAULT_SETTINGS
-        for k, v in DEFAULT_SETTINGS.items():
-            conn.execute("INSERT INTO settings (key, value, workspace_id) VALUES (?,?,?)", (k, v, wid))
-
-        # Copy default automation rules
-        for rule_key, enabled, delay_days, max_followups in [
-            ('no_reply_followup', 1, 2, 3),
-            ('opened_multiple_times', 1, 1, 2),
-            ('interested_pause', 1, 0, 0),
-            ('ooo_retry', 1, 7, 1),
-            ('bounce_pause', 1, 0, 0),
-        ]:
-            conn.execute(
-                "INSERT INTO automation_settings (rule_key,enabled,delay_days,max_followups,workspace_id) VALUES (?,?,?,?,?)",
-                (rule_key, enabled, delay_days, max_followups, wid)
-            )
-
-        conn.commit()
-        conn.close()
-
-        flash(f'Tenant "{workspace_name}" created. Login: {username} / {password}', 'success')
-        return redirect(url_for('admin.tenant_list'))
-
-    return render_template('admin/create_tenant.html')
-
-
-# ── TENANT DETAIL ─────────────────────────────────────────────
-@admin_bp.route('/tenant/<int:wid>')
-@admin_required
-def tenant_detail(wid):
-    conn = get_db()
-    workspace = conn.execute("SELECT * FROM workspaces WHERE id=?", (wid,)).fetchone()
-    if not workspace:
-        conn.close()
-        flash('Workspace not found.', 'error')
-        return redirect(url_for('admin.tenant_list'))
-
-    users     = conn.execute("SELECT id, username, role, created_at FROM users WHERE workspace_id=?", (wid,)).fetchall()
-    campaigns = conn.execute("SELECT id, name, status, created_at FROM campaigns WHERE workspace_id=? ORDER BY created_at DESC LIMIT 10", (wid,)).fetchall()
-    smtp_accs = conn.execute("SELECT id, email, health_score, warmup_stage, active, sent_today FROM smtp_accounts WHERE workspace_id=?", (wid,)).fetchall()
-
-    stats = {
-        'contacts':  conn.execute("SELECT COUNT(*) FROM contacts  WHERE workspace_id=?", (wid,)).fetchone()[0],
-        'campaigns': conn.execute("SELECT COUNT(*) FROM campaigns WHERE workspace_id=?", (wid,)).fetchone()[0],
-        'sent':      conn.execute("SELECT COUNT(*) FROM emails_sent WHERE workspace_id=? AND status='sent'", (wid,)).fetchone()[0],
-        'threads':   conn.execute("SELECT COUNT(*) FROM threads WHERE workspace_id=?", (wid,)).fetchone()[0],
-    }
-    conn.close()
-    return render_template('admin/tenant_detail.html',
-        workspace=workspace, users=users, campaigns=campaigns,
-        smtp_accs=smtp_accs, stats=stats)
-
-
-# ── RESET PASSWORD ────────────────────────────────────────────
-@admin_bp.route('/tenant/<int:wid>/reset_password/<int:user_id>', methods=['POST'])
-@admin_required
-def reset_password(wid, user_id):
-    new_pw = request.form.get('new_password', '').strip()
-    if not new_pw or len(new_pw) < 6:
-        flash('Password must be at least 6 characters.', 'error')
-        return redirect(url_for('admin.tenant_detail', wid=wid))
-    conn = get_db()
-    conn.execute("UPDATE users SET password_hash=? WHERE id=? AND workspace_id=?",
-                 (generate_password_hash(new_pw), user_id, wid))
-    conn.commit()
-    conn.close()
-    flash('Password reset successfully.', 'success')
-    return redirect(url_for('admin.tenant_detail', wid=wid))
-
-
-# ── TOGGLE TENANT PLAN ────────────────────────────────────────
-@admin_bp.route('/tenant/<int:wid>/plan', methods=['POST'])
-@admin_required
-def update_plan(wid):
-    plan = request.form.get('plan', 'free')
-    conn = get_db()
-    conn.execute("UPDATE workspaces SET plan=?, updated_at=? WHERE id=?", (plan, datetime.now(), wid))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True, 'plan': plan})
-
-
-# ── DELETE TENANT ─────────────────────────────────────────────
-@admin_bp.route('/tenant/<int:wid>/delete', methods=['POST'])
-@admin_required
-def delete_tenant(wid):
-    if wid == 1:
-        flash('Cannot delete Default Workspace.', 'error')
-        return redirect(url_for('admin.tenant_list'))
-    conn = get_db()
-    # Cascade delete all tenant data
-    for table in ['email_clicks', 'emails_sent', 'messages', 'threads',
-                  'follow_ups', 'automation_settings', 'ai_usage',
-                  'smtp_accounts', 'campaigns', 'contacts', 'settings', 'users']:
-        try:
-            conn.execute(f"DELETE FROM {table} WHERE workspace_id=?", (wid,))
-        except Exception:
-            pass
-    conn.execute("DELETE FROM workspaces WHERE id=?", (wid,))
-    conn.commit()
-    conn.close()
-    flash('Tenant deleted.', 'success')
-    return redirect(url_for('admin.tenant_list'))
-
-
 # ── AI CONFIG (Global) ────────────────────────────────────────
-AI_CONFIG_KEYS = (
-    'email_groq_keys', 'email_gemini_key', 'email_model_groq',
-    'email_model_gemini', 'email_ai_priority',
-    'copilot_groq_keys', 'copilot_gemini_key',
-    'copilot_model_groq', 'copilot_model_gemini',
-)
-
-
 @admin_bp.route('/ai-config', methods=['GET', 'POST'])
 @admin_required
 def ai_config():
+    """Global AI Configuration - single admin only."""
     conn = get_db()
     if request.method == 'POST':
         data = request.get_json() if request.is_json else request.form
-        for key in AI_CONFIG_KEYS:
-            val = data.get(key)
-            if val is not None:
-                existing = conn.execute("SELECT id FROM settings WHERE key=? AND workspace_id=1", (key,)).fetchone()
-                if existing:
-                    conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=1", (val.strip(), key))
-                else:
-                    conn.execute("INSERT INTO settings (key, value, workspace_id) VALUES (?,?,1)", (key, val.strip()))
+        # Groq API keys
+        groq_keys = data.get('groq_api_keys', '').strip()
+        if groq_keys:
+            existing = conn.execute("SELECT key FROM settings WHERE key=?", ('groq_api_keys',)).fetchone()
+            if existing:
+                conn.execute("UPDATE settings SET value=? WHERE key=?", (groq_keys, 'groq_api_keys'))
+            else:
+                conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", ('groq_api_keys', groq_keys))
+        
+        # Gemini API key
+        gemini_key = data.get('gemini_api_key', '').strip()
+        if gemini_key:
+            existing = conn.execute("SELECT key FROM settings WHERE key=?", ('gemini_api_key',)).fetchone()
+            if existing:
+                conn.execute("UPDATE settings SET value=? WHERE key=?", (gemini_key, 'gemini_api_key'))
+            else:
+                conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", ('gemini_api_key', gemini_key))
+        
+        # AI priority
+        ai_priority = data.get('ai_priority', 'groq,gemini').strip()
+        existing = conn.execute("SELECT key FROM settings WHERE key=?", ('ai_priority',)).fetchone()
+        if existing:
+            conn.execute("UPDATE settings SET value=? WHERE key=?", (ai_priority, 'ai_priority'))
+        else:
+            conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", ('ai_priority', ai_priority))
+        
         conn.commit()
         conn.close()
         if request.is_json:
             return jsonify({'success': True})
-        flash('AI Config saved.', 'success')
+        flash('AI Configuration saved.', 'success')
         return redirect(url_for('admin.ai_config'))
-    # GET
-    settings = {}
-    for key in AI_CONFIG_KEYS:
-        row = conn.execute("SELECT value FROM settings WHERE key=? AND workspace_id=1", (key,)).fetchone()
-        settings[key] = row[0] if row else ''
+    
+    # GET - load current settings
+    groq_keys = conn.execute("SELECT value FROM settings WHERE key=?", ('groq_api_keys',)).fetchone()
+    gemini_key = conn.execute("SELECT value FROM settings WHERE key=?", ('gemini_api_key',)).fetchone()
+    ai_priority = conn.execute("SELECT value FROM settings WHERE key=?", ('ai_priority',)).fetchone()
     conn.close()
+    
+    settings = {
+        'groq_api_keys': groq_keys[0] if groq_keys else '',
+        'gemini_api_key': gemini_key[0] if gemini_key else '',
+        'ai_priority': ai_priority[0] if ai_priority else 'groq,gemini',
+    }
     return render_template('admin/ai_config.html', settings=settings)
 
 
@@ -374,50 +208,6 @@ def ai_config_test():
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)[:100]})
     return jsonify({'success': False, 'error': 'Unknown provider'})
-
-
-# ── API: TENANT STATS ─────────────────────────────────────────
-@admin_bp.route('/api/stats')
-@admin_required
-def api_stats():
-    conn = get_db()
-    total_workspaces = conn.execute("SELECT COUNT(*) FROM workspaces").fetchone()[0]
-    total_users      = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    total_contacts   = conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0]
-    total_sent       = conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0]
-    conn.close()
-    return jsonify({
-        'workspaces': total_workspaces,
-        'users': total_users,
-        'contacts': total_contacts,
-        'emails_sent': total_sent,
-    })
-
-
-# ── FIX CONTACTS WORKSPACE ───────────────────────────────────
-@admin_bp.route('/fix_contacts_workspace', methods=['POST'])
-@admin_required
-def fix_contacts_workspace():
-    conn = get_db()
-    conn.execute("UPDATE contacts SET workspace_id=1 WHERE workspace_id IS NULL")
-    conn.execute("UPDATE users SET workspace_id=1 WHERE workspace_id IS NULL")
-    conn.commit()
-    total = conn.execute("SELECT COUNT(*) FROM contacts WHERE workspace_id=1").fetchone()[0]
-    conn.close()
-    return jsonify({'success': True, 'contacts_in_workspace_1': total})
-
-
-@admin_bp.route('/workspace_debug')
-@admin_required
-def workspace_debug():
-    conn = get_db()
-    users = conn.execute('SELECT id, username, workspace_id FROM users ORDER BY id').fetchall()
-    contact_dist = conn.execute('SELECT workspace_id, COUNT(*) as cnt FROM contacts GROUP BY workspace_id ORDER BY workspace_id').fetchall()
-    conn.close()
-    return jsonify({
-        'users': [{'id': u['id'], 'username': u['username'], 'workspace_id': u['workspace_id']} for u in users],
-        'contacts_by_workspace': [{'workspace_id': r['workspace_id'], 'count': r['cnt']} for r in contact_dist]
-    })
 
 
 # ── BLOG MANAGEMENT ───────────────────────────────────────────

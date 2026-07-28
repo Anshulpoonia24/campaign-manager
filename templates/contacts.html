@@ -582,38 +582,42 @@ function fetchContext(id, btn, name, company) {
 
 // ── ENRICH ALL ──
 function enrichAll(force) {
-  const msg = force ? 'Re-enrich ALL contacts with website + AI? Existing context will be overwritten.' : 'Enrich contacts that have no AI context yet?';
+  const msg = force
+    ? 'Re-enrich ALL contacts using the full SDR research pipeline? This will overwrite existing context.'
+    : 'Run deep research on contacts that have no AI context yet?';
   if(!confirm(msg)) return;
   const btn = force ? document.getElementById('enrichBtn') : document.getElementById('researchBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spin" style="border-top-color:#fff;"></span> Running...';
   const banner = document.getElementById('enrichBanner');
   banner.style.display = 'flex';
-  document.getElementById('enrichBannerText').textContent = 'AI enriching contacts...';
-  fetch('/api/enrich_all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({force})})
-  .then(r=>{
-    if(!r.ok) throw new Error(`Server error ${r.status}`);
-    return r.json();
-  }).then(d=>{
-    btn.disabled=false;
+  document.getElementById('enrichBannerText').textContent = 'Starting deep research pipeline...';
+  document.getElementById('enrichProgress').style.width = '10%';
+
+  fetch('/api/contacts/bulk_enrich_intelligence', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({force})
+  })
+  .then(r=>{ if(!r.ok) throw new Error(`Server error ${r.status}`); return r.json(); })
+  .then(d=>{
+    btn.disabled = false;
     btn.innerHTML = force ? '<i class="fas fa-sync-alt me-1"></i>Re-enrich All' : '<i class="fas fa-sparkles me-1"></i>Enrich New';
-    if(d.queued) {
-      document.getElementById('enrichBannerText').textContent = `⚡ Queued ${d.total} contacts for enrichment — processing in background...`;
-      document.getElementById('enrichProgress').style.width='50%';
-      setTimeout(()=>location.reload(), 15000);
-    } else if(d.enriched > 0 || d.failed > 0) {
-      document.getElementById('enrichBannerText').textContent = `✅ Done — ${d.enriched} enriched, ${d.failed} failed`;
-      document.getElementById('enrichProgress').style.width='100%';
-      setTimeout(()=>location.reload(),1500);
-    } else {
+    if(d.queued === 0) {
       document.getElementById('enrichBannerText').textContent = '✅ All contacts already enriched — nothing to do.';
-      document.getElementById('enrichProgress').style.width='100%';
+      document.getElementById('enrichProgress').style.width = '100%';
+    } else {
+      document.getElementById('enrichBannerText').textContent =
+        `⚡ Deep research running for ${d.queued} contacts in background (website crawl + AI synthesis). Page will refresh in 30s...`;
+      document.getElementById('enrichProgress').style.width = '40%';
+      setTimeout(()=>location.reload(), 30000);
     }
-  }).catch(e=>{
-    btn.disabled=false;
+  })
+  .catch(e=>{
+    btn.disabled = false;
     btn.innerHTML = force ? '<i class="fas fa-sync-alt me-1"></i>Re-enrich All' : '<i class="fas fa-sparkles me-1"></i>Enrich New';
     document.getElementById('enrichBannerText').textContent = `❌ Error: ${e.message}`;
-    document.getElementById('enrichProgress').style.width='0%';
+    document.getElementById('enrichProgress').style.width = '0%';
   });
 }
 
@@ -722,21 +726,75 @@ function refreshContext() {
   if(!id) return;
   btn.disabled = true;
   btn.innerHTML = '<span class="spin" style="border-top-color:#fff;"></span>';
-  document.getElementById('drawerBody').innerHTML = `<div class="text-center py-5 text-muted"><div class="spin mx-auto mb-3" style="width:24px;height:24px;border-width:3px;border-top-color:#6366f1;"></div><div style="font-size:13px;">Re-generating intelligence...</div></div>`;
-  fetch('/api/fetch_context/'+id).then(r=>r.json()).then(d=>{
+
+  // Clear stale cache so we always show fresh result
+  delete contextCache[id];
+
+  const showSpinner = (msg) => {
+    document.getElementById('drawerBody').innerHTML =
+      `<div class="text-center py-5 text-muted">
+        <div class="spin mx-auto mb-3" style="width:24px;height:24px;border-width:3px;border-top-color:#6366f1;"></div>
+        <div style="font-size:13px;">${msg}</div>
+      </div>`;
+  };
+
+  showSpinner('Starting deep research...');
+
+  // Step 1: trigger research
+  fetch('/api/contacts/'+id+'/enrich_intelligence', {method:'POST'})
+  .then(r=>r.json())
+  .then(d=>{
+    if(!d.success) throw new Error(d.error || 'Failed to start research');
+    showSpinner('Researching company website, news, tech stack...');
+    // Step 2: poll until done
+    let attempts = 0;
+    const maxAttempts = 60; // 60 * 3s = 3 min max
+    const poll = () => {
+      if(attempts++ > maxAttempts) {
+        btn.disabled=false;
+        btn.innerHTML='<i class="fas fa-sync-alt me-1"></i>Re-generate';
+        document.getElementById('drawerBody').innerHTML =
+          `<div class="text-center py-4 text-danger"><i class="fas fa-exclamation-circle fa-2x mb-2"></i><p>Research timed out. Try again.</p></div>`;
+        return;
+      }
+      fetch('/api/contacts/'+id+'/research_status')
+      .then(r=>r.json())
+      .then(s=>{
+        if(s.status === 'processing') {
+          const msgs = [
+            'Crawling subpages...', 'Checking Crunchbase & news...',
+            'Detecting tech stack...', 'Scoring buying signals...',
+            'Running AI synthesis...'
+          ];
+          showSpinner(msgs[Math.min(Math.floor(attempts/4), msgs.length-1)]);
+          setTimeout(poll, 3000);
+        } else if(s.done) {
+          btn.disabled=false;
+          btn.innerHTML='<i class="fas fa-sync-alt me-1"></i>Re-generate';
+          const ctx = s.context || '';
+          contextCache[id] = ctx;
+          renderDrawer(ctx, company);
+          document.getElementById('ctx-'+id).innerHTML =
+            `<button class="ai-state ai-ready" onclick="openDrawer(${id},'${name}','${company}')">
+              <i class="fas fa-check-circle" style="font-size:10px;"></i> AI Enriched &nbsp;<i class="fas fa-eye" style="font-size:9px;opacity:0.7;"></i>
+            </button>`;
+        } else {
+          // failed or unknown
+          btn.disabled=false;
+          btn.innerHTML='<i class="fas fa-sync-alt me-1"></i>Re-generate';
+          document.getElementById('drawerBody').innerHTML =
+            `<div class="text-center py-4 text-danger"><i class="fas fa-exclamation-circle fa-2x mb-2"></i><p>Research failed (${s.status}). Try again.</p></div>`;
+        }
+      })
+      .catch(()=>setTimeout(poll, 3000));
+    };
+    setTimeout(poll, 3000);
+  })
+  .catch(e=>{
     btn.disabled=false;
     btn.innerHTML='<i class="fas fa-sync-alt me-1"></i>Re-generate';
-    if(d.success) {
-      contextCache[id] = d.context;
-      renderDrawer(d.context, company);
-      // update table cell
-      document.getElementById('ctx-'+id).innerHTML =
-        `<button class="ai-state ai-ready" onclick="openDrawer(${id},'${name}','${company}')">
-          <i class="fas fa-check-circle" style="font-size:10px;"></i> AI Enriched &nbsp;<i class="fas fa-eye" style="font-size:9px;opacity:0.7;"></i>
-        </button>`;
-    } else {
-      document.getElementById('drawerBody').innerHTML = `<div class="text-center py-4 text-danger"><i class="fas fa-exclamation-circle fa-2x mb-2"></i><p>${d.error||'Generation failed'}</p></div>`;
-    }
+    document.getElementById('drawerBody').innerHTML =
+      `<div class="text-center py-4 text-danger"><i class="fas fa-exclamation-circle fa-2x mb-2"></i><p>${e.message||'Failed'}</p></div>`;
   });
 }
 

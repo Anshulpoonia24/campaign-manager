@@ -14,7 +14,7 @@ from utils.db import get_db
 WARMUP_LIMITS = {1: 10, 2: 20, 3: 35, 4: 50, 5: 100}
 
 
-def get_next_smtp_account(workspace_id=1):
+def get_next_smtp_account():
     """
     Pick the best available SMTP account using atomic UPDATE+SELECT.
     Prevents race condition where 2 workers pick the same account.
@@ -31,12 +31,11 @@ def get_next_smtp_account(workspace_id=1):
                 WHERE active = 1
                 AND sent_today < daily_limit
                 AND health_score > 20
-                AND workspace_id = ?
                 ORDER BY last_used ASC NULLS FIRST
                 LIMIT 1
             )
             RETURNING *
-        """, (datetime.now(), workspace_id)).fetchone()
+        """, (datetime.now(),)).fetchone()
     else:
         # SQLite: non-atomic fallback (single worker thread, acceptable)
         account = conn.execute("""
@@ -44,10 +43,9 @@ def get_next_smtp_account(workspace_id=1):
             WHERE active = 1
             AND sent_today < daily_limit
             AND health_score > 20
-            AND workspace_id = ?
             ORDER BY CASE WHEN last_used IS NULL THEN 0 ELSE 1 END, last_used ASC
             LIMIT 1
-        """, (workspace_id,)).fetchone()
+        """).fetchone()
         if account:
             conn.execute("""
                 UPDATE smtp_accounts SET last_used=?, sent_today=sent_today+1 WHERE id=?

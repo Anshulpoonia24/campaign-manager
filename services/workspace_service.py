@@ -1,69 +1,45 @@
 """
-services/workspace_service.py — Workspace Isolation Layer
-==========================================================
-Simple, safe multi-tenant helpers.
-Every query that touches tenant data goes through these helpers.
-
-Usage in routes:
-    from services.workspace_service import get_wid, ws_contacts, ws_campaigns
-
-    wid = get_wid()                          # current user's workspace_id
-    contacts = ws_contacts(wid)              # all contacts for this workspace
-    campaigns = ws_campaigns(wid)            # all campaigns for this workspace
+services/workspace_service.py — Single-admin data helpers
+===========================================================
+Single admin app: all data belongs to the single admin.
+All queries fetch all records (no workspace isolation).
 """
-from flask_login import current_user
 from utils.db import get_db
 
 
-# ── WORKSPACE ID HELPERS ──────────────────────────────────────
-
 def get_wid():
-    """
-    Return the workspace_id for the currently logged-in user.
-    Falls back to 1 (Default Workspace) if not set.
-    Safe to call from any route.
-    """
-    try:
-        if current_user and current_user.is_authenticated:
-            return getattr(current_user, 'workspace_id', 1) or 1
-    except Exception:
-        pass
+    """Return 1 for single admin app. Kept for backward compatibility."""
     return 1
 
 
 def get_wid_for_user(user_id):
-    """Return workspace_id for a specific user_id."""
+    """Return 1 for single admin app. Kept for backward compatibility."""
+    return 1
+
+
+# ── DATA QUERIES ──────────────────────────────────────────────
+
+def ws_contacts(wid=1, filter_type='all'):
+    """Get contacts - no workspace filtering for single admin."""
     conn = get_db()
     try:
-        row = conn.execute('SELECT workspace_id FROM users WHERE id=?', (user_id,)).fetchone()
-        return row['workspace_id'] if row and row['workspace_id'] else 1
-    finally:
-        conn.close()
-
-
-# ── WORKSPACE SCOPED QUERIES ──────────────────────────────────
-
-def ws_contacts(wid, filter_type='all'):
-    """Get all contacts for a workspace with optional filter."""
-    conn = get_db()
-    try:
-        base = "SELECT * FROM contacts WHERE workspace_id=?"
+        base = "SELECT * FROM contacts"
         if filter_type == 'valid':
-            return conn.execute(base + " AND email_valid=1 ORDER BY created_at DESC", (wid,)).fetchall()
+            return conn.execute(base + " WHERE email_valid=1 ORDER BY created_at DESC").fetchall()
         elif filter_type == 'invalid':
-            return conn.execute(base + " AND email_valid=0 ORDER BY created_at DESC", (wid,)).fetchall()
+            return conn.execute(base + " WHERE email_valid=0 ORDER BY created_at DESC").fetchall()
         elif filter_type == 'new':
-            return conn.execute(base + " AND status='new' ORDER BY created_at DESC", (wid,)).fetchall()
+            return conn.execute(base + " WHERE status='new' ORDER BY created_at DESC").fetchall()
         elif filter_type == 'sent':
-            return conn.execute(base + " AND status='sent' ORDER BY created_at DESC", (wid,)).fetchall()
+            return conn.execute(base + " WHERE status='sent' ORDER BY created_at DESC").fetchall()
         else:
-            return conn.execute(base + " ORDER BY created_at DESC", (wid,)).fetchall()
+            return conn.execute(base + " ORDER BY created_at DESC").fetchall()
     finally:
         conn.close()
 
 
-def ws_campaigns(wid):
-    """Get all campaigns for a workspace with send stats."""
+def ws_campaigns(wid=1):
+    """Get campaigns - no workspace filtering for single admin."""
     conn = get_db()
     try:
         return conn.execute("""
@@ -73,29 +49,27 @@ def ws_campaigns(wid):
                 COUNT(CASE WHEN es.replied=1                      THEN 1 END) as replied_count,
                 COUNT(CASE WHEN es.status IN ('bounced','failed') THEN 1 END) as bounce_count
             FROM campaigns c
-            LEFT JOIN emails_sent es ON es.campaign_id = c.id AND es.workspace_id = ?
-            WHERE c.workspace_id = ?
+            LEFT JOIN emails_sent es ON es.campaign_id = c.id
             GROUP BY c.id
             ORDER BY c.created_at DESC
-        """, (wid, wid)).fetchall()
+        """).fetchall()
     finally:
         conn.close()
 
 
-def ws_smtp_accounts(wid):
-    """Get all SMTP accounts for a workspace."""
+def ws_smtp_accounts(wid=1):
+    """Get SMTP accounts - no workspace filtering for single admin."""
     conn = get_db()
     try:
         return conn.execute(
-            "SELECT * FROM smtp_accounts WHERE workspace_id=? ORDER BY active DESC, health_score DESC",
-            (wid,)
+            "SELECT * FROM smtp_accounts ORDER BY active DESC, health_score DESC"
         ).fetchall()
     finally:
         conn.close()
 
 
-def ws_threads(wid, status_filter=None):
-    """Get all inbox threads for a workspace."""
+def ws_threads(wid=1, status_filter=None):
+    """Get threads - no workspace filtering for single admin."""
     conn = get_db()
     try:
         base = """
@@ -105,126 +79,83 @@ def ws_threads(wid, status_filter=None):
                    c.email   as contact_email,
                    camp.name as campaign_name
             FROM threads t
-            LEFT JOIN contacts c    ON t.contact_id  = c.id
+            LEFT JOIN contacts c     ON t.contact_id  = c.id
             LEFT JOIN campaigns camp ON t.campaign_id = camp.id
-            WHERE (t.workspace_id = ? OR t.workspace_id IS NULL)
-            AND t.status != 'ignored'
+            WHERE t.status != 'ignored'
         """
         if status_filter:
             return conn.execute(base + " AND t.status=? ORDER BY t.last_message_at DESC",
-                                (wid, status_filter)).fetchall()
-        return conn.execute(base + " ORDER BY t.last_message_at DESC", (wid,)).fetchall()
+                                (status_filter,)).fetchall()
+        return conn.execute(base + " ORDER BY t.last_message_at DESC").fetchall()
     finally:
         conn.close()
 
 
-def ws_settings(wid):
-    """Get all settings for a workspace as a dict."""
+def ws_settings(wid=1):
+    """Get settings - no workspace filtering for single admin."""
     conn = get_db()
     try:
-        rows = conn.execute(
-            "SELECT key, value FROM settings WHERE workspace_id=?", (wid,)
-        ).fetchall()
+        rows = conn.execute("SELECT key, value FROM settings").fetchall()
         return {r['key']: r['value'] for r in rows}
     finally:
         conn.close()
 
 
-def ws_get_setting(wid, key, default=''):
-    """Get a single setting for a workspace."""
+def ws_get_setting(wid=1, key='', default=''):
+    """Get setting - no workspace filtering for single admin."""
     conn = get_db()
     try:
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key=? AND workspace_id=?", (key, wid)
-        ).fetchone()
+        row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
         return row['value'] if row else default
     finally:
         conn.close()
 
 
-def ws_set_setting(wid, key, value):
-    """Set a setting for a workspace (upsert)."""
+def ws_set_setting(wid=1, key='', value=''):
+    """Set setting - no workspace filtering for single admin."""
     conn = get_db()
     try:
-        existing = conn.execute(
-            "SELECT key FROM settings WHERE key=? AND workspace_id=?", (key, wid)
-        ).fetchone()
+        existing = conn.execute("SELECT key FROM settings WHERE key=?", (key,)).fetchone()
         if existing:
-            conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=?",
-                         (value, key, wid))
+            conn.execute("UPDATE settings SET value=? WHERE key=?", (value, key))
         else:
-            conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)",
-                         (key, value, wid))
+            conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, value))
         conn.commit()
     finally:
         conn.close()
 
 
-def ws_stats(wid):
-    """Get dashboard stats for a workspace."""
+def ws_stats(wid=1):
+    """Get stats - no workspace filtering for single admin."""
     conn = get_db()
     try:
         return {
-            'total_contacts': conn.execute(
-                "SELECT COUNT(*) FROM contacts WHERE workspace_id=?", (wid,)).fetchone()[0],
-            'total_sent': conn.execute(
-                "SELECT COUNT(*) FROM emails_sent WHERE workspace_id=? AND status='sent'", (wid,)).fetchone()[0],
-            'total_bounced': conn.execute(
-                "SELECT COUNT(*) FROM emails_sent WHERE workspace_id=? AND status IN ('bounced','failed')", (wid,)).fetchone()[0],
-            'total_opened': conn.execute(
-                "SELECT COUNT(*) FROM emails_sent WHERE workspace_id=? AND opened=1", (wid,)).fetchone()[0],
-            'total_replied': conn.execute(
-                "SELECT COUNT(*) FROM emails_sent WHERE workspace_id=? AND replied=1", (wid,)).fetchone()[0],
-            'total_clicks': conn.execute(
-                "SELECT COUNT(DISTINCT contact_id) FROM email_clicks WHERE contact_id IS NOT NULL AND workspace_id=?", (wid,)).fetchone()[0],
-            'meetings_detected': conn.execute(
-                "SELECT COUNT(*) FROM threads WHERE workspace_id=? AND status='meeting'", (wid,)).fetchone()[0],
+            'total_contacts': conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0],
+            'total_sent':     conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status='sent'").fetchone()[0],
+            'total_bounced':  conn.execute("SELECT COUNT(*) FROM emails_sent WHERE status IN ('bounced','failed')").fetchone()[0],
+            'total_opened':   conn.execute("SELECT COUNT(*) FROM emails_sent WHERE opened=1").fetchone()[0],
+            'total_replied':  conn.execute("SELECT COUNT(*) FROM emails_sent WHERE replied=1").fetchone()[0],
+            'total_clicks':   conn.execute("SELECT COUNT(DISTINCT contact_id) FROM email_clicks WHERE contact_id IS NOT NULL").fetchone()[0],
+            'meetings_detected': conn.execute("SELECT COUNT(*) FROM threads WHERE status='meeting'").fetchone()[0],
         }
     finally:
         conn.close()
 
 
-# ── WORKSPACE CREATION ────────────────────────────────────────
-
 def create_workspace(name, slug=None):
-    """Create a new workspace. Returns workspace_id."""
-    import re
-    from datetime import datetime
-    if not slug:
-        slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
-    conn = get_db()
-    try:
-        # Ensure unique slug
-        base_slug = slug
-        i = 1
-        while conn.execute("SELECT id FROM workspaces WHERE slug=?", (slug,)).fetchone():
-            slug = f"{base_slug}-{i}"
-            i += 1
-        conn.execute(
-            "INSERT INTO workspaces (name, slug, plan, created_at) VALUES (?,?,?,?)",
-            (name, slug, 'free', datetime.now())
-        )
-        conn.commit()
-        row = conn.execute("SELECT id FROM workspaces WHERE slug=?", (slug,)).fetchone()
-        return row['id']
-    finally:
-        conn.close()
+    """No-op for single-admin app — always returns 1."""
+    return 1
 
 
 def assign_user_workspace(user_id, workspace_id):
-    """Assign a user to a workspace."""
-    conn = get_db()
-    try:
-        conn.execute("UPDATE users SET workspace_id=? WHERE id=?", (workspace_id, user_id))
-        conn.commit()
-    finally:
-        conn.close()
+    """No-op for single-admin app."""
+    pass
 
 
 def get_workspace(workspace_id):
-    """Get workspace details."""
+    """Get workspace 1 for single-admin app."""
     conn = get_db()
     try:
-        return conn.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
+        return conn.execute("SELECT * FROM workspaces WHERE id=1").fetchone()
     finally:
         conn.close()

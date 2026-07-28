@@ -58,14 +58,12 @@ def add_contact():
             website = f'https://{domain}'
 
     conn = get_db()
-    from services.workspace_service import get_wid
-    wid = get_wid()
-    existing = conn.execute("SELECT id, name FROM contacts WHERE email=? AND workspace_id=?", (email, wid)).fetchone()
+    existing = conn.execute("SELECT id, name FROM contacts WHERE email=?", (email,)).fetchone()
     if existing:
         flash(f'{email} already exists as "{existing["name"]}"!', 'error')
     else:
-        conn.execute("INSERT OR IGNORE INTO contacts (name, company, email, designation, website, workspace_id) VALUES (?,?,?,?,?,?)",
-                     (name, company, email, designation, website, wid))
+        conn.execute("INSERT OR IGNORE INTO contacts (name, company, email, designation, website) VALUES (?,?,?,?,?)",
+                     (name, company, email, designation, website))
         conn.commit()
         flash(f'{name} ({email}) added!', 'success')
     conn.close()
@@ -124,6 +122,12 @@ def upload_contacts():
                     col_map['designation'] = col
                 elif 'designation' in cl or 'title' in cl or 'role' in cl or 'position' in cl:
                     col_map['designation'] = col
+            # Website detection
+            if not col_map.get('website'):
+                if cl in ['website', 'url', 'site', 'web', 'homepage', 'company url', 'company website']:
+                    col_map['website'] = col
+                elif 'website' in cl or ('url' in cl and 'email' not in cl):
+                    col_map['website'] = col
             # Priority detection
             if not col_map.get('priority'):
                 if 'priority' in cl or 'importance' in cl or 'tier' in cl:
@@ -164,20 +168,20 @@ def upload_contacts():
         added = 0
         skipped = 0
         skipped_names = []
-        from services.workspace_service import get_wid
-        wid = get_wid()
         for _, row in df.iterrows():
             name        = str(row.get(col_map.get('name', '')) or '').strip() if 'name' in col_map else ''
             email       = str(row.get(col_map['email']) or '').strip().lower()
             company     = str(row.get(col_map.get('company', '')) or '').strip() if 'company' in col_map else ''
             designation = str(row.get(col_map.get('designation', '')) or '').strip() if 'designation' in col_map else ''
             priority    = str(row.get(col_map.get('priority', '')) or '').strip() if 'priority' in col_map else ''
+            website     = str(row.get(col_map.get('website', '')) or '').strip() if 'website' in col_map else ''
 
             # Fix nan values
             if name.lower() == 'nan': name = ''
             if company.lower() == 'nan': company = ''
             if designation.lower() == 'nan': designation = ''
             if priority.lower() == 'nan': priority = ''
+            if website.lower() == 'nan': website = ''
 
             if not email or '@' not in email:
                 skipped += 1
@@ -198,15 +202,26 @@ def upload_contacts():
                 contact_name = name if name else single_email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
                 contact_name = contact_name.strip().title()
 
-                existing = conn.execute("SELECT id, name FROM contacts WHERE email=? AND workspace_id=?", (single_email, wid)).fetchone()
+                # Auto-derive website from email domain if not provided
+                contact_website = website
+                if not contact_website:
+                    domain = single_email.split('@')[1]
+                    FREE_DOMAINS = {'gmail.com','yahoo.com','hotmail.com','outlook.com','live.com','icloud.com','protonmail.com','aol.com'}
+                    if domain not in FREE_DOMAINS:
+                        contact_website = f'https://{domain}'
+
+                existing = conn.execute("SELECT id, name, website FROM contacts WHERE email=?", (single_email,)).fetchone()
                 if existing:
+                    # Update website if sheet has one and contact doesn't
+                    if contact_website and not existing['website']:
+                        conn.execute("UPDATE contacts SET website=? WHERE id=?", (contact_website, existing['id']))
                     skipped += 1
                     skipped_names.append(f"{existing['name']} ({single_email})")
                     continue
 
                 conn.execute(
-                    "INSERT OR IGNORE INTO contacts (name, company, email, designation, priority, workspace_id) VALUES (?,?,?,?,?,?)",
-                    (contact_name, company, single_email, designation, priority, wid)
+                    "INSERT OR IGNORE INTO contacts (name, company, email, designation, priority, website) VALUES (?,?,?,?,?,?)",
+                    (contact_name, company, single_email, designation, priority, contact_website)
                 )
                 added += 1
 
@@ -217,7 +232,7 @@ def upload_contacts():
             if len(skipped_names) <= 10:
                 skip_info = ' | Duplicates: ' + ', '.join(skipped_names)
             else:
-                skip_info = f' | Duplicates: {', '.join(skipped_names[:10])}... +{len(skipped_names)-10} more'
+                skip_info = f' | Duplicates: {", ".join(skipped_names[:10])}... +{len(skipped_names)-10} more'
         flash(f'{added} contacts added, {skipped} skipped (duplicate/invalid){skip_info} | Detected: {mapping_info}', 'success')
         app_logger, *_ = _get_app_globals()
         app_logger.info(f'Upload: {added} added, {skipped} skipped | File: {file.filename} | by {current_user.username}')
@@ -297,8 +312,6 @@ def delete_campaign(campaign_id):
 def api_contacts_filter():
     """Filter contacts with industry/country/size/score/enrichment filters."""
     from services.industry_detector import filter_contacts
-    from services.workspace_service import get_wid
-    wid = get_wid()
     filters = {
         'industry':    request.args.get('industry', ''),
         'country':     request.args.get('country', ''),
@@ -311,7 +324,7 @@ def api_contacts_filter():
     }
     page     = int(request.args.get('page', 1))
     per_page = int(request.args.get('per_page', 50))
-    result   = filter_contacts(wid, filters, page, per_page)
+    result   = filter_contacts(filters, page, per_page)
     # Serialize datetimes
     for c in result['contacts']:
         for k in ('created_at', 'last_enriched_at'):
@@ -325,26 +338,35 @@ def api_contacts_filter():
 def api_industry_breakdown():
     """Get contact count by industry."""
     from services.industry_detector import get_industry_breakdown
-    from services.workspace_service import get_wid
-    return jsonify({'breakdown': get_industry_breakdown(get_wid())})
+    return jsonify({'breakdown': get_industry_breakdown()})
 
 
 @contacts_bp.route('/api/contacts/<int:contact_id>/enrich_intelligence', methods=['POST'])
 @login_required
 def api_enrich_intelligence(contact_id):
-    from services.workspace_service import get_wid
-    wid = get_wid()
-    _, _, _, _, _, _, _, CELERY_AVAILABLE, has_active_workers = _get_app_globals()
-    if CELERY_AVAILABLE and has_active_workers():
-        from tasks.enrichment_tasks import enrich_single_contact
-        result = enrich_single_contact.apply_async(
-            args=[contact_id, True], queue='enrichment_queue'
-        )
-        return jsonify({'success': True, 'queued': True, 'task_id': result.id})
-    # Sync fallback
-    from services.industry_detector import enrich_contact_intelligence
-    result = enrich_contact_intelligence(contact_id)
-    return jsonify({'success': bool(result), 'data': result})
+    """Force deep re-research on a single contact. Always runs fresh."""
+    # Mark as processing immediately so UI can show spinner
+    conn = get_db()
+    conn.execute("UPDATE contacts SET enrichment_status='processing' WHERE id=?", (contact_id,))
+    conn.commit()
+    conn.close()
+
+    def _run():
+        try:
+            from services.sdr_researcher import research_contact
+            research_contact(contact_id)
+        except Exception as e:
+            from utils.logger import error_logger
+            error_logger.error(f'[ENRICH] contact {contact_id} failed: {e}')
+            conn2 = get_db()
+            conn2.execute("UPDATE contacts SET enrichment_status='failed' WHERE id=?", (contact_id,))
+            conn2.commit()
+            conn2.close()
+
+    t = threading.Thread(target=_run, daemon=False)
+    t.start()
+    return jsonify({'success': True, 'researching': True,
+                    'message': 'Deep research started — poll /api/contacts/<id>/research_status'})
 
 
 @contacts_bp.route('/api/contacts/<int:contact_id>/intelligence')
@@ -376,19 +398,47 @@ def api_contact_intelligence(contact_id):
     return jsonify(data)
 
 
+@contacts_bp.route('/api/contacts/<int:contact_id>/research_status')
+@login_required
+def api_research_status(contact_id):
+    """Poll this after triggering enrich. Returns status + context when done."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT enrichment_status, context, industry, company_size, country, "
+        "technologies, company_description, lead_score, last_enriched_at "
+        "FROM contacts WHERE id=?", (contact_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'error': 'Not found'}), 404
+    status = row['enrichment_status'] or 'pending'
+    done = status == 'enriched'
+    data = {
+        'status':       status,
+        'done':         done,
+        'context':      row['context'] or '',
+        'industry':     row['industry'] or '',
+        'company_size': row['company_size'] or '',
+        'country':      row['country'] or '',
+        'technologies': row['technologies'] or '',
+        'description':  row['company_description'] or '',
+        'lead_score':   row['lead_score'] or 0,
+        'last_enriched_at': str(row['last_enriched_at']) if row['last_enriched_at'] else '',
+    }
+    return jsonify(data)
+
+
 @contacts_bp.route('/api/contacts/industries')
 @login_required
 def api_contact_industries():
     """Get distinct industries in workspace for filter dropdown."""
-    from services.workspace_service import get_wid
     from services.industry_detector import INDUSTRIES
-    wid = get_wid()
     conn = get_db()
     used = conn.execute("""
         SELECT DISTINCT industry FROM contacts
-        WHERE workspace_id=? AND industry IS NOT NULL AND industry != ''
+        WHERE industry IS NOT NULL AND industry != ''
         ORDER BY industry
-    """, (wid,)).fetchall()
+    """).fetchall()
     conn.close()
     used_list = [r['industry'] for r in used]
     return jsonify({'industries': used_list, 'all_industries': INDUSTRIES})
@@ -397,32 +447,25 @@ def api_contact_industries():
 @contacts_bp.route('/api/contacts/bulk_enrich_intelligence', methods=['POST'])
 @login_required
 def api_bulk_enrich_intelligence():
-    """Enrich all contacts with industry intelligence."""
-    from services.workspace_service import get_wid
-    wid = get_wid()
+    """Deep research on contacts (up to 50 at a time). force=True re-enriches all."""
+    force = request.json.get('force', False) if request.is_json else False
     conn = get_db()
-    contacts = conn.execute("""
-        SELECT id FROM contacts
-        WHERE workspace_id=? AND (enrichment_status='pending' OR enrichment_status IS NULL OR enrichment_status='')
-        LIMIT 50
-    """, (wid,)).fetchall()
+    if force:
+        contacts = conn.execute(
+            "SELECT id FROM contacts ORDER BY id LIMIT 50"
+        ).fetchall()
+    else:
+        contacts = conn.execute("""
+            SELECT id FROM contacts
+            WHERE (enrichment_status IS NULL OR enrichment_status='' OR enrichment_status='pending' OR enrichment_status='failed')
+            LIMIT 50
+        """).fetchall()
     conn.close()
     contact_ids = [c['id'] for c in contacts]
     if not contact_ids:
         return jsonify({'success': True, 'message': 'All contacts already enriched', 'queued': 0})
-    _, _, _, _, _, _, _, CELERY_AVAILABLE, has_active_workers = _get_app_globals()
-    if CELERY_AVAILABLE and has_active_workers():
-        from tasks.enrichment_tasks import enrich_single_contact
-        for cid in contact_ids:
-            enrich_single_contact.apply_async(args=[cid, False], queue='enrichment_queue')
-        return jsonify({'success': True, 'queued': len(contact_ids)})
-    # Sync fallback in thread
-    import threading
-    from services.industry_detector import enrich_contacts_bulk_intelligence
-    t = threading.Thread(
-        target=enrich_contacts_bulk_intelligence,
-        args=[contact_ids, wid], daemon=False
-    )
+    from services.sdr_researcher import research_contacts_bulk
+    t = threading.Thread(target=research_contacts_bulk, args=[contact_ids], daemon=False)
     t.start()
     return jsonify({'success': True, 'queued': len(contact_ids), 'mode': 'thread'})
 
@@ -430,10 +473,9 @@ def api_bulk_enrich_intelligence():
 @contacts_bp.route('/contacts')
 @login_required
 def contacts():
-    from services.workspace_service import get_wid, ws_contacts
-    wid = get_wid()
+    from services.workspace_service import ws_contacts
     filter_type = request.args.get('filter', 'all')
-    rows = ws_contacts(wid, filter_type)
+    rows = ws_contacts(filter_type=filter_type)
     return render_template('contacts.html', contacts=rows, filter_type=filter_type)
 
 
@@ -519,70 +561,39 @@ def api_verify_single(contact_id):
 @login_required
 def api_fetch_context(contact_id):
     from utils.ownership import owns_contact
-    contact = owns_contact(contact_id)  # returns row or None, handles its own conn
+    contact = owns_contact(contact_id)
     if not contact:
         return jsonify({'success': False, 'error': 'Not found'})
 
-    # Company-level cache: reuse context from same domain/company
-    domain = contact['email'].split('@')[1] if contact['email'] and '@' in contact['email'] else ''
-    company = (contact['company'] or '').strip()
-    wid = getattr(current_user, 'workspace_id', 1)
-
     conn = get_db()
-    if domain or company:
-        existing = conn.execute("""
-            SELECT context FROM contacts
-            WHERE workspace_id=?
-            AND (context IS NOT NULL AND context != '')
-            AND (
-                (? != '' AND email LIKE ?)
-                OR (? != '' AND LOWER(company) = LOWER(?))
-            )
-            LIMIT 1
-        """, (wid, domain, f'%@{domain}', company, company)).fetchone()
-        if existing:
-            conn.execute("UPDATE contacts SET context=? WHERE id=?", (existing['context'], contact_id))
-            conn.commit()
-            conn.close()
-            return jsonify({'success': True, 'context': existing['context'], 'cached': True})
+    conn.execute("UPDATE contacts SET enrichment_status='processing' WHERE id=?", (contact_id,))
+    conn.commit()
+    conn.close()
 
-    prompt = f"""In 1-2 short bullet points, tell me the latest publicly known context about {contact['company']}.
-Include: what they do, recent funding/news, tech stack, or growth stage.
-Only use WELL KNOWN facts. If unsure, say what the company likely does based on name.
-Keep it under 50 words. No fluff. Plain text, no markdown."""
+    def _run():
+        try:
+            from services.sdr_researcher import research_contact
+            research_contact(contact_id)
+        except Exception as e:
+            from utils.logger import error_logger
+            error_logger.error(f'[RESEARCH] fetch_context failed: {e}')
 
-    try:
-        _, get_setting, call_groq, call_gemini, *_ = _get_app_globals()
-        text, err = call_groq(prompt)
-        if not text:
-            text, err = call_gemini(prompt)
-        if not text:
-            conn.close()
-            return jsonify({'success': False, 'error': err or 'AI generation failed'})
-
-        text = text.strip()
-        conn.execute("UPDATE contacts SET context=? WHERE id=?", (text, contact_id))
-        conn.execute("INSERT INTO ai_usage (provider, purpose, success, workspace_id) VALUES ('groq','research',1,?)", (wid,))
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True, 'context': text})
-    except Exception as e:
-        conn.close()
-        return jsonify({'success': False, 'error': str(e)[:100]})
+    t = threading.Thread(target=_run, daemon=False)
+    t.start()
+    return jsonify({'success': True, 'researching': True,
+                    'message': 'Deep research started — poll /api/contacts/<id>/research_status'})
 
 
 @contacts_bp.route('/api/fetch_all_context', methods=['POST'])
 @login_required
 def api_fetch_all_context():
-    from services.workspace_service import get_wid
     contact_ids = request.json.get('contact_ids', [])
-    wid = get_wid()
     results = []
     # company_cache: domain/company -> context already fetched this run
     company_cache = {}
     conn = get_db()
     for cid in contact_ids:
-        contact = conn.execute("SELECT id, name, company, email FROM contacts WHERE id=? AND workspace_id=?", (cid, wid)).fetchone()
+        contact = conn.execute("SELECT id, name, company, email FROM contacts WHERE id=?", (cid,)).fetchone()
         if not contact:
             continue
         domain = contact['email'].split('@')[1] if contact['email'] and '@' in contact['email'] else ''
@@ -594,15 +605,15 @@ def api_fetch_all_context():
             conn.commit()
             results.append({'id': cid, 'context': company_cache[cache_key]})
             continue
-        # Reuse if another contact in same workspace already has context
+        # Reuse if another contact already has context
         if cache_key:
             existing = conn.execute("""
                 SELECT context FROM contacts
-                WHERE workspace_id=? AND (context IS NOT NULL AND context != '')
+                WHERE (context IS NOT NULL AND context != '')
                 AND (email LIKE ? OR LOWER(company)=?)
                 AND id != ?
                 LIMIT 1
-            """, (wid, f'%@{domain}' if domain else '%', company, cid)).fetchone()
+            """, (f'%@{domain}' if domain else '%', company, cid)).fetchone()
             if existing:
                 company_cache[cache_key] = existing['context']
                 conn.execute("UPDATE contacts SET context=? WHERE id=?", (existing['context'], cid))
@@ -654,9 +665,9 @@ def api_enrich_all():
     app_logger, get_setting, call_groq, call_gemini, *_ = _get_app_globals()
     conn = get_db()
     if force:
-        contacts_list = conn.execute("SELECT id, name, company, email FROM contacts WHERE workspace_id=?", (get_wid_safe(),)).fetchall()
+        contacts_list = conn.execute("SELECT id, name, company, email FROM contacts WHERE email_valid=1").fetchall()
     else:
-        contacts_list = conn.execute("SELECT id, name, company, email FROM contacts WHERE (context IS NULL OR context='') AND workspace_id=?", (get_wid_safe(),)).fetchall()
+        contacts_list = conn.execute("SELECT id, name, company, email FROM contacts WHERE (context IS NULL OR context='')").fetchall()
     enriched = 0
     failed = 0
 
@@ -791,18 +802,18 @@ def api_generate_all():
 @login_required
 def api_audience_count():
     """Return contact count matching campaign audience filters."""
-    from services.workspace_service import get_wid
-    wid       = get_wid()
     min_score = int(request.args.get('min_score', 0))
     valid_only = request.args.get('valid_only', '0') == '1'
     company   = request.args.get('company', '').strip().lower()
 
     conn = get_db()
-    sql    = "SELECT COUNT(*) FROM contacts WHERE workspace_id=?"
-    params = [wid]
+    sql    = "SELECT COUNT(*) FROM contacts"
+    params = []
 
     if valid_only:
-        sql += " AND email_valid=1"
+        sql += " WHERE email_valid=1"
+    else:
+        sql += " WHERE 1=1"
     if min_score > 0:
         sql += " AND COALESCE(lead_score,0) >= ?"
         params.append(min_score)
@@ -818,11 +829,9 @@ def api_audience_count():
 @contacts_bp.route('/api/verify_status')
 @login_required
 def api_verify_status():
-    from services.workspace_service import get_wid
-    wid = get_wid()
     conn = get_db()
     all_contacts = conn.execute(
-        "SELECT id, name, email, email_valid, validation_reason FROM contacts WHERE workspace_id=? ORDER BY id", (wid,)
+        "SELECT id, name, email, email_valid, validation_reason FROM contacts ORDER BY id"
     ).fetchall()
     conn.close()
     results = [{'id': r['id'], 'name': r['name'], 'email': r['email'], 'valid': r['email_valid'], 'reason': r['validation_reason'] or ''} for r in all_contacts]
@@ -833,8 +842,3 @@ def api_verify_status():
         'current_email': verify_progress['current_email'],
         'results': results
     })
-
-
-
-
-

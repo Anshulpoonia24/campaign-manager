@@ -94,9 +94,6 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB upload limit
 DB_PATH = os.path.join(DATA_DIR, 'campaigns.db')
 
 # Register blueprints
-from routes.admin import admin_bp
-app.register_blueprint(admin_bp)
-
 from routes.copilot import copilot_bp
 app.register_blueprint(copilot_bp)
 
@@ -241,16 +238,14 @@ def unauthorized_api():
 
 
 class User(UserMixin):
-    def __init__(self, id, username, role='admin', workspace_id=1, full_name=''):
+    def __init__(self, id, username, full_name=''):
         self.id = id
         self.username = username
-        self.role = role
-        self.workspace_id = workspace_id or 1
         self.full_name = full_name or ''
+        self.role = 'admin'
 
     @property
     def display_name(self):
-        """Best display name: full_name > username without domain > username."""
         if self.full_name and self.full_name.strip():
             return self.full_name.strip()
         u = self.username
@@ -267,10 +262,8 @@ def load_user(user_id):
         try:
             row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
             if row:
-                wid       = row['workspace_id'] if 'workspace_id' in row.keys() else 1
-                role      = row['role']          if 'role'          in row.keys() else 'admin'
-                full_name = row['full_name']      if 'full_name'      in row.keys() else ''
-                return User(row['id'], row['username'], role, wid, full_name)
+                full_name = row['full_name'] if 'full_name' in row.keys() else ''
+                return User(row['id'], row['username'], full_name)
         finally:
             conn.close()
     except Exception:
@@ -331,30 +324,12 @@ def _get_reply_to():
 
 
 def get_setting(key):
-    """Get setting for current workspace — workspace-specific first, then global fallback."""
-    try:
-        from flask_login import current_user
-        wid = getattr(current_user, 'workspace_id', 1) if current_user and current_user.is_authenticated else 1
-    except Exception:
-        wid = 1
+    """Get global setting by key."""
     from utils.db import get_db as _get_db
     conn = _get_db()
     try:
-        # Try workspace-specific first
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key=? AND workspace_id=?",
-            (key, wid)
-        ).fetchone()
-        if row:
-            return row[0]
-        # Fall back to workspace 1 (global)
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key=? AND workspace_id=1",
-            (key,)
-        ).fetchone()
-        if row:
-            return row[0]
-        return DEFAULT_SETTINGS.get(key, '')
+        row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return row[0] if row else DEFAULT_SETTINGS.get(key, '')
     finally:
         conn.close()
 
@@ -363,16 +338,11 @@ def set_setting(key, value):
     from utils.db import get_db as _get_db
     conn = _get_db()
     try:
-        from flask_login import current_user
-        wid = getattr(current_user, 'workspace_id', 1) if current_user and current_user.is_authenticated else 1
-    except Exception:
-        wid = 1
-    try:
-        existing = conn.execute("SELECT key FROM settings WHERE key=? AND workspace_id=?", (key, wid)).fetchone()
+        existing = conn.execute("SELECT key FROM settings WHERE key=?", (key,)).fetchone()
         if existing:
-            conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=?", (value, key, wid))
+            conn.execute("UPDATE settings SET value=? WHERE key=?", (value, key))
         else:
-            conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)", (key, value, wid))
+            conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, value))
         conn.commit()
     finally:
         conn.close()
@@ -557,7 +527,7 @@ def verify_email(email):
 TRACKING_PIXEL = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
 
 
-def inject_tracking_pixel(body, tracking_id, contact_id=None, campaign_id=None, workspace_id=1):
+def inject_tracking_pixel(body, tracking_id, contact_id=None, campaign_id=None):
     """Inject tracking pixel + rewrite links. Uses signed tokens when contact/campaign known."""
     from services.tracking import generate_token
     host = get_setting('tracking_host') or 'https://ertyui.online'
@@ -565,7 +535,7 @@ def inject_tracking_pixel(body, tracking_id, contact_id=None, campaign_id=None, 
 
     # Use signed token if we have full context, else legacy UUID
     if contact_id and campaign_id:
-        token = generate_token(workspace_id, contact_id, campaign_id, 0, 0)
+        token = generate_token(contact_id, campaign_id, 0, 0)
         pixel_url = f'{host}/track/{token}.png'
     else:
         pixel_url = f'{host}/track/{tracking_id}.png'

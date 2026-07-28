@@ -401,14 +401,81 @@ body { overflow: hidden; }
 <div class="settings-section" id="sec-ai">
   <div class="section-header">
     <h4>AI Engine Configuration</h4>
-    <p>AI models and API keys are managed by the platform admin</p>
+    <p>Configure Groq and Gemini API keys for email personalization and AI features</p>
   </div>
-  <div class="form-card">
-    <div class="text-center py-4">
-      <i class="fas fa-shield-halved" style="font-size:28px;color:#6366f1;margin-bottom:12px;display:block;"></i>
-      <p style="color:#374151;font-size:14px;font-weight:600;margin:0 0 6px;">Managed by Platform Admin</p>
-      <p style="color:#6b7280;font-size:12.5px;margin:0;">AI keys and model configurations are centrally managed.<br>Email personalization and Copilot AI are configured separately in the admin panel.</p>
+
+  <!-- PROVIDER PRIORITY -->
+  <div class="form-card mb-4">
+    <div class="section-lbl">Provider Priority</div>
+    <p style="font-size:12px;color:#6B7280;margin-bottom:14px;">Primary provider is used first. Falls back to secondary if rate-limited or unavailable.</p>
+    <form id="aiPriorityForm">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Priority Order</label>
+        <select name="ai_priority" class="form-select">
+          <option value="groq,gemini" {% if settings.ai_priority == 'groq,gemini' or not settings.ai_priority %}selected{% endif %}>Groq → Gemini (recommended)</option>
+          <option value="gemini,groq" {% if settings.ai_priority == 'gemini,groq' %}selected{% endif %}>Gemini → Groq</option>
+          <option value="groq" {% if settings.ai_priority == 'groq' %}selected{% endif %}>Groq only</option>
+          <option value="gemini" {% if settings.ai_priority == 'gemini' %}selected{% endif %}>Gemini only</option>
+        </select>
+      </div>
     </div>
+    <button type="button" class="btn btn-primary btn-sm mt-3" onclick="saveSection('aiPriorityForm')"><i class="fas fa-save me-1"></i>Save Priority</button>
+    </form>
+  </div>
+
+  <!-- GROQ CONFIG -->
+  <div class="form-card mb-4">
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <div style="width:32px;height:32px;background:#f5f3ff;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+        <i class="fas fa-bolt" style="color:#8b5cf6;font-size:13px;"></i>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#111827;">Groq — llama-3.3-70b</div>
+        <div style="font-size:11px;color:#9CA3AF;">Fast inference, primary provider</div>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="checkGroqUsage()"><i class="fas fa-chart-bar me-1"></i>Check Usage</button>
+    </div>
+    <form id="groqForm">
+    <div class="mb-3">
+      <label class="form-label">API Keys <span class="text-muted fw-normal" style="font-size:11px;">(comma-separated for rotation)</span></label>
+      <div class="input-group">
+        <textarea name="groq_api_keys" id="groqKeys" class="form-control" rows="3"
+          style="font-family:monospace;font-size:12px;"
+          placeholder="gsk_xxxx, gsk_yyyy, gsk_zzzz">{{ settings.groq_api_keys }}</textarea>
+        <button type="button" class="btn btn-outline-secondary" onclick="toggle('groqKeys')" style="align-self:stretch;"><i class="fas fa-eye"></i></button>
+      </div>
+      <small class="text-muted">Multiple keys rotate automatically when rate-limited. Get keys at <a href="https://console.groq.com" target="_blank">console.groq.com</a></small>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" onclick="saveSection('groqForm')"><i class="fas fa-save me-1"></i>Save Groq Keys</button>
+    </form>
+    <div id="groqUsageResult" style="display:none;margin-top:12px;"></div>
+  </div>
+
+  <!-- GEMINI CONFIG -->
+  <div class="form-card">
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <div style="width:32px;height:32px;background:#fef3c7;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+        <i class="fas fa-star" style="color:#f59e0b;font-size:13px;"></i>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#111827;">Gemini 2.5 Flash</div>
+        <div style="font-size:11px;color:#9CA3AF;">Google AI, fallback provider</div>
+      </div>
+    </div>
+    <form id="geminiForm">
+    <div class="mb-3">
+      <label class="form-label">API Key</label>
+      <div class="input-group">
+        <input type="password" name="gemini_api_key" id="geminiKey" class="form-control"
+          style="font-family:monospace;font-size:12px;"
+          placeholder="AIza..." value="{{ settings.gemini_api_key }}">
+        <button type="button" class="btn btn-outline-secondary" onclick="toggle('geminiKey')"><i class="fas fa-eye"></i></button>
+      </div>
+      <small class="text-muted">Get key at <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a></small>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" onclick="saveSection('geminiForm')"><i class="fas fa-save me-1"></i>Save Gemini Key</button>
+    </form>
   </div>
 </div>
 
@@ -621,7 +688,34 @@ function showToast(msg, type) {
 }
 
 // ── TOGGLE PASSWORD VISIBILITY ──
-function toggle(id) { const e=document.getElementById(id); e.type=e.type==='password'?'text':'password'; }
+function toggle(id) {
+  const e = document.getElementById(id);
+  if (e.tagName === 'TEXTAREA') {
+    e.style.webkitTextSecurity = e.style.webkitTextSecurity === 'disc' ? '' : 'disc';
+  } else {
+    e.type = e.type === 'password' ? 'text' : 'password';
+  }
+}
+
+// ── GROQ USAGE CHECK ──
+function checkGroqUsage() {
+  const el = document.getElementById('groqUsageResult');
+  el.style.display = 'block';
+  el.innerHTML = '<div class="spin" style="margin:8px auto;"></div>';
+  fetch('/api/groq_usage').then(r=>r.json()).then(d=>{
+    if (d.error) { el.innerHTML = `<div style="color:#ef4444;font-size:12px;">${d.error}</div>`; return; }
+    el.innerHTML = d.keys.map(k => {
+      const info = k.info;
+      if (info.error) return `<div style="font-size:12px;padding:6px 0;border-bottom:1px solid #f1f5f9;"><span style="font-weight:600;">Key ${k.key_index} (${k.key_hint})</span> — <span style="color:#ef4444;">${info.error}</span></div>`;
+      return `<div style="font-size:12px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
+        <span style="font-weight:600;">Key ${k.key_index} (${k.key_hint})</span>
+        &nbsp;·&nbsp; Requests: <b>${info.remaining_requests}/${info.limit_requests}</b>
+        &nbsp;·&nbsp; Tokens: <b>${info.remaining_tokens}/${info.limit_tokens}</b>
+        &nbsp;·&nbsp; DB today: <b>${k.today_used_db}</b>
+      </div>`;
+    }).join('');
+  }).catch(()=>{ el.innerHTML = '<div style="color:#ef4444;font-size:12px;">Failed to fetch usage</div>'; });
+}
 
 // ── LOAD SMTP CARDS ──
 function loadSmtpCards() {

@@ -1,7 +1,7 @@
 """
-routes/settings.py - Settings & SMTP Account Routes
+routes/settings.py — Settings & SMTP Account Routes
 =====================================================
-App settings, SMTP accounts CRUD, diagnostics, Groq usage.
+App settings, SMTP accounts CRUD, AI config, diagnostics.
 """
 import os
 import smtplib
@@ -15,7 +15,6 @@ settings_bp = Blueprint("settings_routes", __name__)
 
 
 def _app():
-    """Lazy-load app globals to avoid circular imports."""
     from app import (get_setting, set_setting, DEFAULT_SETTINGS, DB_PATH,
                      error_logger, app_logger, CELERY_AVAILABLE, imap_checker_running,
                      _table_exists, reset_daily_counts)
@@ -27,25 +26,22 @@ def _app():
 @settings_bp.route('/api/smtp_test')
 @login_required
 def api_smtp_test():
-    from services.workspace_service import get_wid
     from services.smtp_rotation import get_next_smtp_account
     get_setting, set_setting, DEFAULT_SETTINGS, DB_PATH, error_logger, app_logger, *_ = _app()
-    wid = get_wid()
     tracking_host = get_setting('tracking_host')
-
-    account = get_next_smtp_account(workspace_id=wid)
+    account = get_next_smtp_account()
     if account:
-        smtp_server  = account['smtp_server']
-        smtp_port    = str(account['smtp_port'])
-        smtp_login   = account['login_username'] or account['email']
+        smtp_server   = account['smtp_server']
+        smtp_port     = str(account['smtp_port'])
+        smtp_login    = account['login_username'] or account['email']
         smtp_password = account['password']
-        from_email   = account['from_email'] or account['email']
+        from_email    = account['from_email'] or account['email']
     else:
-        smtp_server  = get_setting('smtp_server')
-        smtp_port    = get_setting('smtp_port')
-        smtp_login   = get_setting('smtp_username')
+        smtp_server   = get_setting('smtp_server')
+        smtp_port     = get_setting('smtp_port')
+        smtp_login    = get_setting('smtp_username')
         smtp_password = get_setting('smtp_password')
-        from_email   = get_setting('from_email') or smtp_login
+        from_email    = get_setting('from_email') or smtp_login
 
     result = {
         'smtp_server': smtp_server or 'NOT SET',
@@ -57,11 +53,9 @@ def api_smtp_test():
         'db_path': DB_PATH,
         'connection_test': None
     }
-
     if not all([smtp_server, smtp_port, smtp_login, smtp_password]):
         result['connection_test'] = 'FAILED - Missing SMTP settings'
         return jsonify(result)
-
     try:
         server = smtplib.SMTP(smtp_server, int(smtp_port), timeout=10)
         server.starttls()
@@ -71,7 +65,6 @@ def api_smtp_test():
     except Exception as e:
         result['connection_test'] = f'FAILED - {str(e)[:200]}'
         error_logger.error(f'SMTP test failed: {str(e)}')
-
     return jsonify(result)
 
 
@@ -110,11 +103,8 @@ def api_celery_status():
 @settings_bp.route('/api/diagnostics')
 @login_required
 def api_diagnostics():
-    from services.workspace_service import get_wid
     get_setting, set_setting, DEFAULT_SETTINGS, DB_PATH, error_logger, app_logger, CELERY_AVAILABLE, imap_checker_running, _table_exists, *_ = _app()
-    wid = get_wid()
     conn = get_db()
-
     imap_server   = get_setting('imap_server')
     imap_username = get_setting('imap_username')
     imap_password = get_setting('imap_password')
@@ -196,7 +186,6 @@ def fix_tracking_host():
 @settings_bp.route('/api/smtp_accounts', methods=['GET'])
 @login_required
 def api_get_smtp_accounts():
-    get_setting, set_setting, DEFAULT_SETTINGS, DB_PATH, error_logger, app_logger, *_ = _app()
     conn = get_db()
     accounts = conn.execute("SELECT * FROM smtp_accounts ORDER BY active DESC, health_score DESC").fetchall()
     conn.close()
@@ -217,15 +206,15 @@ def api_get_smtp_accounts():
 def api_add_smtp_account():
     get_setting, set_setting, DEFAULT_SETTINGS, DB_PATH, error_logger, app_logger, *_ = _app()
     data = request.json
-    email        = data.get('email', '').strip().lower()
-    password     = data.get('password', '').strip()
-    smtp_server  = data.get('smtp_server', 'smtp.hostinger.com').strip()
-    smtp_port    = int(data.get('smtp_port', 587))
-    from_name    = data.get('from_name', '').strip()
-    daily_limit  = int(data.get('daily_limit', 50))
-    reply_to     = data.get('reply_to', '').strip()
-    bcc_emails   = data.get('bcc_emails', '').strip()
-    signature    = data.get('signature', '').strip()
+    email          = data.get('email', '').strip().lower()
+    password       = data.get('password', '').strip()
+    smtp_server    = data.get('smtp_server', 'smtp.hostinger.com').strip()
+    smtp_port      = int(data.get('smtp_port', 587))
+    from_name      = data.get('from_name', '').strip()
+    daily_limit    = int(data.get('daily_limit', 50))
+    reply_to       = data.get('reply_to', '').strip()
+    bcc_emails     = data.get('bcc_emails', '').strip()
+    signature      = data.get('signature', '').strip()
     login_username = data.get('login_username', '').strip()
 
     if not email or not password:
@@ -237,18 +226,16 @@ def api_add_smtp_account():
 
     try:
         conn = get_db()
-        from services.workspace_service import get_wid
-        wid = get_wid()
         if conn.execute("SELECT id FROM smtp_accounts WHERE email=?", (email,)).fetchone():
             conn.close()
             return jsonify({'success': False, 'error': 'An inbox with this email already exists'})
         conn.execute("""
             INSERT OR IGNORE INTO smtp_accounts
               (email, password, smtp_server, smtp_port, from_name,
-               daily_limit, reply_to, bcc_emails, signature, login_username, workspace_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+               daily_limit, reply_to, bcc_emails, signature, login_username)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
         """, (email, password, smtp_server, smtp_port, from_name,
-              daily_limit, reply_to, bcc_emails, signature, login_username, wid))
+              daily_limit, reply_to, bcc_emails, signature, login_username))
         conn.commit()
         conn.close()
         app_logger.info(f'SMTP account added: {email}')
@@ -260,9 +247,6 @@ def api_add_smtp_account():
 @settings_bp.route('/api/smtp_accounts/<int:account_id>/update', methods=['POST'])
 @login_required
 def api_update_smtp_account(account_id):
-    from utils.ownership import owns_smtp_account
-    if not owns_smtp_account(account_id):
-        return jsonify({'success': False, 'error': 'Not found'}), 404
     data = request.json or {}
     conn = get_db()
     fields, params = [], []
@@ -286,11 +270,11 @@ def api_update_smtp_account(account_id):
 @settings_bp.route('/api/smtp_accounts/<int:account_id>/toggle', methods=['POST'])
 @login_required
 def api_toggle_smtp_account(account_id):
-    from utils.ownership import owns_smtp_account
-    acc = owns_smtp_account(account_id)
-    if not acc:
-        return jsonify({'success': False, 'error': 'Not found'}), 404
     conn = get_db()
+    acc = conn.execute("SELECT * FROM smtp_accounts WHERE id=?", (account_id,)).fetchone()
+    if not acc:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     new_status = 0 if acc['active'] else 1
     conn.execute("UPDATE smtp_accounts SET active=? WHERE id=?", (new_status, account_id))
     conn.commit()
@@ -301,9 +285,6 @@ def api_toggle_smtp_account(account_id):
 @settings_bp.route('/api/smtp_accounts/<int:account_id>/delete', methods=['DELETE'])
 @login_required
 def api_delete_smtp_account(account_id):
-    from utils.ownership import owns_smtp_account
-    if not owns_smtp_account(account_id):
-        return jsonify({'success': False, 'error': 'Not found'}), 404
     conn = get_db()
     conn.execute("DELETE FROM smtp_accounts WHERE id=?", (account_id,))
     conn.commit()
@@ -322,29 +303,22 @@ def api_reset_smtp_today():
 @settings_bp.route('/api/settings/save', methods=['POST'])
 @login_required
 def api_save_setting():
-    from services.workspace_service import get_wid
     get_setting, set_setting, DEFAULT_SETTINGS, *_ = _app()
     data = request.json or {}
-    wid = get_wid()
     PROTECTED_FIELDS = {'imap_password', 'smtp_password', 'groq_api_keys',
                         'gemini_api_key', 'imap_username', 'imap_server'}
-    ADMIN_ONLY_KEYS = {'groq_api_keys', 'gemini_api_key'}
     conn = get_db()
     saved = []
     for key, val in data.items():
         if key not in DEFAULT_SETTINGS:
             continue
-        if key in ADMIN_ONLY_KEYS and getattr(current_user, 'role', '') != 'admin':
-            continue
         if key in PROTECTED_FIELDS and not str(val).strip():
             continue
-        existing = conn.execute(
-            "SELECT key FROM settings WHERE key=? AND workspace_id=?", (key, wid)
-        ).fetchone()
+        existing = conn.execute("SELECT key FROM settings WHERE key=?", (key,)).fetchone()
         if existing:
-            conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=?", (val, key, wid))
+            conn.execute("UPDATE settings SET value=? WHERE key=?", (val, key))
         else:
-            conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)", (key, val, wid))
+            conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, val))
         saved.append(key)
     conn.commit()
     conn.close()
@@ -354,29 +328,21 @@ def api_save_setting():
 @settings_bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings_page():
-    from services.workspace_service import get_wid
     get_setting, set_setting, DEFAULT_SETTINGS, *_ = _app()
-    wid = get_wid()
     if request.method == 'POST':
         conn = get_db()
-        admin_only = {'groq_api_keys', 'gemini_api_key'}
         for key in DEFAULT_SETTINGS.keys():
-            if key in admin_only and getattr(current_user, 'role', '') != 'admin':
-                continue
             val = request.form.get(key, '')
-            existing = conn.execute("SELECT key FROM settings WHERE key=? AND workspace_id=?", (key, wid)).fetchone()
+            existing = conn.execute("SELECT key FROM settings WHERE key=?", (key,)).fetchone()
             if existing:
-                conn.execute("UPDATE settings SET value=? WHERE key=? AND workspace_id=?", (val, key, wid))
+                conn.execute("UPDATE settings SET value=? WHERE key=?", (val, key))
             else:
-                conn.execute("INSERT OR IGNORE INTO settings (key, value, workspace_id) VALUES (?,?,?)", (key, val, wid))
+                conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, val))
         conn.commit()
         conn.close()
         flash('Settings saved!', 'success')
         return redirect(url_for('settings_routes.settings_page'))
     current = {key: get_setting(key) for key in DEFAULT_SETTINGS.keys()}
-    if getattr(current_user, 'role', '') != 'admin':
-        current['groq_api_keys'] = ''
-        current['gemini_api_key'] = ''
     return render_template('settings.html', settings=current)
 
 
@@ -390,7 +356,6 @@ def api_groq_usage():
     if not keys:
         return jsonify({'keys': [], 'error': 'No Groq keys configured'})
 
-    groq_rate_limits = {}
     results = []
     for idx, key in enumerate(keys):
         key_short = key[-8:]
@@ -401,11 +366,11 @@ def api_groq_usage():
                 json={'model': 'llama-3.3-70b-versatile', 'messages': [{'role': 'user', 'content': 'Hi'}], 'max_tokens': 1},
                 timeout=10)
             info = {
-                'limit_requests': r.headers.get('x-ratelimit-limit-requests', '?'),
+                'limit_requests':     r.headers.get('x-ratelimit-limit-requests', '?'),
                 'remaining_requests': r.headers.get('x-ratelimit-remaining-requests', '?'),
-                'limit_tokens': r.headers.get('x-ratelimit-limit-tokens', '?'),
-                'remaining_tokens': r.headers.get('x-ratelimit-remaining-tokens', '?'),
-                'last_checked': datetime.now().strftime('%H:%M:%S'),
+                'limit_tokens':       r.headers.get('x-ratelimit-limit-tokens', '?'),
+                'remaining_tokens':   r.headers.get('x-ratelimit-remaining-tokens', '?'),
+                'last_checked':       datetime.now().strftime('%H:%M:%S'),
             }
             if r.status_code == 401:
                 info = {'error': 'Invalid key'}

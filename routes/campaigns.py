@@ -24,19 +24,34 @@ campaigns_bp = Blueprint('campaigns', __name__)
 @login_required
 def campaigns_list():
     from app import get_db
-    from services.workspace_service import get_wid, ws_campaigns
-    wid = get_wid()
-    campaigns = ws_campaigns(wid)
     conn = get_db()
     try:
+        campaigns = conn.execute("SELECT * FROM campaigns ORDER BY created_at DESC").fetchall()
         meetings = {}
+        stats = {}
         for camp in campaigns:
+            cid = camp['id']
             row = conn.execute(
-                "SELECT COUNT(*) FROM threads WHERE campaign_id=? AND status='meeting' AND workspace_id=?",
-                (camp['id'], wid)
+                "SELECT COUNT(*) FROM threads WHERE campaign_id=? AND status='meeting'",
+                (cid,)
             ).fetchone()
-            meetings[camp['id']] = row[0] if row else 0
-        return render_template('campaigns.html', campaigns=campaigns, meetings=meetings)
+            meetings[cid] = row[0] if row else 0
+            s = conn.execute("""
+                SELECT
+                    COUNT(*) FILTER (WHERE status='sent')    AS sent_count,
+                    SUM(opened)                              AS opened_count,
+                    COUNT(*) FILTER (WHERE replied=1)        AS replied_count,
+                    COUNT(*) FILTER (WHERE status='bounced') AS bounce_count
+                FROM emails_sent WHERE campaign_id=?
+            """, (cid,)).fetchone()
+            stats[cid] = {
+                'sent_count':    s['sent_count']    or 0,
+                'opened_count':  s['opened_count']  or 0,
+                'replied_count': s['replied_count'] or 0,
+                'bounce_count':  s['bounce_count']  or 0,
+            }
+        return render_template('campaigns.html', campaigns=campaigns,
+                               meetings=meetings, stats=stats)
     finally:
         conn.close()
 
@@ -46,22 +61,20 @@ def campaigns_list():
 def new_campaign():
     from app import get_db
     from utils.db import is_postgres
-    from services.workspace_service import get_wid
     if request.method == 'POST':
         name = request.form.get('campaign_name', 'Untitled Campaign')
         description = request.form.get('description', '')
-        wid = get_wid()
         conn = get_db()
         try:
             if is_postgres():
                 row = conn.execute(
-                    "INSERT INTO campaigns (name, description, workspace_id) VALUES (?,?,?) RETURNING id",
-                    (name, description, wid)
+                    "INSERT INTO campaigns (name, description) VALUES (?,?) RETURNING id",
+                    (name, description)
                 ).fetchone()
                 campaign_id = row[0] if row else None
                 conn.commit()
             else:
-                conn.execute("INSERT INTO campaigns (name, description, workspace_id) VALUES (?,?,?)", (name, description, wid))
+                conn.execute("INSERT INTO campaigns (name, description) VALUES (?,?)", (name, description))
                 conn.commit()
                 campaign_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         finally:
@@ -119,7 +132,6 @@ def send_campaign(campaign_id):
     from app import (get_db, get_setting, inject_tracking_pixel, is_unsubscribed,
                      _get_reply_to, app_logger, smtp_logger, error_logger,
                      UPLOAD_DIR, _get_campaign_lock)
-    from services.workspace_service import get_wid
     from services.smtp_rotation import get_next_smtp_account, append_signature, mark_send_success, mark_send_failure
     from services.inbox_service import get_or_create_thread, insert_message
     from services.lead_scoring import update_lead_score
@@ -143,12 +155,11 @@ def send_campaign(campaign_id):
         flash('No contacts selected.', 'error')
         return redirect(url_for('campaigns.campaign_detail', campaign_id=campaign_id))
 
-    wid  = get_wid()
     conn = get_db()
     sent = failed = 0
 
     def _get_creds():
-        account = get_next_smtp_account(workspace_id=wid)
+        account = get_next_smtp_account()
         if account:
             return account
         return {
@@ -222,9 +233,9 @@ def send_campaign(campaign_id):
                     server.send_message(msg)
                     server.quit()
                     conn.execute("""
-                        INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,tracking_id,sent_at,workspace_id)
-                        VALUES (?,?,?,?,?,?,?,?,?)
-                    """, (campaign_id, cid, contact['email'], subject, body, 'sent', tracking_id, datetime.now(), wid))
+                        INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,tracking_id,sent_at)
+                        VALUES (?,?,?,?,?,?,?,?)
+                    """, (campaign_id, cid, contact['email'], subject, body, 'sent', tracking_id, datetime.now()))
                     conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (cid,))
                     conn.commit()
                     sent += 1
@@ -275,7 +286,6 @@ def send_campaign(campaign_id):
 def retry_email(email_id):
     from app import get_db, get_setting, _get_reply_to, error_logger
     from utils.ownership import owns_email_sent
-    from services.workspace_service import get_wid
     from services.smtp_rotation import get_next_smtp_account
 
     record = owns_email_sent(email_id)
@@ -292,8 +302,7 @@ def retry_email(email_id):
             flash(f'{record["email"]} already sent!', 'error')
             return redirect(url_for('campaigns.campaign_detail', campaign_id=record['campaign_id']))
 
-        wid     = get_wid()
-        account = get_next_smtp_account(workspace_id=wid)
+        account = get_next_smtp_account()
         if account:
             smtp_server = account['smtp_server']
             smtp_port   = int(account['smtp_port'] or 587)
@@ -345,7 +354,6 @@ def retry_email(email_id):
 def api_retry_email(email_id):
     from app import get_db, get_setting, _get_reply_to, error_logger
     from utils.ownership import owns_email_sent
-    from services.workspace_service import get_wid
     from services.smtp_rotation import get_next_smtp_account
 
     record = owns_email_sent(email_id)
@@ -360,8 +368,7 @@ def api_retry_email(email_id):
         ).fetchone():
             return jsonify({'success': False, 'error': 'Already sent'})
 
-        wid     = get_wid()
-        account = get_next_smtp_account(workspace_id=wid)
+        account = get_next_smtp_account()
         if account:
             smtp_server = account['smtp_server']
             smtp_port   = int(account['smtp_port'] or 587)
@@ -415,7 +422,6 @@ def send_campaign_ai(campaign_id):
                      _get_reply_to, app_logger, error_logger, smtp_logger,
                      UPLOAD_DIR, _get_send_progress, _set_send_progress,
                      ai_generated_cache, generate_ai_email)
-    from services.workspace_service import get_wid
     from services.smtp_rotation import get_next_smtp_account, append_signature, mark_send_success, mark_send_failure
 
     uid  = current_user.id
@@ -436,11 +442,10 @@ def send_campaign_ai(campaign_id):
         prog = {'running': True, 'total': len(contact_ids), 'done': 0, 'sent': 0, 'failed': 0, 'current': '', 'campaign_id': campaign_id}
         _set_send_progress(uid, prog)
         prompt_template = get_setting('email_prompt')
-        wid  = get_wid()
         conn = get_db()
 
         def _get_creds():
-            account = get_next_smtp_account(workspace_id=wid)
+            account = get_next_smtp_account()
             if account:
                 return account
             return {
@@ -528,16 +533,16 @@ def send_campaign_ai(campaign_id):
                     context     = (contact['context'] if 'context' in contact.keys() else '') or ''
                     designation = (contact['designation'] if 'designation' in contact.keys() else '') or ''
                     if not context:
-                        conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,bounce_reason,sent_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
-                            (campaign_id, cid, contact['email'], subject, '', 'failed', 'No context', datetime.now(), wid))
+                        conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,bounce_reason,sent_at) VALUES (?,?,?,?,?,?,?,?)",
+                            (campaign_id, cid, contact['email'], subject, '', 'failed', 'No context', datetime.now()))
                         conn.commit()
                         prog['done'] += 1; prog['failed'] += 1
                         _set_send_progress(uid, prog)
                         continue
                     body, err = generate_ai_email(contact['name'], contact['company'], prompt_template, context, designation)
                     if not body:
-                        conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,bounce_reason,sent_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
-                            (campaign_id, cid, contact['email'], subject, '', 'failed', f'AI: {err}', datetime.now(), wid))
+                        conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,bounce_reason,sent_at) VALUES (?,?,?,?,?,?,?,?)",
+                            (campaign_id, cid, contact['email'], subject, '', 'failed', f'AI: {err}', datetime.now()))
                         conn.commit()
                         prog['done'] += 1; prog['failed'] += 1
                         _set_send_progress(uid, prog)
@@ -561,16 +566,16 @@ def send_campaign_ai(campaign_id):
                             with open(fp, 'rb') as f:
                                 msg.add_attachment(f.read(), maintype=mt_main, subtype=mt_sub, filename=os.path.basename(fp))
                     server.send_message(msg)
-                    conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,tracking_id,sent_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (campaign_id, cid, contact['email'], subject, body, 'sent', tracking_id, datetime.now(), wid))
+                    conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,tracking_id,sent_at) VALUES (?,?,?,?,?,?,?,?)",
+                        (campaign_id, cid, contact['email'], subject, body, 'sent', tracking_id, datetime.now()))
                     conn.execute("UPDATE contacts SET status='sent' WHERE id=?", (cid,))
                     conn.commit()
                     prog['sent'] += 1
                     if account_id: mark_send_success(account_id)
                 except Exception as e:
                     error_logger.exception(f'[AI SEND] {contact["email"]}: {e}')
-                    conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,bounce_reason,sent_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (campaign_id, cid, contact['email'], subject, body, 'failed', str(e)[:200], datetime.now(), wid))
+                    conn.execute("INSERT INTO emails_sent (campaign_id,contact_id,email,subject,body,status,bounce_reason,sent_at) VALUES (?,?,?,?,?,?,?,?)",
+                        (campaign_id, cid, contact['email'], subject, body, 'failed', str(e)[:200], datetime.now()))
                     conn.commit()
                     prog['failed'] += 1
                     if account_id: mark_send_failure(account_id)
@@ -623,9 +628,7 @@ def api_send_status():
 def launch_campaign_route(campaign_id):
     from app import get_db, app_logger, UPLOAD_DIR
     from services.campaign_executor import launch_campaign
-    from services.workspace_service import get_wid
 
-    wid              = get_wid()
     subject_template = request.form.get('subject', 'Helping {company} scale engineering faster')
     body_template    = request.form.get('body', '')
     send_mode        = request.form.get('send_mode', 'template')
@@ -651,7 +654,7 @@ def launch_campaign_route(campaign_id):
         flash('No contacts selected.', 'error')
         return redirect(url_for('campaigns.campaign_detail', campaign_id=campaign_id))
 
-    result = launch_campaign(campaign_id, contact_ids, subject_template, body_template, send_mode, wid, attachment_path)
+    result = launch_campaign(campaign_id, contact_ids, subject_template, body_template, send_mode, attachment_path)
     app_logger.info(f'Campaign {campaign_id} launched | {len(contact_ids)} contacts | mode={send_mode} | {result.get("mode")}')
     return redirect(url_for('campaigns.send_progress_page', campaign_id=campaign_id))
 
@@ -668,16 +671,14 @@ def api_campaign_execution_status(campaign_id):
 def api_pause_campaign(campaign_id):
     from app import get_db
     from services.campaign_executor import pause_campaign
-    from services.workspace_service import get_wid
-    wid  = get_wid()
     conn = get_db()
     try:
-        camp = conn.execute('SELECT id FROM campaigns WHERE id=? AND workspace_id=?', (campaign_id, wid)).fetchone()
+        camp = conn.execute('SELECT id FROM campaigns WHERE id=?', (campaign_id,)).fetchone()
     finally:
         conn.close()
     if not camp:
         return jsonify({'success': False, 'error': 'Campaign not found'}), 404
-    pause_campaign(campaign_id, wid)
+    pause_campaign(campaign_id)
     return jsonify({'success': True, 'status': 'paused'})
 
 
@@ -686,16 +687,14 @@ def api_pause_campaign(campaign_id):
 def api_resume_campaign(campaign_id):
     from app import get_db
     from services.campaign_executor import resume_campaign
-    from services.workspace_service import get_wid
-    wid  = get_wid()
     conn = get_db()
     try:
-        camp = conn.execute('SELECT id FROM campaigns WHERE id=? AND workspace_id=?', (campaign_id, wid)).fetchone()
+        camp = conn.execute('SELECT id FROM campaigns WHERE id=?', (campaign_id,)).fetchone()
     finally:
         conn.close()
     if not camp:
         return jsonify({'success': False, 'error': 'Campaign not found'}), 404
-    return jsonify({'success': bool(resume_campaign(campaign_id, wid))})
+    return jsonify({'success': bool(resume_campaign(campaign_id))})
 
 
 @campaigns_bp.route('/api/campaign/<int:campaign_id>/cancel', methods=['POST'])
@@ -703,16 +702,14 @@ def api_resume_campaign(campaign_id):
 def api_cancel_campaign(campaign_id):
     from app import get_db
     from services.campaign_executor import cancel_campaign
-    from services.workspace_service import get_wid
-    wid  = get_wid()
     conn = get_db()
     try:
-        camp = conn.execute('SELECT id FROM campaigns WHERE id=? AND workspace_id=?', (campaign_id, wid)).fetchone()
+        camp = conn.execute('SELECT id FROM campaigns WHERE id=?', (campaign_id,)).fetchone()
     finally:
         conn.close()
     if not camp:
         return jsonify({'success': False, 'error': 'Campaign not found'}), 404
-    cancel_campaign(campaign_id, wid)
+    cancel_campaign(campaign_id)
     return jsonify({'success': True, 'status': 'cancelled'})
 
 
