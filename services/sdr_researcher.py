@@ -1798,13 +1798,21 @@ def _build_synthesis_prompt(
 You have completed a full multi-phase research process on a prospect company.
 Your job is to synthesize ALL gathered evidence into a structured research brief, then derive personalization.
 
-CONTACT: {contact_name or 'Unknown'} | ROLE: {contact_role or 'Unknown'} | COMPANY: {company} | DOMAIN: {domain}
+CONTACT: {contact_name or 'Unknown'} | ROLE: {contact_role or 'Unknown'} | COMPANY: {company} | DOMAIN: {domain or 'NOT AVAILABLE'}
+
+DATA AVAILABILITY:
+- Website crawled: {'YES — ' + str(len(pages)) + ' pages' if pages else 'NO — website unreachable or domain unknown'}
+- External data (Crunchbase/news/G2): {'YES' if (external_section.strip()) else 'NO'}
+- Tech stack detected: {'YES — ' + str(len(tech.get('all_techs',[]))) + ' tools' if tech.get('all_techs') else 'NO'}
+- Buying signals found: {len(buying.get('scored_signals', []))}
+
+IMPORTANT: If website was NOT crawled and external data is thin, you MUST set confidence_score below 30 and company_summary to "Insufficient public information found for {company}." Do NOT invent facts.
 
 ═══ WEBSITE DATA ═══
-{website_section or 'Not available.'}
+{website_section or 'Not available — website unreachable.'}
 
 ═══ SUBPAGE CONTENT ═══
-{pages_section[:3000] or 'Not available.'}
+{pages_section[:3000] or 'Not available — no subpages crawled.'}
 
 ═══ TECHNOLOGY STACK ═══
 {tech_section or 'Not detected.'}
@@ -1819,16 +1827,17 @@ CONTACT: {contact_name or 'Unknown'} | ROLE: {contact_role or 'Unknown'} | COMPA
 {linkedin_section or 'Not available.'}
 
 ═══ EXTERNAL INTELLIGENCE ═══
-{external_section or 'Not available.'}
+{external_section or 'Not available — no Crunchbase/news/G2 data found.'}
 
 ═══ DECISION MAKER PROFILE ═══
 {dm_section}
 
 ═══ YOUR TASK ═══
 Produce a JSON research brief. Base EVERY field ONLY on evidence above. Do NOT invent facts.
+If a field has no evidence, use empty string or 0.
 
 {{
-  "company_summary": "2-3 factual sentences about what the company does, who they serve, and their stage",
+  "company_summary": "2-3 factual sentences about what the company does, who they serve, and their stage. If no data found, write: Insufficient public information found for {company}.",
   "business_model": "B2B SaaS / B2C / marketplace / agency / services / etc.",
   "icp": "Who their customers are — industries, company sizes, buyer roles",
   "products": "Main products or services with specific names if found",
@@ -1854,9 +1863,9 @@ Produce a JSON research brief. Base EVERY field ONLY on evidence above. Do NOT i
     "Specific verifiable fact 3 that can open an email naturally"
   ],
   "contact_role_context": "What {contact_name}'s role at {company} likely involves day-to-day",
-  "contact_pain_points": "Specific pain points this person faces based on role + company stage",
-  "outreach_angle": "The single best angle for cold outreach to this specific person at this company",
-  "pain_points": "Engineering/tech challenges based on their stack, stage, and signals",
+  "contact_pain_points": "Specific pain points this person faces based on role + company stage. If no company data, leave empty.",
+  "outreach_angle": "The single best angle for cold outreach to this specific person at this company. If no company data, leave empty.",
+  "pain_points": "Engineering/tech challenges based on their stack, stage, and signals. If no data, leave empty.",
   "icp_score": 0,
   "confidence_score": 0,
   "confidence_reason": "Explain what data was found and what was missing",
@@ -1864,8 +1873,8 @@ Produce a JSON research brief. Base EVERY field ONLY on evidence above. Do NOT i
 }}
 
 SCORING RULES:
-- icp_score 0-100: 80+ if tech company actively hiring engineers with funding. 60+ if tech company growing. 40+ if tech company. <40 if non-tech.
-- confidence_score 0-100: 80+ if multiple pages crawled + external data found. 50+ if homepage only. <30 if almost nothing found.
+- icp_score 0-100: 80+ if tech company actively hiring engineers with funding. 60+ if tech company growing. 40+ if tech company. <40 if non-tech. 0 if no data.
+- confidence_score 0-100: 80+ if multiple pages crawled + external data found. 50+ if homepage only. <30 if almost nothing found. 0 if no website and no external data.
 - personalization_opportunities: ONLY facts actually found above. If nothing specific found, return [].
 - Do NOT invent funding amounts, employee counts, product names, or customer names not in the data.
 - Return ONLY valid JSON. No markdown fences, no explanation outside the JSON."""
@@ -2073,16 +2082,26 @@ def _build_context_string(research: dict, buying: dict,
     if opps:
         parts.append('PERSONALIZATION HOOKS:\n' + '\n'.join(f'- {o}' for o in opps[:4]))
 
-    # Decision maker context
-    if decision_maker.get('role_pain_points'):
-        parts.append(f'CONTACT PAIN POINTS: {decision_maker["role_pain_points"]}')
-    if decision_maker.get('outreach_angle'):
-        parts.append(f'OUTREACH ANGLE: {decision_maker["outreach_angle"]}')
+    # Decision maker context — only include if we have real company data
+    conf = research.get('confidence_score', 0)
+    has_real_data = bool(
+        research.get('company_summary', '').lower() not in ('', 'research unavailable') and
+        'research unavailable' not in research.get('company_summary', '').lower() and
+        'insufficient public information' not in research.get('company_summary', '').lower()
+    )
+    if has_real_data:
+        if research.get('contact_pain_points'):
+            parts.append(f'CONTACT PAIN POINTS: {research["contact_pain_points"]}')
+        elif decision_maker.get('role_pain_points'):
+            parts.append(f'CONTACT PAIN POINTS: {decision_maker["role_pain_points"]}')
+        if research.get('outreach_angle'):
+            parts.append(f'OUTREACH ANGLE: {research["outreach_angle"]}')
+        elif decision_maker.get('outreach_angle'):
+            parts.append(f'OUTREACH ANGLE: {decision_maker["outreach_angle"]}')
     if decision_maker.get('bio_snippet'):
         parts.append(f'CONTACT BIO: {decision_maker["bio_snippet"]}')
 
     # Confidence note
-    conf = research.get('confidence_score', 0)
     if conf < 30:
         parts.append(
             f'NOTE: Low confidence ({conf}/100) — limited data found. '
@@ -2179,14 +2198,14 @@ def research_contact(contact_id: int) -> dict:
         # ── Phase 1d: Signal aggregation ──
         signals_1d = phase_1d_aggregate_signals(pages, homepage)
 
-        # ── Phase 2a: Crunchbase + Product Hunt ──
-        ext_cb_ph = phase_2a_crunchbase_producthunt(company, domain)
+        # ── Phase 2a: Crunchbase + Product Hunt — runs even without domain ──
+        ext_cb_ph = phase_2a_crunchbase_producthunt(company, domain) if company else {}
 
-        # ── Phase 2b: News + press ──
-        ext_news = phase_2b_news_press(company, domain)
+        # ── Phase 2b: News + press — runs even without domain ──
+        ext_news = phase_2b_news_press(company, domain) if company else {}
 
-        # ── Phase 2c: G2 + Capterra ──
-        ext_reviews = phase_2c_reviews(company, domain)
+        # ── Phase 2c: G2 + Capterra — runs even without domain ──
+        ext_reviews = phase_2c_reviews(company, domain) if company else {}
 
         # ── Phase 2d: LinkedIn + engineering blog ──
         linkedin = phase_2d_linkedin_engblog(company, domain, pages, pages_html)
