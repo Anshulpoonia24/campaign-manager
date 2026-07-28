@@ -292,6 +292,37 @@ def api_set_smtp_password(account_id):
     return jsonify({'success': True})
 
 
+@settings_bp.route('/api/smtp_debug')
+@login_required
+def api_smtp_debug():
+    """Temporary: show exactly what key is stored and test it."""
+    import requests as _r
+    conn = get_db()
+    rows = conn.execute("SELECT id, email, smtp_server, password FROM smtp_accounts").fetchall()
+    conn.close()
+    results = []
+    for row in rows:
+        pw = row['password'] or ''
+        resp_status = None
+        try:
+            resp = _r.get('https://api.brevo.com/v3/account',
+                          headers={'api-key': pw}, timeout=10)
+            resp_status = resp.status_code
+        except Exception as e:
+            resp_status = str(e)
+        results.append({
+            'id': row['id'],
+            'email': row['email'],
+            'smtp_server': row['smtp_server'],
+            'pw_length': len(pw),
+            'pw_first_10': pw[:10],
+            'pw_last_4': pw[-4:],
+            'starts_with_xkeysib': pw.startswith('xkeysib-'),
+            'brevo_status': resp_status,
+        })
+    return jsonify(results)
+
+
 @settings_bp.route('/api/smtp_accounts/<int:account_id>/toggle', methods=['POST'])
 @login_required
 def api_toggle_smtp_account(account_id):
