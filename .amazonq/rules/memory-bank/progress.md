@@ -462,6 +462,25 @@ New error after deploy: `pg8000.exceptions.InterfaceError: network error` on eve
 - Added `blogs` table to `PG_SCHEMA` in `pg_schema.py`
 - Fixed `created_at[:10]` Jinja2 slicing crash — PostgreSQL returns `datetime` object, not string
 
+### 2026-07-05 Session 12 — Same Context Bug Fix
+
+**Root cause:**
+When a contact's website is empty AND the email domain doesn't slug-match the company name, `domain` stays `''`. Phases 1a–1d (website crawl) are skipped. Phases 2a–2c (Crunchbase/news/G2) were also being skipped because they were only called unconditionally — but the real issue was the AI synthesis prompt had no "DATA AVAILABILITY" signal, so the AI would still produce output using only the `decision_maker` section (Phase 5), which is 100% role-based and identical for every CTO/founder regardless of company.
+
+`_build_context_string` then wrote `CONTACT PAIN POINTS: Scaling engineering team fast enough...` (from `_ROLE_PAIN_POINTS['cto']`) for every single contact — making all contexts look the same.
+
+**Files changed:**
+
+| File | Change | Why |
+|---|---|---|
+| `services/sdr_researcher.py` | Phase 2a/2b/2c now run even when `domain=''` (guarded by `if company`) | Crunchbase/news/G2 only need company name, not domain |
+| `services/sdr_researcher.py` | `_build_synthesis_prompt`: added DATA AVAILABILITY section + explicit instruction to set confidence<30 and empty fields when no data | AI was producing same generic output for all no-data contacts |
+| `services/sdr_researcher.py` | `_build_context_string`: role-based pain points/outreach angle only included when `has_real_data=True` | Stops generic CTO pain points appearing for every contact |
+
+**Commit:** `84c9f6b` pushed to `main`
+
+---
+
 ### 2026-07-05 Session 11 — Attachment Persistence + Contact Upload Fixes
 
 **Files changed:**
