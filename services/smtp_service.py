@@ -2,6 +2,8 @@ import smtplib
 import os
 import uuid
 import mimetypes
+import base64
+import requests as _http
 from email.message import EmailMessage
 from email.utils import formataddr
 from datetime import datetime
@@ -11,6 +13,52 @@ from utils.logger import smtp_logger, error_logger
 ATTACHMENT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..')
 
 TRACKING_PIXEL = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+
+_BREVO_HOSTS = ('smtp-relay.brevo.com', 'smtp.sendinblue.com')
+
+
+def is_brevo_account(account: dict) -> bool:
+    return any(h in (account.get('smtp_server') or '').lower() for h in _BREVO_HOSTS)
+
+
+def send_via_brevo_api(account: dict, to_email: str, subject: str, html_body: str,
+                       reply_to: str = '', attachment_data: bytes = None,
+                       attachment_name: str = None) -> tuple[bool, str]:
+    """
+    Send via Brevo HTTP API (port 443 — works on Render).
+    account['password'] = Brevo API key (starts with 'xkeysib-').
+    """
+    api_key   = account.get('password', '')
+    from_email = account.get('from_email') or account.get('email', '')
+    from_name  = account.get('from_name', '')
+    payload = {
+        'sender':      {'name': from_name, 'email': from_email},
+        'to':          [{'email': to_email}],
+        'subject':     subject,
+        'htmlContent': html_body,
+    }
+    if reply_to:
+        payload['replyTo'] = {'email': reply_to}
+    if attachment_data and attachment_name:
+        payload['attachment'] = [{
+            'name':    attachment_name,
+            'content': base64.b64encode(attachment_data).decode(),
+        }]
+    try:
+        r = _http.post(
+            'https://api.brevo.com/v3/smtp/email',
+            headers={'api-key': api_key, 'Content-Type': 'application/json'},
+            json=payload,
+            timeout=20,
+        )
+        if r.status_code in (200, 201):
+            smtp_logger.info(f'[BREVO API] SENT | To: {to_email} | Subject: {subject[:50]}')
+            return True, ''
+        err = f'Brevo API {r.status_code}: {r.text[:200]}'
+        smtp_logger.error(f'[BREVO API] FAILED | {to_email} | {err}')
+        return False, err
+    except Exception as e:
+        return False, str(e)[:200]
 
 
 def inject_tracking_pixel(body, tracking_id):
@@ -27,6 +75,22 @@ def inject_tracking_pixel(body, tracking_id):
     return body
 
 
+def smtp_connect(smtp_server: str, smtp_port: int, login: str, password: str,
+                 timeout: int = 15) -> smtplib.SMTP:
+    """
+    Connect and authenticate to SMTP.
+    Port 465 → SMTP_SSL (implicit TLS)
+    Port 587 / anything else → SMTP + STARTTLS
+    """
+    if smtp_port == 465:
+        server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=timeout)
+    else:
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=timeout)
+        server.starttls()
+    server.login(login, password)
+    return server
+
+
 def get_smtp_connection():
     """Create and return authenticated SMTP connection with timeout."""
     smtp_server   = get_setting('smtp_server') or ''
@@ -35,10 +99,7 @@ def get_smtp_connection():
     smtp_password = get_setting('smtp_password') or ''
     if not all([smtp_server, smtp_username, smtp_password]):
         raise ValueError('SMTP settings incomplete')
-    server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
-    server.starttls()
-    server.login(smtp_username, smtp_password)
-    return server
+    return smtp_connect(smtp_server, smtp_port, smtp_username, smtp_password)
 
 
 def send_single_email(server, to_email, subject, body, attachment=''):

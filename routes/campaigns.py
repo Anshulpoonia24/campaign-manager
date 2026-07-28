@@ -15,6 +15,7 @@ from email.utils import formataddr
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
+from services.smtp_service import smtp_connect
 
 campaigns_bp = Blueprint('campaigns', __name__)
 
@@ -210,9 +211,7 @@ def send_campaign(campaign_id):
                 body    = body_template.replace('{company}', contact['company'] or '').replace('{name}', contact['name'] or '')
 
                 try:
-                    server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
-                    server.starttls()
-                    server.login(smtp_login, smtp_pw)
+                    server = smtp_connect(smtp_server, smtp_port, smtp_login, smtp_pw)
                     tracking_id  = str(uuid.uuid4())
                     tracked_body = inject_tracking_pixel(append_signature(body, signature), tracking_id)
                     msg = EmailMessage()
@@ -323,9 +322,7 @@ def retry_email(email_id):
             bcc         = get_setting('bcc_emails') or ''
 
         try:
-            server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
-            server.starttls()
-            server.login(smtp_login, smtp_pw)
+            server = smtp_connect(smtp_server, smtp_port, smtp_login, smtp_pw)
             msg = EmailMessage()
             msg['Subject'] = record['subject']
             msg['From']    = formataddr((from_name, from_email))
@@ -389,9 +386,7 @@ def api_retry_email(email_id):
             bcc         = get_setting('bcc_emails') or ''
 
         try:
-            server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
-            server.starttls()
-            server.login(smtp_login, smtp_pw)
+            server = smtp_connect(smtp_server, smtp_port, smtp_login, smtp_pw)
             msg = EmailMessage()
             msg['Subject'] = record['subject']
             msg['From']    = formataddr((from_name, from_email))
@@ -475,9 +470,7 @@ def send_campaign_ai(campaign_id):
 
         server = None
         try:
-            server = smtplib.SMTP(smtp_addr, smtp_port_num, timeout=10)
-            server.starttls()
-            server.login(smtp_login, smtp_pw)
+            server = smtp_connect(smtp_addr, smtp_port_num, smtp_login, smtp_pw)
         except Exception as e:
             error_logger.exception(f'[AI SEND] SMTP login failed: {e}')
             prog['running'] = False
@@ -505,9 +498,7 @@ def send_campaign_ai(campaign_id):
                         bcc        = creds.get('bcc_emails') or ''
                         signature  = creds.get('signature') or ''
                         account_id = creds.get('account_id') or creds.get('id')
-                        server = smtplib.SMTP(smtp_addr, smtp_port_num, timeout=10)
-                        server.starttls()
-                        server.login(smtp_login, smtp_pw)
+                        server = smtp_connect(smtp_addr, smtp_port_num, smtp_login, smtp_pw)
                     except Exception as e:
                         error_logger.exception(f'[AI SEND] SMTP rotate failed: {e}')
 

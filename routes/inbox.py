@@ -183,11 +183,18 @@ def api_send_reply(thread_id):
         msg['Subject'] = subject
         html_body = full_body.replace('\n', '<br>')
         msg.attach(MIMEText(html_body, 'html'))
-        server = smtplib.SMTP(smtp_row['smtp_server'], int(smtp_row['smtp_port']))
-        server.starttls()
-        server.login(login_user_smtp, smtp_row['password'])
-        server.sendmail(smtp_email, to_email, msg.as_string())
-        server.quit()
+        from services.smtp_service import is_brevo_account, send_via_brevo_api, smtp_connect
+        smtp_account_dict = dict(smtp_row)
+        smtp_account_dict['from_email'] = smtp_email
+        if is_brevo_account(smtp_account_dict):
+            ok, err = send_via_brevo_api(smtp_account_dict, to_email, subject, html_body)
+            if not ok:
+                raise Exception(err)
+        else:
+            server = smtp_connect(smtp_row['smtp_server'], int(smtp_row['smtp_port']),
+                                  login_user_smtp, smtp_row['password'])
+            server.sendmail(smtp_email, to_email, msg.as_string())
+            server.quit()
         conn.execute("""
             INSERT INTO messages (thread_id, direction, body, sender_email, created_at)
             VALUES (?, 'outgoing', ?, ?, CURRENT_TIMESTAMP)

@@ -438,12 +438,15 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
     smtp_server_conn = None  # Reused SMTP connection
 
     def _get_smtp_conn(account):
-        """Get or reuse SMTP connection."""
+        """Get SMTP connection. Returns None for Brevo API accounts (no persistent conn needed)."""
+        from services.smtp_service import is_brevo_account, smtp_connect
+        if is_brevo_account(account):
+            return None  # Brevo uses HTTP API per-send, no persistent connection
         try:
-            s = smtplib.SMTP(account['smtp_server'], int(account['smtp_port'] or 587), timeout=10)
-            s.starttls()
-            s.login(account.get('login_username') or account['email'], account['password'])
-            return s
+            return smtp_connect(
+                account['smtp_server'], int(account['smtp_port'] or 587),
+                account.get('login_username') or account['email'], account['password']
+            )
         except Exception as e:
             error_logger.error(f'[EXEC] SMTP connect failed: {e}')
             return None
@@ -691,19 +694,31 @@ def _send_one(contact, subject: str, body: str, campaign_id: int,
                 msg.add_attachment(f.read(), maintype=maintype, subtype=subtype,
                                    filename=os.path.basename(attachment_path))
 
-        # Use reused SMTP connection or create new one
-        server = smtp_conn
-        own_server = False
-        if server is None:
-            smtp_login = account.get('login_username') or account['email']
-            server = smtplib.SMTP(account['smtp_server'], int(account['smtp_port'] or 587), timeout=10)
-            server.starttls()
-            server.login(smtp_login, account['password'])
-            own_server = True
-
-        server.send_message(msg)
-        if own_server:
-            server.quit()
+        # Send — Brevo API or SMTP
+        from services.smtp_service import is_brevo_account, send_via_brevo_api
+        if is_brevo_account(account):
+            reply_to = account.get('reply_to') or get_setting('reply_to') or ''
+            ok, err = send_via_brevo_api(
+                account, contact['email'], subject, body,
+                reply_to=reply_to,
+                attachment_data=attachment_data,
+                attachment_name=attachment_name,
+            )
+            if not ok:
+                raise Exception(err)
+        else:
+            server = smtp_conn
+            own_server = False
+            if server is None:
+                from services.smtp_service import smtp_connect
+                server = smtp_connect(
+                    account['smtp_server'], int(account['smtp_port'] or 587),
+                    account.get('login_username') or account['email'], account['password']
+                )
+                own_server = True
+            server.send_message(msg)
+            if own_server:
+                server.quit()
 
         # Log to emails_sent
         conn = get_db()

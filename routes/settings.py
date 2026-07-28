@@ -57,11 +57,22 @@ def api_smtp_test():
         result['connection_test'] = 'FAILED - Missing SMTP settings'
         return jsonify(result)
     try:
-        server = smtplib.SMTP(smtp_server, int(smtp_port), timeout=10)
-        server.starttls()
-        server.login(smtp_login, smtp_password)
-        server.quit()
-        result['connection_test'] = 'SUCCESS - Connected and authenticated'
+        from services.smtp_service import smtp_connect, is_brevo_account, send_via_brevo_api
+        test_account = {'smtp_server': smtp_server, 'password': smtp_password,
+                        'email': from_email, 'from_email': from_email, 'from_name': ''}
+        if is_brevo_account(test_account):
+            # Test Brevo API with a minimal payload (no actual send — just auth check)
+            import requests as _r
+            resp = _r.get('https://api.brevo.com/v3/account',
+                          headers={'api-key': smtp_password}, timeout=10)
+            if resp.status_code == 200:
+                result['connection_test'] = 'SUCCESS - Brevo API key valid'
+            else:
+                result['connection_test'] = f'FAILED - Brevo API {resp.status_code}: {resp.text[:100]}'
+        else:
+            server = smtp_connect(smtp_server, int(smtp_port), smtp_login, smtp_password)
+            server.quit()
+            result['connection_test'] = 'SUCCESS - Connected and authenticated'
     except Exception as e:
         result['connection_test'] = f'FAILED - {str(e)[:200]}'
         error_logger.error(f'SMTP test failed: {str(e)}')
