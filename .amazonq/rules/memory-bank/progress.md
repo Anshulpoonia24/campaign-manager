@@ -462,7 +462,21 @@ New error after deploy: `pg8000.exceptions.InterfaceError: network error` on eve
 - Added `blogs` table to `PG_SCHEMA` in `pg_schema.py`
 - Fixed `created_at[:10]` Jinja2 slicing crash — PostgreSQL returns `datetime` object, not string
 
-### 2026-07-05 Session 12 — Same Context Bug Fix
+### 2026-07-05 Session 13 — Campaign/1 500 Fix + AI Prompt Fix + Signature Fix
+
+**Files changed:**
+
+| File | Change | Why |
+|---|---|---|
+| `templates/campaign_detail.html` | `split('/')|last` → `.rsplit('/', 1)[-1]` | `|last` is not a valid Jinja2 filter — crashed `/campaign/1` with 500 |
+| `app.py` | `generate_ai_email()` — now fills all template variables: `{name}`, `{title}`, `{company}`, `{company_summary}`, `{key_insights}`, `{personalization_angles}`, `{industry}` from contact data + context | Old version only replaced `{name}` and `{company}`, appended context as raw blob — AI ignored all prompt rules |
+| `app.py` | `call_groq()` — added `system` param, changed `temperature` 0.7→0.4, `max_tokens` 1000→500 | Lower temperature = more rule-following; system prompt enforces HTML-only output |
+| `app.py` | `DEFAULT_SETTINGS['email_prompt']` — removed `MUST end with EXACTLY this signature block` instruction | `append_signature()` already adds SMTP account signature — AI adding it too caused double signature |
+
+**Commit:** `53c79af` pushed to `main`
+
+---
+
 
 **Root cause:**
 When a contact's website is empty AND the email domain doesn't slug-match the company name, `domain` stays `''`. Phases 1a–1d (website crawl) are skipped. Phases 2a–2c (Crunchbase/news/G2) were also being skipped because they were only called unconditionally — but the real issue was the AI synthesis prompt had no "DATA AVAILABILITY" signal, so the AI would still produce output using only the `decision_maker` section (Phase 5), which is 100% role-based and identical for every CTO/founder regardless of company.

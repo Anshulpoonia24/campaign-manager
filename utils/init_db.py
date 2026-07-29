@@ -293,6 +293,7 @@ def init_db(get_db, DEFAULT_SETTINGS):
             user_id INTEGER, page_type TEXT, page_id INTEGER,
             user_message TEXT, ai_response TEXT, action_taken TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+        "ALTER TABLE campaigns ADD COLUMN contact_ids_json TEXT DEFAULT ''",
     ]
     for migration in migrations:
         try:
@@ -300,6 +301,22 @@ def init_db(get_db, DEFAULT_SETTINGS):
             conn.commit()
         except Exception:
             pass
+
+    # One-time prompt fix: remove old hardcoded signature instruction from saved email_prompt
+    try:
+        row = conn.execute("SELECT value FROM settings WHERE key='email_prompt'").fetchone()
+        if row and 'MUST end with EXACTLY this signature block' in (row[0] or ''):
+            old = row[0]
+            # Strip everything from the signature instruction line onwards
+            cutoff = old.find('10. MUST end with EXACTLY this signature block')
+            if cutoff == -1:
+                cutoff = old.find('MUST end with EXACTLY')
+            if cutoff != -1:
+                new_prompt = old[:cutoff].rstrip() + '\n10. Do NOT add any signature — it will be added automatically.'
+                conn.execute("UPDATE settings SET value=? WHERE key='email_prompt'", (new_prompt,))
+                conn.commit()
+    except Exception:
+        pass
 
     if not conn.execute("SELECT id FROM workspaces WHERE id=1").fetchone():
         conn.execute("INSERT OR IGNORE INTO workspaces (id, name, slug, plan) VALUES (1, 'Default Workspace', 'default', 'free')")

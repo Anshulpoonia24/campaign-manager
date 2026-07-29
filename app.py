@@ -1043,14 +1043,18 @@ def check_warmup_upgrade():
     conn.close()
 
 def mark_send_success(account_id):
+    from utils.db import USE_POSTGRES
     conn = get_db()
-    conn.execute("UPDATE smtp_accounts SET sent_today=sent_today+1, last_used=? WHERE id=?", (datetime.now(), account_id))
+    fn = 'LEAST' if USE_POSTGRES else 'MIN'
+    conn.execute(f"UPDATE smtp_accounts SET sent_today=sent_today+1, last_used=?, health_score={fn}(100, health_score+1) WHERE id=?", (datetime.now(), account_id))
     conn.commit()
     conn.close()
 
 def mark_send_failure(account_id):
+    from utils.db import USE_POSTGRES
     conn = get_db()
-    conn.execute("UPDATE smtp_accounts SET health_score=MAX(0, health_score-5) WHERE id=?", (account_id,))
+    fn = 'GREATEST' if USE_POSTGRES else 'MAX'
+    conn.execute(f"UPDATE smtp_accounts SET health_score={fn}(0, health_score-5) WHERE id=?", (account_id,))
     conn.commit()
     conn.close()
 

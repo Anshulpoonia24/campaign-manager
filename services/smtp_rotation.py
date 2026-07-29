@@ -126,10 +126,12 @@ def append_signature(body: str, signature: str) -> str:
 
 def mark_send_success(account_id):
     """Increment health score on successful send (max 100)."""
+    from utils.db import USE_POSTGRES
     conn = get_db()
-    conn.execute("""
+    fn = 'LEAST' if USE_POSTGRES else 'MIN'
+    conn.execute(f"""
         UPDATE smtp_accounts
-        SET health_score = MIN(100, health_score + 1)
+        SET health_score = {fn}(100, health_score + 1)
         WHERE id = ?
     """, (account_id,))
     conn.commit()
@@ -138,10 +140,12 @@ def mark_send_success(account_id):
 
 def mark_send_failure(account_id):
     """Decrement health score on failure. Auto-deactivate if health = 0."""
+    from utils.db import USE_POSTGRES
     conn = get_db()
-    conn.execute("""
+    fn = 'GREATEST' if USE_POSTGRES else 'MAX'
+    conn.execute(f"""
         UPDATE smtp_accounts
-        SET health_score = MAX(0, health_score - 10)
+        SET health_score = {fn}(0, health_score - 10)
         WHERE id = ?
     """, (account_id,))
     conn.execute("""
