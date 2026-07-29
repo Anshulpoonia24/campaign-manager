@@ -496,7 +496,8 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
                 current_account = new_account
                 smtp_server_conn = _get_smtp_conn(current_account)
 
-        if not smtp_server_conn:
+        from services.smtp_service import is_brevo_account as _is_brevo
+        if not smtp_server_conn and not _is_brevo(current_account):
             smtp_server_conn = _get_smtp_conn(current_account)
             if not smtp_server_conn:
                 failed += 1
