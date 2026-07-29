@@ -293,7 +293,7 @@
             {% elif lead.thread_status == 'booked' %}<span class="cat-meeting">Booked</span>
             {% else %}<span class="cat-default">{{ lead.thread_status or lead.status or 'Active' }}</span>{% endif %}
           </td>
-          <td class="hide-mobile"><small class="text-muted">{{ lead.last_activity[:10] if lead.last_activity else '—' }}</small></td>
+          <td class="hide-mobile"><small class="text-muted">{{ lead.last_activity | string | truncate(10, False, '') if lead.last_activity else '—' }}</small></td>
           <td>
             {% if lead.thread_id %}
             <a href="/inbox/{{ lead.thread_id }}" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:11px;">Open</a>
@@ -336,7 +336,7 @@
           {% elif t.status == 'meeting' %}<span class="cat-meeting">Meeting</span>
           {% elif t.ai_category %}<span class="cat-default">{{ t.ai_category }}</span>
           {% else %}<span class="cat-default">Unread</span>{% endif %}
-          <div style="font-size:10.5px;color:#9CA3AF;margin-top:3px;">{{ t.last_message_at[:10] if t.last_message_at else '' }}</div>
+          <div style="font-size:10.5px;color:#9CA3AF;margin-top:3px;">{{ t.last_message_at | string | truncate(10, False, '') if t.last_message_at else '' }}</div>
         </div>
       </div>
       </a>
@@ -383,7 +383,7 @@
     <tr>
       <td>
         <a href="/campaign/{{ c.id }}" style="font-weight:600;color:#111827;text-decoration:none;">{{ c.name }}</a>
-        <div style="font-size:10.5px;color:#9CA3AF;">{{ c.created_at[:10] if c.created_at else '' }}</div>
+        <div style="font-size:10.5px;color:#9CA3AF;">{{ c.created_at | string | truncate(10, False, '') if c.created_at else '' }}</div>
       </td>
       <td>
         {% if c.status == 'sent' %}<span class="badge bg-success" style="font-size:10px;">Active</span>
