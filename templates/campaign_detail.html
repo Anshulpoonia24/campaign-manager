@@ -258,7 +258,7 @@ Anshul<br>
         <div class="mb-3">
           <label class="form-label" style="font-size:12px;font-weight:600;color:#374151;">Attachment <small class="text-muted fw-normal">(optional)</small></label>
           {% if campaign.attachment_path %}
-          {% set saved_filename = campaign.attachment_path.replace('\\', '/').split('/')|last %}
+          {% set saved_filename = campaign.attachment_path.replace('\\', '/').rsplit('/', 1)[-1] %}
           <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:7px 12px;margin-bottom:6px;" id="savedAttachment">
             <i class="fas fa-paperclip" style="color:#15803d;font-size:11px;"></i>
             <span style="font-size:12px;font-weight:600;color:#15803d;">{{ saved_filename }}</span>

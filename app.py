@@ -304,10 +304,7 @@ RULES:
 7. Do NOT use: impressive, innovative, trajectory, remarkable, truly, genuinely, incredible.
 8. Do NOT start with: Ive been following.
 9. No subject line in body. Output as HTML with <p> tags.
-10. MUST end with EXACTLY this signature block - copy paste it as-is, do not change anything:
-
-<p>Best regards,</p>
-<p>Anshul<br><b>Shiksha Infotech</b> | Est. 2009<br><a href="https://shikshainfotech.com">shikshainfotech.com</a></p>"""
+10. Do NOT add any signature — it will be added automatically."""
 }
 
 
@@ -904,18 +901,58 @@ def queue_check_replies():
 def generate_ai_email(name, company, prompt_template, context='', designation=''):
     """Generate AI email body. Returns (body, None) on success, (None, error) on failure."""
     import requests
-    prompt = prompt_template.replace('{name}', name or '').replace('{company}', company or '')
+
+    # Extract structured sections from context
+    company_summary = context[:400] if context else f'{company} — no research available'
+    key_insights = ''
+    personalization = ''
+    industry = ''
     if context:
-        prompt += f"\n\nCompany context: {context}"
-    if designation:
-        prompt += f"\nRecipient role: {designation}"
+        if 'PERSONALIZATION HOOKS' in context:
+            try:
+                personalization = context.split('PERSONALIZATION HOOKS')[1].split('\n\n')[0].strip()[:300]
+            except Exception:
+                pass
+        if 'VERIFIED SIGNALS' in context:
+            try:
+                key_insights = context.split('VERIFIED SIGNALS')[1].split('\n\n')[0].strip()[:300]
+            except Exception:
+                pass
+
+    if prompt_template:
+        prompt = (prompt_template
+            .replace('{name}',                  name or '')
+            .replace('{title}',                 designation or 'founder/executive')
+            .replace('{company}',               company or '')
+            .replace('{company_summary}',        company_summary)
+            .replace('{key_insights}',           key_insights or company_summary[:200])
+            .replace('{personalization_angles}', personalization or company_summary[:200])
+            .replace('{industry}',               industry or 'technology')
+        )
+        if context and '{company_summary}' not in prompt_template:
+            prompt += f'\n\nRESEARCH BRIEF:\n{context[:600]}'
+    else:
+        prompt = f"""Write a cold outreach email to {name}, {designation or 'founder/executive'} at {company}.
+
+RESEARCH:
+{context[:600] if context else 'No research available.'}
+
+RULES:
+- Open with ONE specific fact from the research. If none, write: "Came across {company} while researching companies in tech."
+- One sentence connecting their business to engineering/AI talent needs.
+- Include this EXACT block: <b>Shiksha Infotech (Est. 2009) | 400+ engineers | Founded by alumni of top Indian engineering schools | Offices in US and India | We place pre-vetted AI/ML engineers at $30-55/hr (vs $100-150/hr US rates), onboarded in 2-3 weeks.</b>
+- End with a CTA for a 15-minute call.
+- Max 4-5 sentences, under 120 words. Casual, direct tone.
+- Return ONLY valid HTML using <p> tags. No subject line. No signature."""
+
+    system = 'You are a cold email copywriter. Follow all instructions exactly. Return only valid HTML using <p> tags. No subject line. No extra commentary.'
 
     ai_priority = get_setting('ai_priority') or 'groq,gemini'
     providers = [p.strip() for p in ai_priority.split(',')]
 
     for provider in providers:
         if provider == 'groq':
-            body, err = call_groq(prompt)
+            body, err = call_groq(prompt, system=system)
             if body:
                 _log_ai_usage('groq', True)
                 return body, None
@@ -927,7 +964,7 @@ def generate_ai_email(name, company, prompt_template, context='', designation=''
     return None, 'All AI providers failed'
 
 
-def call_groq(prompt):
+def call_groq(prompt, system='You are a helpful assistant.'):
     import requests
     keys_str = get_setting('groq_api_keys') or ''
     keys = [k.strip() for k in keys_str.split(',') if k.strip()]
@@ -937,9 +974,13 @@ def call_groq(prompt):
         try:
             resp = requests.post('https://api.groq.com/openai/v1/chat/completions',
                 headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
-                json={'model': 'llama-3.3-70b-versatile', 'messages': [{'role': 'user', 'content': prompt}],
-                      'temperature': 0.7, 'max_tokens': 1000},
-                timeout=15)
+                json={'model': 'llama-3.3-70b-versatile',
+                      'messages': [
+                          {'role': 'system', 'content': system},
+                          {'role': 'user', 'content': prompt}
+                      ],
+                      'temperature': 0.4, 'max_tokens': 500},
+                timeout=25)
             if resp.status_code == 200:
                 return resp.json()['choices'][0]['message']['content'], None
             if resp.status_code == 429:
