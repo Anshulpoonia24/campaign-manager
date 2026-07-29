@@ -346,7 +346,7 @@ body { overflow: hidden; }
       <!-- Row 1: Name + Time -->
       <div class="tc-row1">
         <span class="tc-name">{{ t.contact_name or t.contact_email or 'Unknown' }}</span>
-        <span class="tc-time">{{ t.last_message_at[:10] if t.last_message_at else '' }}</span>
+        <span class="tc-time">{{ t.last_message_at | string | truncate(10, False, '') if t.last_message_at else '' }}</span>
       </div>
 
       <!-- Row 2: Company -->
