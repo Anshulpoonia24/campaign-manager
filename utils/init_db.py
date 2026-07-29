@@ -302,24 +302,24 @@ def init_db(get_db, DEFAULT_SETTINGS):
         except Exception:
             pass
 
-    # One-time backfill: sync emails_sent.opened=1 from tracking_events (fixes opens logged but never reflected)
+    # One-time backfill: sync emails_sent.opened=1 from tracking_events (exact email_sent_id match only)
     try:
+        # First: revert false opens — reset opened=0 where no tracking_event exists for this email
+        conn.execute("""
+            UPDATE emails_sent SET opened=0
+            WHERE opened=1 AND id NOT IN (
+                SELECT DISTINCT email_sent_id FROM tracking_events
+                WHERE event_type IN ('email_open', 'multiple_opens')
+                AND email_sent_id IS NOT NULL AND email_sent_id > 0
+            ) AND tracking_id IS NOT NULL
+        """)
+        # Then: set opened=1 only for exact email_sent_id matches
         conn.execute("""
             UPDATE emails_sent SET opened=1
             WHERE opened=0 AND id IN (
                 SELECT DISTINCT email_sent_id FROM tracking_events
                 WHERE event_type IN ('email_open', 'multiple_opens')
                 AND email_sent_id IS NOT NULL AND email_sent_id > 0
-            )
-        """)
-        # Also backfill via contact_id+campaign_id for tokens where email_sent_id=0
-        conn.execute("""
-            UPDATE emails_sent SET opened=1
-            WHERE opened=0 AND status='sent' AND id IN (
-                SELECT es.id FROM emails_sent es
-                JOIN tracking_events te ON te.contact_id=es.contact_id AND te.campaign_id=es.campaign_id
-                WHERE te.event_type IN ('email_open', 'multiple_opens')
-                AND es.status='sent' AND es.opened=0
             )
         """)
         conn.commit()
