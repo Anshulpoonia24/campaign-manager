@@ -329,7 +329,7 @@ Anshul<br>
         </td>
         <td>{% if e.opened %}<span style="color:#10b981;font-weight:600;">✓</span>{% else %}<span style="color:#d1d5db;">—</span>{% endif %}</td>
         <td>{% if e.replied %}<span style="color:#6366f1;font-weight:600;">✓</span>{% else %}<span style="color:#d1d5db;">—</span>{% endif %}</td>
-        <td><small class="text-muted">{{ e.sent_at[:10] if e.sent_at else '—' }}</small></td>
+        <td><small class="text-muted">{{ e.sent_at | string | truncate(10, False, '') if e.sent_at else '—' }}</small></td>
         <td id="camp-action-{{ e.id }}">
           {% if e.status in ['failed','bounced'] %}
           <button style="background:#fff7ed;border:1px solid #fed7aa;color:#c2410c;padding:2px 7px;border-radius:6px;font-size:11px;cursor:pointer;" onclick="retryCampaign({{ e.id }}, this)"><i class="fas fa-redo"></i></button>
