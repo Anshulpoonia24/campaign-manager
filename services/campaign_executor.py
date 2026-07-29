@@ -593,35 +593,56 @@ def _generate_ai_body(contact, body_template: str) -> str:
             app_logger.info(f'[EXEC] AI skip — no context for contact {contact["id"]}')
             return None
 
-        prompt_template = get_setting('email_prompt') or body_template
+        prompt_template = get_setting('email_prompt') or ''
 
-        prompt = f"""You are a senior SDR at Shiksha Infotech writing a cold outreach email.
-You have completed deep research on this prospect. Use ONLY verified facts from the research brief below.
+        # Fill all template variables with real contact data
+        industry = ''
+        try:
+            industry = contact['industry'] if 'industry' in contact.keys() else ''
+        except Exception:
+            pass
 
-CONTACT: {contact['name']} | ROLE: {designation} | COMPANY: {contact['company']}
+        if prompt_template:
+            # Extract structured fields from context for template variables
+            company_summary = context[:400] if context else f'{contact["company"]} — no research available'
+            key_insights    = ''
+            personalization = ''
+            # Parse context sections if they exist
+            if 'PERSONALIZATION HOOKS' in context:
+                try:
+                    personalization = context.split('PERSONALIZATION HOOKS')[1].split('\n\n')[0].strip()[:300]
+                except Exception:
+                    pass
+            if 'VERIFIED SIGNALS' in context:
+                try:
+                    key_insights = context.split('VERIFIED SIGNALS')[1].split('\n\n')[0].strip()[:300]
+                except Exception:
+                    pass
 
-=== RESEARCH BRIEF ===
-{context}
+            filled = (prompt_template
+                .replace('{name}',                  contact['name'] or '')
+                .replace('{title}',                 designation)
+                .replace('{company}',               contact['company'] or '')
+                .replace('{company_summary}',        company_summary)
+                .replace('{key_insights}',           key_insights or company_summary[:200])
+                .replace('{personalization_angles}', personalization or company_summary[:200])
+                .replace('{industry}',               industry or 'technology')
+            )
+            prompt = filled
+        else:
+            # Fallback built-in prompt
+            prompt = f"""Write a cold outreach email to {contact['name']}, {designation} at {contact['company']}.
 
-=== EMAIL TEMPLATE / STRUCTURE TO FOLLOW ===
-{prompt_template[:800]}
+RESEARCH:
+{context[:600]}
 
-=== WRITING INSTRUCTIONS ===
-1. Opening sentence: Reference ONE specific verified fact from PERSONALIZATION HOOKS or VERIFIED SIGNALS.
-   - Must be traceable to something in the research brief above.
-   - Do NOT use generic openers like "I came across your company" or "I noticed you're growing".
-2. Bridge: Connect that fact to why engineering talent matters for them right now.
-   - Use OUTREACH ANGLE if provided.
-   - Reference their TECH STACK or GROWTH SIGNALS if relevant.
-3. Value prop: 1-2 sentences on what Shiksha Infotech offers (pre-vetted engineers, fast placement).
-4. CTA: One soft ask — a 15-min call or reply.
-5. If confidence is low (see NOTE in brief): use a role-based opener instead of company-specific facts.
-
-FORMAT RULES:
-- 4-5 sentences total. No fluff.
-- Casual, direct, founder-to-founder tone.
-- Output as HTML with <p> tags only. No subject line.
-- Do NOT invent facts not present in the research brief."""
+RULES:
+- Open with ONE specific fact from the research above. If no facts exist, write: "Came across {contact['company']} while researching companies in {industry or 'tech'}."
+- One sentence connecting their business to engineering/AI talent needs.
+- Include this EXACT block: <b>Shiksha Infotech (Est. 2009) | 400+ engineers | Founded by alumni of top Indian engineering schools | Offices in US and India | We place pre-vetted AI/ML engineers at $30-55/hr (vs $100-150/hr US rates), onboarded in 2-3 weeks.</b>
+- End with a CTA for a 15-minute call.
+- Max 4-5 sentences, under 120 words. Casual, direct tone.
+- Return ONLY valid HTML using <p> tags. No subject line. No signature."""
 
         keys_str = get_setting('groq_api_keys') or ''
         keys = [k.strip() for k in keys_str.split(',') if k.strip()]
@@ -632,9 +653,12 @@ FORMAT RULES:
                     headers={'Authorization': f'Bearer {key}',
                              'Content-Type': 'application/json'},
                     json={'model': 'llama-3.3-70b-versatile',
-                          'messages': [{'role': 'user', 'content': prompt}],
-                          'max_tokens': 700,
-                          'temperature': 0.3},
+                          'messages': [
+                              {'role': 'system', 'content': 'You are a cold email copywriter. Follow instructions exactly. Return only valid HTML. No subject line. No signature. No extra commentary.'},
+                              {'role': 'user', 'content': prompt}
+                          ],
+                          'max_tokens': 500,
+                          'temperature': 0.4},
                     timeout=25
                 )
                 if r.status_code == 200:

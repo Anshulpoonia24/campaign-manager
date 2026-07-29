@@ -42,7 +42,7 @@
             <table class="table table-hover mb-0">
                 <thead><tr><th>#</th><th>Name</th><th>Company</th><th>Email</th><th>Notes</th><th>Date</th></tr></thead>
                 <tbody>
-                {% for f in follow_ups %}<tr><td>{{ loop.index }}</td><td>{{ f.name }}</td><td>{{ f.company }}</td><td>{{ f.email }}</td><td>{{ f.notes or '-' }}</td><td>{{ f.replied_at[:16] if f.replied_at else '-' }}</td></tr>{% endfor %}
+                {% for f in follow_ups %}<tr><td>{{ loop.index }}</td><td>{{ f.name }}</td><td>{{ f.company }}</td><td>{{ f.email }}</td><td>{{ f.notes or '-' }}</td><td>{{ f.replied_at | string | truncate(16, False, '') if f.replied_at else '-' }}</td></tr>{% endfor %}
                 {% if not follow_ups %}<tr><td colspan="6" class="text-center text-muted">No follow-ups yet</td></tr>{% endif %}
                 </tbody>
             </table>

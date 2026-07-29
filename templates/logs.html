@@ -111,7 +111,7 @@
                         {% else %}<span class="badge bg-info">{{ log.status }}</span>{% endif %}
                         {% if log.opened %}<span class="badge bg-info ms-1">👁️</span>{% endif %}
                     </td>
-                    <td><small>{{ log.sent_at[:16] if log.sent_at else '-' }}</small></td>
+                    <td><small>{{ log.sent_at | string | truncate(16, False, '') if log.sent_at else '-' }}</small></td>
                     <td><i class="fas fa-chevron-down text-muted" id="arrow-{{ log.id }}"></i></td>
                 </tr>
                 <tr class="log-detail" id="detail-{{ log.id }}">

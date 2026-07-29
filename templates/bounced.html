@@ -60,7 +60,7 @@
                     <td>{{ b.company }}</td>
                     <td>{{ b.email }}</td>
                     <td><small class="text-danger">{{ b.bounce_reason or 'No reason recorded' }}</small></td>
-                    <td>{{ b.sent_at[:16] if b.sent_at else '-' }}</td>
+                    <td>{{ b.sent_at | string | truncate(16, False, '') if b.sent_at else '-' }}</td>
                     <td id="action-{{ b.id }}">
                         <button class="btn btn-outline-success btn-sm retry-btn" data-id="{{ b.id }}" onclick="retrySingle({{ b.id }}, this)" title="Retry">
                             <i class="fas fa-redo"></i> Retry

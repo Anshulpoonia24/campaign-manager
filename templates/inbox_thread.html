@@ -75,7 +75,7 @@
             <div class="message-bubble {{ msg.direction }}">
                 <div class="bubble-body">{{ msg.body or '(empty)' }}</div>
                 <div class="bubble-meta d-flex {{ 'justify-content-end' if msg.direction == 'outgoing' else '' }} align-items-center gap-2">
-                    <span>{{ msg.created_at[:16] if msg.created_at else '' }}</span>
+                    <span>{{ msg.created_at | string | truncate(16, False, '') if msg.created_at else '' }}</span>
                     {% if msg.ai_category %}
                     <span class="category-badge cat-{{ msg.ai_category }}">{{ msg.ai_category.replace('_',' ').title() }}</span>
                     {% endif %}

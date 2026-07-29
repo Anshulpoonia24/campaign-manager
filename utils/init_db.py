@@ -302,19 +302,42 @@ def init_db(get_db, DEFAULT_SETTINGS):
         except Exception:
             pass
 
-    # One-time prompt fix: remove old hardcoded signature instruction from saved email_prompt
+    # One-time backfill: sync emails_sent.opened=1 from tracking_events (fixes opens logged but never reflected)
+    try:
+        conn.execute("""
+            UPDATE emails_sent SET opened=1
+            WHERE opened=0 AND id IN (
+                SELECT DISTINCT email_sent_id FROM tracking_events
+                WHERE event_type IN ('email_open', 'multiple_opens')
+                AND email_sent_id IS NOT NULL AND email_sent_id > 0
+            )
+        """)
+        # Also backfill via contact_id+campaign_id for tokens where email_sent_id=0
+        conn.execute("""
+            UPDATE emails_sent SET opened=1
+            WHERE opened=0 AND status='sent' AND id IN (
+                SELECT es.id FROM emails_sent es
+                JOIN tracking_events te ON te.contact_id=es.contact_id AND te.campaign_id=es.campaign_id
+                WHERE te.event_type IN ('email_open', 'multiple_opens')
+                AND es.status='sent' AND es.opened=0
+            )
+        """)
+        conn.commit()
+    except Exception:
+        pass
+
+    # One-time prompt fix: replace old prompt (missing research variables) with new research-aware version
     try:
         row = conn.execute("SELECT value FROM settings WHERE key='email_prompt'").fetchone()
-        if row and 'MUST end with EXACTLY this signature block' in (row[0] or ''):
-            old = row[0]
-            # Strip everything from the signature instruction line onwards
-            cutoff = old.find('10. MUST end with EXACTLY this signature block')
-            if cutoff == -1:
-                cutoff = old.find('MUST end with EXACTLY')
-            if cutoff != -1:
-                new_prompt = old[:cutoff].rstrip() + '\n10. Do NOT add any signature — it will be added automatically.'
-                conn.execute("UPDATE settings SET value=? WHERE key='email_prompt'", (new_prompt,))
-                conn.commit()
+        old_prompt = row[0] if row else ''
+        needs_update = (
+            'MUST end with EXACTLY this signature block' in old_prompt
+            or '{company_summary}' not in old_prompt
+        )
+        if old_prompt and needs_update:
+            new_prompt = DEFAULT_SETTINGS['email_prompt']
+            conn.execute("UPDATE settings SET value=? WHERE key='email_prompt'", (new_prompt,))
+            conn.commit()
     except Exception:
         pass
 

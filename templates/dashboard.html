@@ -496,7 +496,7 @@
           </a>
           {% if item.sub %}<div class="activity-sub">{{ item.sub }}</div>{% endif %}
         </div>
-        <div class="activity-time">{{ item.time[:16] if item.time else '' }}</div>
+        <div class="activity-time">{{ item.time | string | truncate(16, False, '') if item.time else '' }}</div>
       </div>
       {% endfor %}
       {% else %}

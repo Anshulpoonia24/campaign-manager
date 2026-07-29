@@ -54,7 +54,7 @@
   <div class="blog-meta">
     <span class="blog-cat">{{ blog.category }}</span>
     <span class="blog-author">By {{ blog.author }}</span>
-    <span class="blog-date">{{ blog.created_at[:10] if blog.created_at else '' }}</span>
+    <span class="blog-date">{{ blog.created_at | string | truncate(10, False, '') if blog.created_at else '' }}</span>
   </div>
 
   <h1 class="blog-title">{{ blog.title }}</h1>

@@ -291,18 +291,27 @@ DEFAULT_SETTINGS = {
     'imap_username': os.getenv('IMAP_USERNAME', ''),
     'imap_password': os.getenv('IMAP_PASSWORD', ''),
     'imap_check_interval': os.getenv('IMAP_CHECK_INTERVAL', '180'),
-    'email_prompt': """Write a cold outreach email to {name}, founder/executive at {company}.
+    'email_prompt': """Write a cold outreach email to {name}, {title} at {company}.
+
+COMPANY RESEARCH:
+{company_summary}
+
+KEY SIGNALS:
+{key_insights}
+
+PERSONALIZATION:
+{personalization_angles}
 
 RULES:
-1. Open with ONE specific fact about {company}. Use only WELL KNOWN facts.
-2. In 1 line connect why they need engineering talent.
+1. Open with ONE specific fact from the research above. If no research, write: "Came across {company} while researching {industry} companies."
+2. In 1 line connect why they need engineering talent right now.
 3. Pitch Shiksha Infotech using this EXACT HTML block:
    <b>Shiksha Infotech (Est. 2009) | 400+ engineers | Founded by alumni of top Indian engineering schools | Offices in US and India | We place pre-vetted AI/ML engineers at $30-55/hr (vs $100-150/hr US rates), onboarded in 2-3 weeks.</b>
 4. End with simple CTA - 15 min call.
 5. MAX 4-5 sentences. Very short.
 6. Casual, founder-to-founder tone.
 7. Do NOT use: impressive, innovative, trajectory, remarkable, truly, genuinely, incredible.
-8. Do NOT start with: Ive been following.
+8. Do NOT start with: I've been following.
 9. No subject line in body. Output as HTML with <p> tags.
 10. Do NOT add any signature — it will be added automatically."""
 }

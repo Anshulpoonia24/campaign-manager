@@ -236,9 +236,17 @@ def process_open(token: str, ip: str, user_agent: str) -> bool:
         is_first_open = not (row and row['opened']) if row else True
 
         # Update emails_sent
+        # Update emails_sent — try by email_sent_id first, fall back to contact+campaign
         if data['email_sent_id']:
             conn.execute("UPDATE emails_sent SET opened=1 WHERE id=?", (data['email_sent_id'],))
-            conn.commit()
+        elif data['contact_id'] and data['campaign_id']:
+            conn.execute("""
+                UPDATE emails_sent SET opened=1
+                WHERE contact_id=? AND campaign_id=? AND status='sent'
+                AND id=(SELECT id FROM emails_sent WHERE contact_id=? AND campaign_id=? AND status='sent'
+                        ORDER BY sent_at DESC LIMIT 1)
+            """, (data['contact_id'], data['campaign_id'], data['contact_id'], data['campaign_id']))
+        conn.commit()
 
         # Log event
         event_type = Event.EMAIL_OPEN if is_first_open else 'multiple_opens'

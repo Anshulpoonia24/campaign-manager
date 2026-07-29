@@ -85,7 +85,7 @@ def api_tracking_timeline():
     from services.workspace_service import get_wid
     wid = get_wid()
     limit = int(request.args.get('limit', 50))
-    timeline = get_workspace_timeline(wid, limit)
+    timeline = get_workspace_timeline(limit)
     return jsonify({'timeline': timeline})
 
 
@@ -96,7 +96,7 @@ def api_contact_timeline(contact_id):
     from services.tracking import get_contact_timeline
     from services.workspace_service import get_wid
     wid = get_wid()
-    timeline = get_contact_timeline(contact_id, wid)
+    timeline = get_contact_timeline(contact_id)
     return jsonify({'timeline': timeline})
 
 
@@ -108,7 +108,7 @@ def api_tracking_stats():
     from services.workspace_service import get_wid
     wid = get_wid()
     days = int(request.args.get('days', 30))
-    return jsonify(get_engagement_stats(wid, days))
+    return jsonify(get_engagement_stats(days))
 
 
 @tracking_bp.route('/api/tracking/hot_leads')
