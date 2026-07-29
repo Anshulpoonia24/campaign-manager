@@ -112,6 +112,9 @@ def campaign_detail(campaign_id):
     conn = get_db()
     try:
         campaign = conn.execute("SELECT * FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
+        if not campaign:
+            flash('Campaign not found.', 'error')
+            return redirect(url_for('campaigns.campaigns_list'))
         emails = conn.execute("""
             SELECT es.*, c.name, c.company FROM emails_sent es
             JOIN contacts c ON es.contact_id = c.id
