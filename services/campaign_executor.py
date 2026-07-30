@@ -677,10 +677,9 @@ RULES:
                 if r.status_code == 200:
                     return r.json()['choices'][0]['message']['content'].strip()
                 if r.status_code == 429:
-                    err_body = r.text
-                    if 'per day' in err_body or 'tokens per day' in err_body or 'TPD' in err_body:
-                        continue  # daily limit exhausted, try next key
-                    time.sleep(1)
+                    # Always move to next key on any 429 — rate limit or daily limit
+                    time.sleep(0.5)
+                    continue
             except Exception:
                 continue
     except Exception as e:

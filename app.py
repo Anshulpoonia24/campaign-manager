@@ -993,7 +993,7 @@ def call_groq(prompt, system='You are a helpful assistant.'):
             if resp.status_code == 200:
                 return resp.json()['choices'][0]['message']['content'], None
             if resp.status_code == 429:
-                continue
+                continue  # Always rotate to next key on any 429
             return None, f'Groq error {resp.status_code}'
         except requests.exceptions.Timeout:
             continue
