@@ -602,9 +602,7 @@ def _generate_ai_body(contact, body_template: str) -> str:
 
         context     = contact['context']     if 'context'     in contact.keys() else ''
         designation = contact['designation'] if 'designation' in contact.keys() else 'founder/executive'
-        if not context:
-            app_logger.info(f'[EXEC] AI skip — no context for contact {contact["id"]}')
-            return None
+        # Don't skip on no context — use fallback prompt with just name/company
 
         prompt_template = get_setting('email_prompt') or ''
 

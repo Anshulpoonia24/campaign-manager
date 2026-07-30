@@ -553,26 +553,49 @@ fetch('/api/verify_status').then(r=>r.json()).then(d=>{ if(d.running) startPolli
 document.getElementById('verifyNewForm').addEventListener('submit', e=>{ e.preventDefault(); fetch('/verify_emails',{method:'POST',body:new FormData(e.target)}).then(()=>startPolling()); });
 document.getElementById('reverifyForm').addEventListener('submit', e=>{ e.preventDefault(); fetch('/verify_emails',{method:'POST',body:new FormData(e.target)}).then(()=>startPolling()); });
 
-// ── AI CONTEXT FETCH (single) ──
+// ── AI CONTEXT FETCH (single) — async poll, no timeout ──
 function fetchContext(id, btn, name, company) {
   btn.className = 'ai-state ai-loading';
-  btn.innerHTML = '<span class="spin" style="border-top-color:#1d4ed8;"></span> Generating...';
+  btn.innerHTML = '<span class="spin" style="border-top-color:#1d4ed8;"></span> Enriching...';
   btn.disabled = true;
-  fetch('/api/fetch_context/'+id).then(r=>r.json()).then(d => {
-    if(d.success) {
-      document.getElementById('ctx-'+id).innerHTML =
-        `<button class="ai-state ai-ready" onclick="openDrawer(${id},'${name}','${company}')">
-          <i class="fas fa-check-circle" style="font-size:10px;"></i> AI Enriched &nbsp;<i class="fas fa-eye" style="font-size:9px;opacity:0.7;"></i>
-        </button>`;
-      // store context for drawer
-      contextCache[id] = d.context;
-    } else {
-      document.getElementById('ctx-'+id).innerHTML =
-        `<button class="ai-state ai-error" onclick="fetchContext(${id},this,'${name}','${company}')">
-          <i class="fas fa-redo" style="font-size:9px;"></i> Retry
-        </button>`;
-    }
-  }).catch(()=>{
+
+  // Step 1: trigger enrich
+  fetch('/api/contacts/'+id+'/enrich_intelligence', {method:'POST'})
+  .then(r=>r.json())
+  .then(d=>{
+    if(!d.success) throw new Error(d.error || 'Failed');
+    // Step 2: poll for completion
+    let attempts = 0;
+    const poll = () => {
+      if(attempts++ > 30) {
+        document.getElementById('ctx-'+id).innerHTML =
+          `<button class="ai-state ai-error" onclick="fetchContext(${id},this,'${name}','${company}')">
+            <i class="fas fa-redo" style="font-size:9px;"></i> Retry
+          </button>`;
+        return;
+      }
+      fetch('/api/contacts/'+id+'/research_status')
+      .then(r=>r.json())
+      .then(s=>{
+        if(s.status === 'processing') { setTimeout(poll, 3000); }
+        else if(s.done && s.context) {
+          contextCache[id] = s.context;
+          document.getElementById('ctx-'+id).innerHTML =
+            `<button class="ai-state ai-ready" onclick="openDrawer(${id},'${name}','${company}')">
+              <i class="fas fa-check-circle" style="font-size:10px;"></i> AI Enriched &nbsp;<i class="fas fa-eye" style="font-size:9px;opacity:0.7;"></i>
+            </button>`;
+        } else {
+          document.getElementById('ctx-'+id).innerHTML =
+            `<button class="ai-state ai-error" onclick="fetchContext(${id},this,'${name}','${company}')">
+              <i class="fas fa-redo" style="font-size:9px;"></i> Retry
+            </button>`;
+        }
+      })
+      .catch(()=>setTimeout(poll, 3000));
+    };
+    setTimeout(poll, 3000);
+  })
+  .catch(()=>{
     document.getElementById('ctx-'+id).innerHTML =
       `<button class="ai-state ai-error" onclick="fetchContext(${id},this,'${name}','${company}')">
         <i class="fas fa-redo" style="font-size:9px;"></i> Retry
@@ -580,45 +603,136 @@ function fetchContext(id, btn, name, company) {
   });
 }
 
-// ── ENRICH ALL ──
+// ── ENRICH ALL — one-by-one with live counter ──
+let _enrichStopped = false;
+
 function enrichAll(force) {
   const msg = force
-    ? 'Re-enrich ALL contacts using the full SDR research pipeline? This will overwrite existing context.'
+    ? 'Re-enrich ALL contacts? This will overwrite existing context.'
     : 'Run deep research on contacts that have no AI context yet?';
   if(!confirm(msg)) return;
+
+  // Collect target rows
+  const targets = allRows.filter(r => {
+    if(force) return true;
+    // Only rows without enriched context (no "AI Enriched" button)
+    return !r.querySelector('.ai-ready');
+  });
+
+  if(!targets.length) {
+    alert('✅ All contacts already enriched — nothing to do.');
+    return;
+  }
+
   const btn = force ? document.getElementById('enrichBtn') : document.getElementById('researchBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spin" style="border-top-color:#fff;"></span> Running...';
+  _enrichStopped = false;
+
   const banner = document.getElementById('enrichBanner');
   banner.style.display = 'flex';
-  document.getElementById('enrichBannerText').textContent = 'Starting deep research pipeline...';
-  document.getElementById('enrichProgress').style.width = '10%';
+  const bannerText = document.getElementById('enrichBannerText');
+  const progressBar = document.getElementById('enrichProgress');
+  const countEl = document.getElementById('enrichCount');
 
-  fetch('/api/contacts/bulk_enrich_intelligence', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({force})
-  })
-  .then(r=>{ if(!r.ok) throw new Error(`Server error ${r.status}`); return r.json(); })
-  .then(d=>{
-    btn.disabled = false;
-    btn.innerHTML = force ? '<i class="fas fa-sync-alt me-1"></i>Re-enrich All' : '<i class="fas fa-sparkles me-1"></i>Enrich New';
-    if(d.queued === 0) {
-      document.getElementById('enrichBannerText').textContent = '✅ All contacts already enriched — nothing to do.';
-      document.getElementById('enrichProgress').style.width = '100%';
-    } else {
-      document.getElementById('enrichBannerText').textContent =
-        `⚡ Deep research running for ${d.queued} contacts in background (website crawl + AI synthesis). Page will refresh in 30s...`;
-      document.getElementById('enrichProgress').style.width = '40%';
-      setTimeout(()=>location.reload(), 30000);
+  // Add stop button to banner if not present
+  if(!document.getElementById('enrichStopBtn')) {
+    const stopBtn = document.createElement('button');
+    stopBtn.id = 'enrichStopBtn';
+    stopBtn.textContent = 'Stop';
+    stopBtn.style.cssText = 'background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:3px 10px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;';
+    stopBtn.onclick = () => { _enrichStopped = true; stopBtn.textContent = 'Stopping...'; };
+    banner.appendChild(stopBtn);
+  }
+
+  let done = 0, succeeded = 0, failed = 0;
+  const total = targets.length;
+
+  async function processNext(idx) {
+    if(_enrichStopped || idx >= total) {
+      // Done
+      btn.disabled = false;
+      btn.innerHTML = force ? '<i class="fas fa-sync-alt me-1"></i>Re-enrich All' : '<i class="fas fa-sparkles me-1"></i>Enrich New';
+      bannerText.textContent = _enrichStopped
+        ? `⏹ Stopped at ${done}/${total} — ${succeeded} enriched, ${failed} failed`
+        : `✅ Done! ${succeeded} enriched, ${failed} failed`;
+      progressBar.style.width = '100%';
+      const stopBtn = document.getElementById('enrichStopBtn');
+      if(stopBtn) stopBtn.remove();
+      return;
     }
-  })
-  .catch(e=>{
-    btn.disabled = false;
-    btn.innerHTML = force ? '<i class="fas fa-sync-alt me-1"></i>Re-enrich All' : '<i class="fas fa-sparkles me-1"></i>Enrich New';
-    document.getElementById('enrichBannerText').textContent = `❌ Error: ${e.message}`;
-    document.getElementById('enrichProgress').style.width = '0%';
-  });
+
+    const row = targets[idx];
+    const contactId = row.id.replace('row-', '');
+    const nameEl = row.querySelector('.contact-name');
+    const name = nameEl ? nameEl.textContent.trim() : contactId;
+    const companyEl = row.querySelector('td:nth-child(3) span');
+    const company = companyEl ? companyEl.textContent.trim() : '';
+
+    bannerText.textContent = `Enriching ${name} (${done+1}/${total})...`;
+    progressBar.style.width = Math.round((done/total)*100) + '%';
+    countEl.textContent = `${done}/${total}`;
+
+    // Mark row as loading
+    const ctxCell = document.getElementById('ctx-'+contactId);
+    if(ctxCell) {
+      ctxCell.innerHTML = '<button class="ai-state ai-loading"><span class="spin" style="border-top-color:#1d4ed8;"></span> Enriching...</button>';
+    }
+
+    try {
+      // Step 1: trigger enrich
+      const r1 = await fetch('/api/contacts/'+contactId+'/enrich_intelligence', {method:'POST'});
+      const d1 = await r1.json();
+      if(!d1.success) throw new Error(d1.error || 'Failed to start');
+
+      // Step 2: poll for completion (max 90s)
+      let attempts = 0;
+      await new Promise((resolve) => {
+        const poll = () => {
+          if(attempts++ > 30) { resolve(); return; } // timeout after 30*3s=90s
+          fetch('/api/contacts/'+contactId+'/research_status')
+          .then(r=>r.json())
+          .then(s=>{
+            if(s.status === 'processing') { setTimeout(poll, 3000); }
+            else {
+              // done or failed
+              if(s.done && s.context) {
+                succeeded++;
+                contextCache[contactId] = s.context;
+                if(ctxCell) {
+                  ctxCell.innerHTML = `<button class="ai-state ai-ready" onclick="openDrawer(${contactId},'${name.replace(/'/g,'')}','${company.replace(/'/g,'')}')">
+                    <i class="fas fa-check-circle" style="font-size:10px;"></i> AI Enriched &nbsp;<i class="fas fa-eye" style="font-size:9px;opacity:0.7;"></i>
+                  </button>`;
+                }
+              } else {
+                failed++;
+                if(ctxCell) {
+                  ctxCell.innerHTML = `<button class="ai-state ai-error" onclick="fetchContext(${contactId},this,'${name.replace(/'/g,'')}','${company.replace(/'/g,'')}')">
+                    <i class="fas fa-redo" style="font-size:9px;"></i> Retry
+                  </button>`;
+                }
+              }
+              resolve();
+            }
+          })
+          .catch(()=>setTimeout(poll, 3000));
+        };
+        setTimeout(poll, 3000);
+      });
+    } catch(e) {
+      failed++;
+      if(ctxCell) {
+        ctxCell.innerHTML = `<button class="ai-state ai-error" onclick="fetchContext(${contactId},this,'${name.replace(/'/g,'')}','${company.replace(/'/g,'')}')">
+          <i class="fas fa-redo" style="font-size:9px;"></i> Retry
+        </button>`;
+      }
+    }
+
+    done++;
+    countEl.textContent = `${done}/${total}`;
+    processNext(idx + 1);
+  }
+
+  processNext(0);
 }
 
 // ── AI DRAWER ──
