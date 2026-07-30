@@ -259,6 +259,7 @@ Anshul<br>
           <label class="form-label" style="font-size:12px;font-weight:600;color:#374151;">Attachment <small class="text-muted fw-normal">(optional)</small></label>
           {% if campaign.attachment_path %}
           {% set saved_filename = campaign.attachment_path.replace('\\', '/').rsplit('/', 1)[-1] %}
+          {% if attachment_file_exists %}
           <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:7px 12px;margin-bottom:6px;" id="savedAttachment">
             <i class="fas fa-paperclip" style="color:#15803d;font-size:11px;"></i>
             <span style="font-size:12px;font-weight:600;color:#15803d;">{{ saved_filename }}</span>
@@ -266,6 +267,13 @@ Anshul<br>
             <button type="button" onclick="clearAttachment()" style="margin-left:auto;background:none;border:none;color:#dc2626;font-size:11px;cursor:pointer;">✕ Remove</button>
           </div>
           <input type="hidden" name="attachment" id="attachmentHidden" value="{{ saved_filename }}">
+          {% else %}
+          <div style="display:flex;align-items:center;gap:8px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:7px 12px;margin-bottom:6px;">
+            <i class="fas fa-exclamation-triangle" style="color:#c2410c;font-size:11px;"></i>
+            <span style="font-size:12px;font-weight:600;color:#c2410c;">{{ saved_filename }}</span>
+            <small style="color:#c2410c;ms-1">file missing on server — re-upload below</small>
+          </div>
+          {% endif %}
           {% endif %}
           <input type="file" name="attachment_file" class="form-control form-control-sm" id="attachmentFileInput" onchange="onNewFileSelected()">
           <small class="text-muted" style="font-size:11px;">Upload a new file to replace the existing attachment</small>

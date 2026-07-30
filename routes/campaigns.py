@@ -126,7 +126,17 @@ def campaign_detail(campaign_id):
         """, (campaign_id,)).fetchall()
     finally:
         conn.close()
-    return render_template('campaign_detail.html', campaign=campaign, emails=emails, available=available)
+
+    # Check if saved attachment still exists on disk
+    attachment_file_exists = False
+    if campaign and campaign['attachment_path']:
+        from app import UPLOAD_DIR
+        from werkzeug.utils import secure_filename
+        saved_name = campaign['attachment_path'].replace('\\', '/').rsplit('/', 1)[-1]
+        attachment_file_exists = os.path.exists(os.path.join(UPLOAD_DIR, secure_filename(saved_name)))
+
+    return render_template('campaign_detail.html', campaign=campaign, emails=emails,
+                           available=available, attachment_file_exists=attachment_file_exists)
 
 
 # ── TEMPLATE SEND ─────────────────────────────────────────────────

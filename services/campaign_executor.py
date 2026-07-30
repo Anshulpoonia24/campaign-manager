@@ -424,6 +424,10 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
             app_logger.info(f'[EXEC] Attachment cached: {attachment_name} ({len(attachment_data)//1024}KB)')
         except Exception as e:
             error_logger.error(f'[EXEC] Attachment read failed: {e}')
+    elif attachment_path:
+        log(campaign_id,
+            f'⚠ Attachment file not found on server: {os.path.basename(attachment_path)} — emails will be sent WITHOUT attachment. Re-upload the file before launching.',
+            'warning')
 
     sent = failed = skipped = 0
     sent_buffer = failed_buffer = 0  # In-memory count buffer

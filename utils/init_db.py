@@ -37,6 +37,20 @@ def init_db(get_db, DEFAULT_SETTINGS):
             if not existing:
                 conn.execute("INSERT INTO settings (key, value) VALUES (?,?)", (k, v))
         conn.commit()
+        # Prompt migration for PostgreSQL — replace old prompt missing Hi {name} rule
+        try:
+            row = conn.execute("SELECT value FROM settings WHERE key='email_prompt'").fetchone()
+            old_prompt = row[0] if row else ''
+            needs_update = (
+                'MUST end with EXACTLY this signature block' in old_prompt
+                or '{company_summary}' not in old_prompt
+                or 'ALWAYS start with' not in old_prompt
+            )
+            if old_prompt and needs_update:
+                conn.execute("UPDATE settings SET value=? WHERE key='email_prompt'", (DEFAULT_SETTINGS['email_prompt'],))
+                conn.commit()
+        except Exception:
+            pass
         for rule_key, enabled, delay_days, max_followups in [('no_reply_followup',1,2,3),('opened_multiple_times',1,1,2),('interested_pause',1,0,0),('ooo_retry',1,7,1),('bounce_pause',1,0,0)]:
             existing = conn.execute("SELECT id FROM automation_settings WHERE rule_key=?", (rule_key,)).fetchone()
             if not existing:
