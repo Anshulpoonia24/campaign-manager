@@ -303,16 +303,16 @@ PERSONALIZATION:
 {personalization_angles}
 
 RULES:
-1. Open with ONE specific fact from the research above. If no research, write: "Came across {company} while researching {industry} companies."
-2. In 1 line connect why they need engineering talent right now.
-3. Pitch Shiksha Infotech using this EXACT HTML block:
+1. ALWAYS start with: <p>Hi {name},</p>
+2. Second line: ONE specific fact from the research above. If no research, write: "Came across {company} while researching {industry} companies."
+3. In 1 line connect why they need engineering talent right now.
+4. Pitch Shiksha Infotech using this EXACT HTML block:
    <b>Shiksha Infotech (Est. 2009) | 400+ engineers | Founded by alumni of top Indian engineering schools | Offices in US and India | We place pre-vetted AI/ML engineers at $30-55/hr (vs $100-150/hr US rates), onboarded in 2-3 weeks.</b>
-4. End with simple CTA - 15 min call.
-5. MAX 4-5 sentences. Very short.
-6. Casual, founder-to-founder tone.
-7. Do NOT use: impressive, innovative, trajectory, remarkable, truly, genuinely, incredible.
-8. Do NOT start with: I've been following.
-9. No subject line in body. Output as HTML with <p> tags.
+5. End with simple CTA - 15 min call.
+6. MAX 4-5 sentences total. Very short.
+7. Casual, founder-to-founder tone.
+8. Do NOT use: impressive, innovative, trajectory, remarkable, truly, genuinely, incredible.
+9. No subject line in body. Output as HTML with <p> tags only.
 10. Do NOT add any signature — it will be added automatically."""
 }
 

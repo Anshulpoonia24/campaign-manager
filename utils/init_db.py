@@ -333,6 +333,7 @@ def init_db(get_db, DEFAULT_SETTINGS):
         needs_update = (
             'MUST end with EXACTLY this signature block' in old_prompt
             or '{company_summary}' not in old_prompt
+            or 'ALWAYS start with' not in old_prompt
         )
         if old_prompt and needs_update:
             new_prompt = DEFAULT_SETTINGS['email_prompt']

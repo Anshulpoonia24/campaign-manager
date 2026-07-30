@@ -486,17 +486,18 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
             skipped += 1
             continue
 
-        # Rotate SMTP account every 10 emails
-        if i > 0 and i % 10 == 0:
-            new_account = get_next_smtp_account()
-            if new_account and new_account['id'] != current_account['id']:
+        # Rotate SMTP account on every email
+        new_account = get_next_smtp_account()
+        if new_account:
+            if new_account['id'] != current_account['id']:
                 try:
                     if smtp_server_conn: smtp_server_conn.quit()
                 except Exception: pass
-                current_account = new_account
-                smtp_server_conn = _get_smtp_conn(current_account)
+                smtp_server_conn = None
+            current_account = new_account
 
         from services.smtp_service import is_brevo_account as _is_brevo
+        # Open SMTP connection for this account if needed
         if not smtp_server_conn and not _is_brevo(current_account):
             smtp_server_conn = _get_smtp_conn(current_account)
             if not smtp_server_conn:
@@ -510,7 +511,15 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
         if send_mode == 'ai':
             body = _generate_ai_body(contact, body_template)
             if not body:
-                body = body_template
+                # AI failed — log error and skip this contact
+                log(campaign_id,
+                    f'AI generation failed for {contact["email"]} ({contact["name"]}) — no context or all Groq keys exhausted. Skipping.',
+                    'error', contact_id=contact_id)
+                failed += 1
+                failed_buffer += 1
+                _log_bounce(contact, subject, '', campaign_id,
+                            'AI generation failed — no research context available', status='failed')
+                continue
         else:
             body = body_template.replace('{company}', contact['company'] or '').replace('{name}', contact['name'] or '')
         body = append_signature(body, current_account.get('signature', ''))
