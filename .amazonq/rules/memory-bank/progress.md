@@ -1,5 +1,5 @@
 # OutreachOS — Living Development Document
-> Last updated: 2026-07-05 | Read this FIRST in every new session
+> Last updated: 2026-07-06 | Read this FIRST in every new session
 
 ---
 
@@ -547,6 +547,36 @@ When a contact's website is empty AND the email domain doesn't slug-match the co
 
 **Root cause of attachment issue:**
 Local `campaigns.db` was missing all executor columns (`subject_template`, `body_template`, `attachment_path`, `job_status`, etc.) — they existed in `init_db.py` migrations but the DB predated them. `launch_campaign()` UPDATE silently did nothing. Production PostgreSQL already had all columns via `pg_schema.py`.
+
+---
+
+### 2026-07-06 Session 15 — Email Validation Overhaul (3-tier system)
+
+**Root causes fixed:**
+1. `verify_email()` returned `True` for all catch-all/personal domains (gmail, yahoo etc.) — stored as `email_valid=1` same as verified corporate emails
+2. DNS timeout was treated as valid — `return True, "Valid - DNS timeout but domain likely exists"`
+3. Campaign audience and executor had no distinction between personal and corporate emails
+
+**New `email_valid` values:**
+- `0` = Invalid (domain doesn't exist or SMTP rejected)
+- `1` = Valid corporate email (MX exists, SMTP check passed/blocked)
+- `2` = Personal/catch-all (gmail/yahoo/outlook etc. — domain valid, mailbox unverifiable)
+- `-1` = Not yet verified
+
+**Files changed:**
+
+| File | Change | Why |
+|---|---|---|
+| `services/verification_service.py` | Catch-all domains now return `'catchall'` string instead of `True` | Distinct return value so callers can store `email_valid=2` |
+| `services/verification_service.py` | DNS timeout now returns `False` instead of `True` | Timeout = unverifiable, not valid |
+| `routes/contacts.py` | `verify_one()` in bulk verify — stores `email_valid=2` for catchall, `1` for valid, `0` for invalid | Correct 3-tier storage |
+| `routes/contacts.py` | `api_verify_single` — same `valid_int` logic, returns `valid_int > 0` to JS | Single verify button fix |
+| `templates/contacts.html` | Added `email_valid==2` → orange `~ Personal` badge in table | UI shows 3 states |
+| `templates/contacts.html` | Live polling JS updated to render Personal badge for `valid===2` | Real-time verify progress |
+| `templates/contacts.html` | `verifySingle()` JS updated to handle `valid==2` | Single verify button |
+| `services/campaign_executor.py` | Added `email_valid != 1` skip guard in `_run_campaign_inner` | Executor now skips personal/invalid/unverified contacts even if passed in |
+
+**Commit:** this session
 
 ---
 

@@ -373,6 +373,8 @@
       <td style="padding:10px 12px;text-align:center;" id="valid-{{ c.id }}">
         {% if c.email_valid == 1 %}
         <span class="valid-yes">✓ Valid</span>
+        {% elif c.email_valid == 2 %}
+        <span style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:99px;" title="Personal email — domain valid but mailbox unverifiable">~ Personal</span>
         {% elif c.email_valid == 0 %}
         <span class="valid-no">✗ Invalid</span>
         {% else %}
@@ -520,8 +522,10 @@ document.getElementById('contactSearch').addEventListener('input', e => searchCo
 function verifySingle(id, btn) {
   btn.innerHTML = '<span class="spin"></span>';
   fetch('/api/verify_single/'+id).then(r=>r.json()).then(d => {
-    document.getElementById('valid-'+id).innerHTML = d.valid
+    document.getElementById('valid-'+id).innerHTML = d.valid === true || d.valid === 1
       ? '<span class="valid-yes">✓ Valid</span>'
+      : d.valid === 2
+      ? '<span style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:99px;">~ Personal</span>'
       : '<span class="valid-no">✗ Invalid</span>';
   }).catch(()=>{ btn.innerHTML='Verify'; });
 }
@@ -542,7 +546,11 @@ function poll() {
     document.getElementById('verifyText').textContent = data.current_email ? '→ '+data.current_email : 'Verifying...';
     if(data.results) data.results.forEach(r => {
       const el = document.getElementById('valid-'+r.id);
-      if(el) el.innerHTML = r.valid===1 ? '<span class="valid-yes">✓ Valid</span>' : r.valid===0 ? '<span class="valid-no">✗ Invalid</span>' : '';
+      if(el) el.innerHTML = r.valid===1
+        ? '<span class="valid-yes">✓ Valid</span>'
+        : r.valid===2
+        ? '<span style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:99px;">~ Personal</span>'
+        : r.valid===0 ? '<span class="valid-no">✗ Invalid</span>' : '';
     });
     if(data.running) { setTimeout(poll, 800); }
     else if(data.done>0) { document.getElementById('verifyText').textContent='✅ Done!'; polling=false; setTimeout(()=>location.reload(),1500); }

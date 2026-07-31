@@ -36,8 +36,8 @@ def verify_email(email):
                 mx_cache[domain] = (False, "No MX record")
                 return False, "No MX record"
             except dns.resolver.LifetimeTimeout:
-                mx_cache[domain] = (True, domain)
-                return True, "Valid - DNS timeout but domain likely exists"
+                mx_cache[domain] = (False, "DNS timeout")
+                return False, "DNS timeout — could not verify domain"
             except Exception as e:
                 mx_cache[domain] = (False, f"DNS error: {str(e)[:40]}")
                 return False, f"DNS error: {str(e)[:40]}"
@@ -46,7 +46,7 @@ def verify_email(email):
 
         catchall_domains = ['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'live.com', 'icloud.com', 'me.com', 'aol.com', 'protonmail.com', 'proton.me']
         if domain in catchall_domains:
-            return True, f"Valid - {domain} (catch-all, unverifiable)"
+            return 'catchall', f"Personal email - {domain} (catch-all, mailbox unverifiable)"
 
         try:
             smtp = smtplib.SMTP(timeout=8)

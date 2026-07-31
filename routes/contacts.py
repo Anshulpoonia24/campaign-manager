@@ -509,18 +509,19 @@ def verify_emails_route():
         def verify_one(item):
             cid, email = item
             valid, reason = verify_email(email)
-            return cid, email, valid, reason
+            valid_int = 2 if valid == 'catchall' else (1 if valid else 0)
+            return cid, email, valid_int, reason
 
         with ThreadPoolExecutor(max_workers=10) as pool:
             futures = {pool.submit(verify_one, item): item for item in contacts_list}
             for future in as_completed(futures):
-                cid, email, valid, reason = future.result()
+                cid, email, valid_int, reason = future.result()
                 verify_progress['current_email'] = email
                 # Each write gets its own connection (PostgreSQL safe)
                 wconn = get_db()
                 try:
                     wconn.execute("UPDATE contacts SET email_valid=?, validation_reason=? WHERE id=?",
-                                 (1 if valid else 0, reason, cid))
+                                 (valid_int, reason, cid))
                     wconn.commit()
                 finally:
                     wconn.close()
@@ -550,11 +551,12 @@ def api_verify_single(contact_id):
         conn.close()
         return jsonify({'valid': False, 'reason': 'Contact not found'})
     valid, reason = verify_email(contact['email'])
+    valid_int = 2 if valid == 'catchall' else (1 if valid else 0)
     conn.execute("UPDATE contacts SET email_valid=?, validation_reason=? WHERE id=?",
-                 (1 if valid else 0, reason, contact['id']))
+                 (valid_int, reason, contact['id']))
     conn.commit()
     conn.close()
-    return jsonify({'valid': valid, 'reason': reason})
+    return jsonify({'valid': valid_int > 0, 'reason': reason})
 
 
 @contacts_bp.route('/api/fetch_context/<int:contact_id>')

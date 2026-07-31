@@ -479,6 +479,13 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
             skipped += 1
             continue
 
+        # Skip non-green emails (invalid=0, personal=2, unverified=-1)
+        if contact['email_valid'] != 1:
+            skipped += 1
+            log(campaign_id, f'Skipped {contact["email"]} — email_valid={contact["email_valid"]} (not verified green)',
+                'warning', contact_id=contact_id)
+            continue
+
         # Duplicate check
         conn = get_db()
         already = conn.execute(
