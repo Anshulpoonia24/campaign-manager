@@ -520,6 +520,14 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
         # Build content
         subject = subject_template.replace('{company}', contact['company'] or '').replace('{name}', contact['name'] or '')
         if send_mode == 'ai':
+            # STRICT: agar AI context nahi hai to mail BILKUL mat bhejo (pehle enrich karo)
+            _ctx = (contact['context'] if 'context' in contact.keys() else '') or ''
+            if not _ctx.strip():
+                skipped += 1
+                log(campaign_id,
+                    f'Skipped {contact["email"]} — no AI context (enrich contact first)',
+                    'warning', contact_id=contact_id)
+                continue
             body = _generate_ai_body(contact, body_template)
             if not body:
                 # AI failed — log error and skip this contact
@@ -602,91 +610,21 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
 
 
 def _generate_ai_body(contact, body_template: str) -> str:
-    """Generate AI-personalized email using deep research brief. Falls back to None on failure."""
+    """Generate AI-personalized email. Uses app.generate_ai_email() for Groq→Gemini fallback."""
     try:
-        from utils.db import get_setting
-        import requests as _req
-
+        from app import generate_ai_email
         context     = contact['context']     if 'context'     in contact.keys() else ''
         designation = contact['designation'] if 'designation' in contact.keys() else 'founder/executive'
-        # Don't skip on no context — use fallback prompt with just name/company
-
+        from utils.db import get_setting
         prompt_template = get_setting('email_prompt') or ''
-
-        # Fill all template variables with real contact data
-        industry = ''
-        try:
-            industry = contact['industry'] if 'industry' in contact.keys() else ''
-        except Exception:
-            pass
-
-        if prompt_template:
-            # Extract structured fields from context for template variables
-            company_summary = context[:400] if context else f'{contact["company"]} — no research available'
-            key_insights    = ''
-            personalization = ''
-            # Parse context sections if they exist
-            if 'PERSONALIZATION HOOKS' in context:
-                try:
-                    personalization = context.split('PERSONALIZATION HOOKS')[1].split('\n\n')[0].strip()[:300]
-                except Exception:
-                    pass
-            if 'VERIFIED SIGNALS' in context:
-                try:
-                    key_insights = context.split('VERIFIED SIGNALS')[1].split('\n\n')[0].strip()[:300]
-                except Exception:
-                    pass
-
-            filled = (prompt_template
-                .replace('{name}',                  contact['name'] or '')
-                .replace('{title}',                 designation)
-                .replace('{company}',               contact['company'] or '')
-                .replace('{company_summary}',        company_summary)
-                .replace('{key_insights}',           key_insights or company_summary[:200])
-                .replace('{personalization_angles}', personalization or company_summary[:200])
-                .replace('{industry}',               industry or 'technology')
-            )
-            prompt = filled
-        else:
-            # Fallback built-in prompt
-            prompt = f"""Write a cold outreach email to {contact['name']}, {designation} at {contact['company']}.
-
-RESEARCH:
-{context[:600]}
-
-RULES:
-- Open with ONE specific fact from the research above. If no facts exist, write: "Came across {contact['company']} while researching companies in {industry or 'tech'}."
-- One sentence connecting their business to engineering/AI talent needs.
-- Include this EXACT block: <b>Shiksha Infotech (Est. 2009) | 400+ engineers | Founded by alumni of top Indian engineering schools | Offices in US and India | We place pre-vetted AI/ML engineers at $30-55/hr (vs $100-150/hr US rates), onboarded in 2-3 weeks.</b>
-- End with a CTA for a 15-minute call.
-- Max 4-5 sentences, under 120 words. Casual, direct tone.
-- Return ONLY valid HTML using <p> tags. No subject line. No signature."""
-
-        keys_str = get_setting('groq_api_keys') or ''
-        keys = [k.strip() for k in keys_str.split(',') if k.strip()]
-        for key in keys:
-            try:
-                r = _req.post(
-                    'https://api.groq.com/openai/v1/chat/completions',
-                    headers={'Authorization': f'Bearer {key}',
-                             'Content-Type': 'application/json'},
-                    json={'model': 'llama-3.3-70b-versatile',
-                          'messages': [
-                              {'role': 'system', 'content': 'You are a cold email copywriter. Follow instructions exactly. Return only valid HTML. No subject line. No signature. No extra commentary.'},
-                              {'role': 'user', 'content': prompt}
-                          ],
-                          'max_tokens': 500,
-                          'temperature': 0.4},
-                    timeout=25
-                )
-                if r.status_code == 200:
-                    return r.json()['choices'][0]['message']['content'].strip()
-                if r.status_code == 429:
-                    # Always move to next key on any 429 — rate limit or daily limit
-                    time.sleep(0.5)
-                    continue
-            except Exception:
-                continue
+        body, err = generate_ai_email(
+            name=contact['name'] or '',
+            company=contact['company'] or '',
+            prompt_template=prompt_template,
+            context=context,
+            designation=designation,
+        )
+        return body  # None on failure
     except Exception as e:
         error_logger.warning(f'[EXEC] AI generation failed for contact {contact.get("id","?")}: {e}')
     return None

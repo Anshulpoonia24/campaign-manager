@@ -470,6 +470,103 @@ def api_bulk_enrich_intelligence():
     return jsonify({'success': True, 'queued': len(contact_ids), 'mode': 'thread'})
 
 
+# ══════════════════════════════════════════════════════════════
+# BULK CONTEXT ENRICHMENT — reliable, server-driven background job
+# Pehle browser ek-ek contact drive karta tha (har contact 90s cap)
+# to bade batch fail ho jaate the. Ab ek hi background thread saare
+# contacts pe chalta hai: har contact ka apna DB connection, per-
+# contact try/except (ek fail se poora batch nahi rukta), aur ek
+# progress dict jise UI poll karti hai. Tab band karne pe bhi chalta rehta hai.
+# ══════════════════════════════════════════════════════════════
+enrich_all_state = {
+    'running': False, 'total': 0, 'done': 0,
+    'succeeded': 0, 'failed': 0, 'current': '', 'stop': False,
+}
+
+
+def _run_enrich_all(contact_ids):
+    """Background worker: deep-research each contact one-by-one (isolated)."""
+    global enrich_all_state
+    from services.sdr_researcher import research_contact
+    for cid in contact_ids:
+        if enrich_all_state.get('stop'):
+            break
+        # Best-effort label for the progress banner (own short-lived connection)
+        try:
+            c = get_db()
+            row = c.execute("SELECT name, company FROM contacts WHERE id=?", (cid,)).fetchone()
+            c.close()
+            if row:
+                enrich_all_state['current'] = row['company'] or row['name'] or f'#{cid}'
+            else:
+                enrich_all_state['current'] = f'#{cid}'
+        except Exception:
+            enrich_all_state['current'] = f'#{cid}'
+        # research_contact() apna connection khud kholta/band karta hai
+        # aur enrichment_status ('processing' -> 'enriched'/'failed') set karta hai
+        try:
+            result = research_contact(cid)
+            if result and result.get('success'):
+                enrich_all_state['succeeded'] += 1
+            else:
+                enrich_all_state['failed'] += 1
+        except Exception as e:
+            enrich_all_state['failed'] += 1
+            try:
+                from utils.logger import error_logger
+                error_logger.error(f'[ENRICH_ALL] contact {cid} failed: {e}')
+            except Exception:
+                pass
+        enrich_all_state['done'] += 1
+        time.sleep(2)  # gentle pacing — AI keys / websites overload na hon
+    enrich_all_state['running'] = False
+    enrich_all_state['current'] = ''
+
+
+@contacts_bp.route('/api/contacts/enrich_all_bg', methods=['POST'])
+@login_required
+def api_enrich_all_bg():
+    """Start (or report) a background bulk-enrichment job. force=True => re-enrich everyone."""
+    global enrich_all_state
+    if enrich_all_state.get('running'):
+        return jsonify({'started': False, 'running': True, **enrich_all_state})
+    force = request.json.get('force', False) if request.is_json else False
+    conn = get_db()
+    if force:
+        rows = conn.execute("SELECT id FROM contacts ORDER BY id").fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT id FROM contacts WHERE (context IS NULL OR context='') ORDER BY id"
+        ).fetchall()
+    conn.close()
+    contact_ids = [r['id'] for r in rows]
+    if not contact_ids:
+        return jsonify({'started': False, 'total': 0,
+                        'message': 'All contacts already have context'})
+    enrich_all_state = {
+        'running': True, 'total': len(contact_ids), 'done': 0,
+        'succeeded': 0, 'failed': 0, 'current': '', 'stop': False,
+    }
+    t = threading.Thread(target=_run_enrich_all, args=[contact_ids], daemon=False)
+    t.start()
+    return jsonify({'started': True, 'total': len(contact_ids)})
+
+
+@contacts_bp.route('/api/contacts/enrich_all_status')
+@login_required
+def api_enrich_all_status():
+    """UI polls this to show live progress of the bulk job."""
+    return jsonify(enrich_all_state)
+
+
+@contacts_bp.route('/api/contacts/enrich_all_stop', methods=['POST'])
+@login_required
+def api_enrich_all_stop():
+    """Ask the running bulk job to stop after the current contact."""
+    enrich_all_state['stop'] = True
+    return jsonify({'success': True})
+
+
 @contacts_bp.route('/contacts')
 @login_required
 def contacts():
