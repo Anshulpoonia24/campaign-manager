@@ -163,9 +163,24 @@ except Exception:
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["200 per hour"],
+    default_limits=["500 per hour"],
     storage_uri=os.getenv('REDIS_URL', 'memory://')  # Use Redis when available
 )
+
+
+@limiter.request_filter
+def _exempt_status_polling():
+    """Live progress/status endpoints ko frontend har 1-2 sec poll karta hai.
+    Inhe rate-limit se chhoot do — warna '429 Too many requests' aata hai aur
+    campaign progress '0/0 Waiting to start' pe atak jaata hai. Ye sab read-only status hain."""
+    p = request.path or ''
+    return (
+        p.endswith('_status')       # /api/send_status, /api/contacts/enrich_all_status, /research_status, /verify_status
+        or '/status' in p           # /api/campaign/<id>/status
+        or '/progress' in p         # /verify_progress
+        or p.endswith('/sending')   # /campaign/<id>/sending page
+        or p.endswith('/diagnostics')
+    )
 
 # ==============================
 # GLOBAL ERROR HANDLERS

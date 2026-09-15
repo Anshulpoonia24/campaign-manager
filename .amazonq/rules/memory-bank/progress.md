@@ -1,5 +1,19 @@
 # OutreachOS — Living Development Document
-> Last updated: 2026-07-06 | Read this FIRST in every new session
+> Last updated: 2026-09-15 | Read this FIRST in every new session
+
+---
+
+## 🚨 STRICT RULE — HAR AI / AGENT KE LIYE (NO EXCEPTIONS)
+
+**Jo bhi AI is project pe kaam kare — Claude, Amazon Q, Cursor, Copilot, koi bhi — usse ye MANDATORY hai:**
+
+> **Jo bhi change karo — code, config, bugfix, ya kuch bhi — `progress.md` (yehi file) UPDATE karna ZAROORI hai. Har baar. Bina user ke bole. Kaam "done" bolne se pehle.**
+
+- Har change **"📝 SESSION NOTES"** section mein (sabse upar, aaj ki date) log karo: **kaunsi file, kya badla, aur kyun.**
+- ❌ Bina `progress.md` update kiye koi bhi task complete NAHI maana jaayega.
+- ❌ User ke yaad dilane ka intezaar mat karo — ye khud agent ki zimmedari hai.
+- ✅ Chhota change ho ya bada — har single file change yahan log hona chahiye.
+- 📖 Naya session/chat shuru ho to SABSE PEHLE yehi file padho — poora context yahan hai.
 
 ---
 
@@ -33,6 +47,7 @@
 - **`INSERT OR IGNORE INTO settings`**: `api/settings/save` never overwrites protected fields with empty string
 - **Render auto-deploy**: `main` branch pe push karo → Render automatically deploy karega
 - **Dev branch**: `devvvvvvvvvv` — test changes yahan karo, phir `main` mein merge karo
+- **AI models (Sept 2026)**: Groq Llama models (`llama-3.3-70b-versatile`) ab **Enterprise-only** → normal keys ko 404 "no access". Use `openai/gpt-oss-20b`/`gpt-oss-120b` with `reasoning_effort='low'` + `include_reasoning=false` + `max_completion_tokens` (warna reasoning models **empty content** dete hain). Gemini `2.0-flash` **SHUT DOWN** → `gemini-3.5-flash`. Model settings se override: `groq_model` / `gemini_model`.
 
 ---
 
@@ -213,6 +228,7 @@ auth-system/              # Next.js Supabase auth (separate, not used in Flask)
 ### Active Issues
 - [ ] Old sent emails (2 emails) have `localhost:5000` tracking URLs — can't fix retroactively
 - [ ] IMAP credentials need to be re-entered after settings wipe (save them in Render env vars)
+- [ ] **Groq org restricted (2026-09-15)** — Groq API "Organization has been restricted" on ALL models → AI email generation & enrichment tab tak band jab tak Groq account reinstate na ho YA naye (unrestricted) Groq keys Settings mein na daalein. **Code bug nahi hai.**
 
 ### Settings Save Bug (FIXED)
 - `/api/settings/save` now protects `imap_password`, `smtp_password`, `groq_api_keys` from being wiped with empty values
@@ -334,6 +350,46 @@ conn.execute("SELECT * FROM contacts WHERE workspace_id=?", (wid,))
 ---
 
 ## 📝 SESSION NOTES
+
+### 2026-09-15 Session — AI pipeline fixes (Groq/Gemini) + bulk-enrich reliability + strict context guard
+
+> Claude (Cowork) session ke through. Files local repo mein deliver ho chuki hain — deploy pending (`git push`).
+
+**1. Bulk "Enrich All" reliability (bade list pe timeout/fail ho raha tha)**
+
+| File | Change | Why |
+|---|---|---|
+| `routes/contacts.py` | Naya `enrich_all_state` + endpoints `/api/contacts/enrich_all_bg`, `/enrich_all_status`, `/enrich_all_stop`. Ek background thread saare contacts loop karta hai — har contact ka apna `get_db()`, per-contact try/except. | Pehle HTTP request/browser drive karta tha (90s per-contact cap) → mass "failed". Ab server-side, tab band karne pe bhi chalta hai, live progress. |
+| `templates/contacts.html` | `enrichAll()` ko bg-job + status-poll + reload se rewrite; client-driven `processNext` loop hataya. | Naye background endpoint ke saath match. |
+
+**2. Strict "no context = no send" + real AI errors**
+
+| File | Change | Why |
+|---|---|---|
+| `services/campaign_executor.py` | AI mode ab contact SKIP karta hai agar `context` khaali (generate karne se pehle). | User: context na ho to mail bilkul na jaaye. |
+| `services/campaign_executor.py` | `_generate_ai_body` ab `(body, err)` return karta hai; send loop ASLI error log karta hai (pehle hardcoded "no context or all Groq keys exhausted"). | Context-wale contacts bhi galat message ke saath fail dikh rahe the. |
+
+**3. Groq/Gemini model + rotation fixes (`app.py`)**
+
+| File | Change | Why |
+|---|---|---|
+| `app.py` `call_groq` | Round-robin key rotation; model auto-fallback `openai/gpt-oss-20b → gpt-oss-120b → llama-3.3-70b-versatile`; gpt-oss reasoning params (`reasoning_effort=low`, `include_reasoning=false`, `max_completion_tokens=1500`); real error strings; `groq_model` setting override. | Groq ne Llama gate kiya (404); gpt-oss reasoning models low max_tokens pe EMPTY content de rahe the. |
+| `app.py` `call_gemini` | Model list `gemini-3.5-flash → gemini-flash-latest → gemini-2.5-flash` + fallback; `gemini_model` override. | `gemini-2.0-flash` Google ne SHUT DOWN kiya. |
+| `app.py` `generate_ai_email` | Gemini fallback HATAYA — Groq only. | User request; Gemini models baar-baar retire/404. |
+
+**4. Same model + reasoning-param fix in enrichment/context code**
+
+| File | Change | Why |
+|---|---|---|
+| `services/sdr_researcher.py`, `services/industry_detector.py`, `services/ai_service.py`, `tasks/ai_tasks.py`, `tasks/enrichment_tasks.py` | `llama-3.3-70b-versatile` → `openai/gpt-oss-20b` + `reasoning_effort=low`, `include_reasoning=false`, `max_completion_tokens`. | Same Groq gating + reasoning empty-content. |
+
+**5. Rate-limiter fix (campaign progress "0/0 Waiting to start" pe atak raha tha)**
+
+| File | Change | Why |
+|---|---|---|
+| `app.py` | `flask-limiter` default `200/hour` → `500/hour`; naya `@limiter.request_filter` `_exempt_status_polling()` jo status/progress/sending/diagnostics poll endpoints ko rate-limit se chhoot deta hai. | Sending page har 1-2 sec `/api/campaign/<id>/status` poll karta hai → 200/hour turant khatam → 429 "Too many requests" → progress atak jaata tha. Login/send endpoints par koi asar nahi. |
+
+**⛔ BLOCKER (2026-09-15):** Groq API ab **"Organization has been restricted"** (400) de raha hai SAARE models pe. Ye **account-level restriction hai, code ka issue nahi**. Action: (a) console.groq.com pe account/billing status dekho, (b) Groq support se baat karo, ya (c) naye Groq account ki keys Settings mein daalo. Tab tak koi AI email generate nahi hoga.
 
 ### 2026-07-03 Session 9 — pg8000 → psycopg2 Migration (Final Login Fix)
 
