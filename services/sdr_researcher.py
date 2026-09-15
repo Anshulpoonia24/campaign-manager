@@ -1588,7 +1588,7 @@ def _call_ai(prompt: str, max_tokens: int = 1500) -> str | None:
                 headers={'Authorization': f'Bearer {key}',
                          'Content-Type': 'application/json'},
                 json={
-                    'model': 'llama-3.3-70b-versatile',
+                    'model': 'openai/gpt-oss-20b',
                     'messages': [{'role': 'user', 'content': prompt}],
                     'max_tokens': max_tokens,
                     'temperature': 0.15,

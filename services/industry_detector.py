@@ -192,7 +192,7 @@ Rules:
             'https://api.groq.com/openai/v1/chat/completions',
             headers={'Authorization': f'Bearer {keys[0]}', 'Content-Type': 'application/json'},
             json={
-                'model': 'llama-3.3-70b-versatile',
+                'model': 'openai/gpt-oss-20b',
                 'messages': [{'role': 'user', 'content': prompt}],
                 'max_tokens': 400,
                 'temperature': 0.1,

@@ -26,7 +26,7 @@ def _call_groq(prompt):
             r = requests.post(
                 'https://api.groq.com/openai/v1/chat/completions',
                 headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
-                json={'model': 'llama-3.3-70b-versatile',
+                json={'model': 'openai/gpt-oss-20b',
                       'messages': [{'role': 'user', 'content': prompt}],
                       'max_tokens': 400},
                 timeout=45

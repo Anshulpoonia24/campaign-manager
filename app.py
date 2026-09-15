@@ -968,56 +968,66 @@ RULES:
 
 # Round-robin pointer so consecutive emails don't all hammer the first key
 _groq_key_idx = 0
+# Groq ne Llama models (3.3/3.1) ko Enterprise-only kar diya → normal keys ko 404 milta hai.
+# Isliye generally-available OpenAI-OSS models pehle try karo, Llama last resort.
+# (settings mein `groq_model` set karo to wo sabse pehle try hoga.)
+_GROQ_MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile']
 
 def call_groq(prompt, system='You are a helpful assistant.'):
-    """Call Groq with round-robin key rotation. Returns (text, None) or (None, real_error)."""
+    """Call Groq with round-robin key rotation + model auto-fallback. Returns (text, None) or (None, real_error)."""
     global _groq_key_idx
     import requests
     keys_str = get_setting('groq_api_keys') or ''
     keys = [k.strip() for k in keys_str.split(',') if k.strip()]
     if not keys:
         return None, 'No Groq API keys configured'
-    model = get_setting('groq_model') or 'llama-3.3-70b-versatile'
+    configured = (get_setting('groq_model') or '').strip()
+    models = ([configured] if configured else []) + [m for m in _GROQ_MODELS if m != configured]
     n = len(keys)
     start = _groq_key_idx % n
     _groq_key_idx = (start + 1) % n            # advance for the NEXT call → spreads load evenly
     last_err = 'unknown'
-    for off in range(n):                        # try every key, starting from `start`
-        key = keys[(start + off) % n]
-        try:
-            resp = requests.post('https://api.groq.com/openai/v1/chat/completions',
-                headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
-                json={'model': model,
-                      'messages': [
-                          {'role': 'system', 'content': system},
-                          {'role': 'user', 'content': prompt}
-                      ],
-                      'temperature': 0.4, 'max_tokens': 500},
-                timeout=25)
-            if resp.status_code == 200:
-                choices = (resp.json() or {}).get('choices') or []
-                if choices:
-                    return choices[0]['message']['content'], None
-                last_err = 'Groq empty response'
-                continue
-            # rate-limited / bad-or-blocked key / transient server → rotate to the NEXT key
-            if resp.status_code in (429, 401, 403, 408, 500, 502, 503, 529):
-                last_err = f'Groq {resp.status_code}'
-                continue
-            # 400/404/413/422 → same for every key (model/prompt issue), so stop & report the real reason
-            snippet = ''
+    for model in models:                        # agar ek model 404/no-access de to agla model try karo
+        for off in range(n):                    # har model ke liye saari keys try karo (round-robin)
+            key = keys[(start + off) % n]
             try:
-                snippet = (resp.text or '')[:140]
-            except Exception:
-                pass
-            return None, f'Groq error {resp.status_code}: {snippet}'
-        except requests.exceptions.Timeout:
-            last_err = 'Groq timeout'
-            continue
-        except Exception as e:
-            last_err = f'Groq exception: {str(e)[:80]}'
-            continue
-    return None, f'All Groq keys exhausted (last: {last_err})'
+                resp = requests.post('https://api.groq.com/openai/v1/chat/completions',
+                    headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
+                    json={'model': model,
+                          'messages': [
+                              {'role': 'system', 'content': system},
+                              {'role': 'user', 'content': prompt}
+                          ],
+                          'temperature': 0.4, 'max_tokens': 500},
+                    timeout=25)
+                if resp.status_code == 200:
+                    choices = (resp.json() or {}).get('choices') or []
+                    if choices:
+                        return choices[0]['message']['content'], None
+                    last_err = 'Groq empty response'
+                    continue
+                # model exist nahi / access nahi / bad request → ye model kaam nahi karega, AGLA model try karo
+                if resp.status_code in (400, 404):
+                    snippet = ''
+                    try:
+                        snippet = (resp.text or '')[:100]
+                    except Exception:
+                        pass
+                    last_err = f'Groq {resp.status_code} for {model}: {snippet}'
+                    break                        # is model ke liye baaki keys skip, next model pe jao
+                # rate-limited / blocked key / transient server → agli KEY try karo
+                if resp.status_code in (429, 401, 403, 408, 500, 502, 503, 529):
+                    last_err = f'Groq {resp.status_code} ({model})'
+                    continue
+                last_err = f'Groq error {resp.status_code} ({model})'
+                continue
+            except requests.exceptions.Timeout:
+                last_err = 'Groq timeout'
+                continue
+            except Exception as e:
+                last_err = f'Groq exception: {str(e)[:80]}'
+                continue
+    return None, f'Groq failed (last: {last_err})'
 
 
 # NOTE: gemini-2.0-flash was SHUT DOWN by Google. Try current models (settings-configurable) with auto-fallback.

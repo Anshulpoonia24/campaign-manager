@@ -35,7 +35,7 @@ def call_groq(prompt):
     if not keys:
         return None, 'No Groq keys'
 
-    model = get_setting('email_model_groq') or 'llama-3.3-70b-versatile'
+    model = get_setting('email_model_groq') or 'openai/gpt-oss-20b'
 
     for i in range(len(keys)):
         key = keys[(groq_key_index + i) % len(keys)]
