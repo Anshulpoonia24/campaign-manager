@@ -956,34 +956,38 @@ RULES:
 
     system = 'You are a cold email copywriter. Follow all instructions exactly. Return only valid HTML using <p> tags. No subject line. No extra commentary.'
 
-    ai_priority = get_setting('ai_priority') or 'groq,gemini'
-    providers = [p.strip() for p in ai_priority.split(',')]
+    # Groq ONLY — Gemini fallback removed on request (Gemini models kept getting
+    # retired/404ing). Groq ab round-robin rotation ke saath reliable hai.
+    body, err = call_groq(prompt, system=system)
+    if body:
+        _log_ai_usage('groq', True)
+        return body, None
+    _log_ai_usage('groq', False)
+    return None, err or 'Groq generation failed'
 
-    for provider in providers:
-        if provider == 'groq':
-            body, err = call_groq(prompt, system=system)
-            if body:
-                _log_ai_usage('groq', True)
-                return body, None
-        elif provider == 'gemini':
-            body, err = call_gemini(prompt)
-            if body:
-                _log_ai_usage('gemini', True)
-                return body, None
-    return None, 'All AI providers failed'
 
+# Round-robin pointer so consecutive emails don't all hammer the first key
+_groq_key_idx = 0
 
 def call_groq(prompt, system='You are a helpful assistant.'):
+    """Call Groq with round-robin key rotation. Returns (text, None) or (None, real_error)."""
+    global _groq_key_idx
     import requests
     keys_str = get_setting('groq_api_keys') or ''
     keys = [k.strip() for k in keys_str.split(',') if k.strip()]
     if not keys:
         return None, 'No Groq API keys configured'
-    for key in keys:
+    model = get_setting('groq_model') or 'llama-3.3-70b-versatile'
+    n = len(keys)
+    start = _groq_key_idx % n
+    _groq_key_idx = (start + 1) % n            # advance for the NEXT call → spreads load evenly
+    last_err = 'unknown'
+    for off in range(n):                        # try every key, starting from `start`
+        key = keys[(start + off) % n]
         try:
             resp = requests.post('https://api.groq.com/openai/v1/chat/completions',
                 headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
-                json={'model': 'llama-3.3-70b-versatile',
+                json={'model': model,
                       'messages': [
                           {'role': 'system', 'content': system},
                           {'role': 'user', 'content': prompt}
@@ -991,38 +995,70 @@ def call_groq(prompt, system='You are a helpful assistant.'):
                       'temperature': 0.4, 'max_tokens': 500},
                 timeout=25)
             if resp.status_code == 200:
-                return resp.json()['choices'][0]['message']['content'], None
-            if resp.status_code == 429:
-                continue  # Always rotate to next key on any 429
-            return None, f'Groq error {resp.status_code}'
+                choices = (resp.json() or {}).get('choices') or []
+                if choices:
+                    return choices[0]['message']['content'], None
+                last_err = 'Groq empty response'
+                continue
+            # rate-limited / bad-or-blocked key / transient server → rotate to the NEXT key
+            if resp.status_code in (429, 401, 403, 408, 500, 502, 503, 529):
+                last_err = f'Groq {resp.status_code}'
+                continue
+            # 400/404/413/422 → same for every key (model/prompt issue), so stop & report the real reason
+            snippet = ''
+            try:
+                snippet = (resp.text or '')[:140]
+            except Exception:
+                pass
+            return None, f'Groq error {resp.status_code}: {snippet}'
         except requests.exceptions.Timeout:
+            last_err = 'Groq timeout'
             continue
         except Exception as e:
+            last_err = f'Groq exception: {str(e)[:80]}'
             continue
-    return None, 'All Groq keys exhausted'
+    return None, f'All Groq keys exhausted (last: {last_err})'
 
+
+# NOTE: gemini-2.0-flash was SHUT DOWN by Google. Try current models (settings-configurable) with auto-fallback.
+_GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash']
 
 def call_gemini(prompt):
+    """Call Gemini, auto-falling-back across current model names. Returns (text, None) or (None, real_error)."""
     import requests
     key = get_setting('gemini_api_key') or ''
     if not key:
         return None, 'No Gemini API key'
-    try:
-        resp = requests.post(
-            f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}',
-            json={'contents': [{'parts': [{'text': prompt}]}]},
-            timeout=15)
-        if resp.status_code == 200:
-            data = resp.json()
-            candidates = data.get('candidates', [])
-            if candidates:
-                return candidates[0]['content']['parts'][0]['text'], None
-            return None, 'Gemini empty response'
-        return None, f'Gemini error {resp.status_code}'
-    except requests.exceptions.Timeout:
-        return None, 'Gemini timeout'
-    except Exception as e:
-        return None, str(e)
+    configured = (get_setting('gemini_model') or '').strip()
+    models = ([configured] if configured else []) + [m for m in _GEMINI_MODELS if m != configured]
+    last_err = 'unknown'
+    for model in models:
+        try:
+            resp = requests.post(
+                f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}',
+                json={'contents': [{'parts': [{'text': prompt}]}]},
+                timeout=20)
+            if resp.status_code == 200:
+                candidates = (resp.json() or {}).get('candidates', [])
+                if candidates:
+                    return candidates[0]['content']['parts'][0]['text'], None
+                last_err = 'Gemini empty response'
+                continue
+            # model retired / not found → try the next model name
+            if resp.status_code in (400, 404):
+                last_err = f'Gemini {resp.status_code} for {model}'
+                continue
+            if resp.status_code in (429, 500, 503):
+                last_err = f'Gemini {resp.status_code}'
+                continue
+            return None, f'Gemini error {resp.status_code}'
+        except requests.exceptions.Timeout:
+            last_err = 'Gemini timeout'
+            continue
+        except Exception as e:
+            last_err = str(e)[:80]
+            continue
+    return None, f'Gemini failed (last: {last_err})'
 
 
 def _log_ai_usage(provider, success):

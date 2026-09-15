@@ -528,16 +528,16 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
                     f'Skipped {contact["email"]} — no AI context (enrich contact first)',
                     'warning', contact_id=contact_id)
                 continue
-            body = _generate_ai_body(contact, body_template)
+            body, ai_err = _generate_ai_body(contact, body_template)
             if not body:
-                # AI failed — log error and skip this contact
+                # AI failed — log the REAL reason (Groq/Gemini status), not a generic message
                 log(campaign_id,
-                    f'AI generation failed for {contact["email"]} ({contact["name"]}) — no context or all Groq keys exhausted. Skipping.',
+                    f'AI generation failed for {contact["email"]} ({contact["name"]}) — {ai_err}. Skipping.',
                     'error', contact_id=contact_id)
                 failed += 1
                 failed_buffer += 1
                 _log_bounce(contact, subject, '', campaign_id,
-                            'AI generation failed — no research context available', status='failed')
+                            f'AI generation failed: {ai_err}', status='failed')
                 continue
         else:
             body = body_template.replace('{company}', contact['company'] or '').replace('{name}', contact['name'] or '')
@@ -609,8 +609,8 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
     app_logger.info(f'[EXEC] DONE | campaign={campaign_id} sent={sent} failed={failed} skipped={skipped}')
 
 
-def _generate_ai_body(contact, body_template: str) -> str:
-    """Generate AI-personalized email. Uses app.generate_ai_email() for Groq→Gemini fallback."""
+def _generate_ai_body(contact, body_template: str):
+    """Generate AI-personalized email. Returns (body, error) — body=None on failure, error explains why."""
     try:
         from app import generate_ai_email
         context     = contact['context']     if 'context'     in contact.keys() else ''
@@ -624,10 +624,10 @@ def _generate_ai_body(contact, body_template: str) -> str:
             context=context,
             designation=designation,
         )
-        return body  # None on failure
+        return body, err  # (None, real_error) on failure
     except Exception as e:
         error_logger.warning(f'[EXEC] AI generation failed for contact {contact.get("id","?")}: {e}')
-    return None
+        return None, f'exception: {str(e)[:100]}'
 
 
 def _send_one(contact, subject: str, body: str, campaign_id: int,
