@@ -988,23 +988,35 @@ def call_groq(prompt, system='You are a helpful assistant.'):
     _groq_key_idx = (start + 1) % n            # advance for the NEXT call → spreads load evenly
     last_err = 'unknown'
     for model in models:                        # agar ek model 404/no-access de to agla model try karo
+        # gpt-oss REASONING models hain: bina in params ke ye saara token "sochne" mein laga dete
+        # hain aur content KHAALI aata hai. reasoning_effort=low + include_reasoning=false +
+        # max_completion_tokens se seedha final email milta hai.
+        payload = {
+            'model': model,
+            'messages': [
+                {'role': 'system', 'content': system},
+                {'role': 'user', 'content': prompt},
+            ],
+            'temperature': 0.4,
+            'max_completion_tokens': 1500,
+        }
+        if model.startswith('openai/gpt-oss'):
+            payload['reasoning_effort'] = 'low'
+            payload['include_reasoning'] = False
         for off in range(n):                    # har model ke liye saari keys try karo (round-robin)
             key = keys[(start + off) % n]
             try:
                 resp = requests.post('https://api.groq.com/openai/v1/chat/completions',
                     headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
-                    json={'model': model,
-                          'messages': [
-                              {'role': 'system', 'content': system},
-                              {'role': 'user', 'content': prompt}
-                          ],
-                          'temperature': 0.4, 'max_tokens': 500},
-                    timeout=25)
+                    json=payload,
+                    timeout=30)
                 if resp.status_code == 200:
                     choices = (resp.json() or {}).get('choices') or []
-                    if choices:
-                        return choices[0]['message']['content'], None
-                    last_err = 'Groq empty response'
+                    content = (choices[0].get('message', {}).get('content') or '').strip() if choices else ''
+                    if content:
+                        return content, None
+                    fr = choices[0].get('finish_reason') if choices else 'no_choices'
+                    last_err = f'Groq empty content ({model}, finish={fr})'
                     continue
                 # model exist nahi / access nahi / bad request → ye model kaam nahi karega, AGLA model try karo
                 if resp.status_code in (400, 404):

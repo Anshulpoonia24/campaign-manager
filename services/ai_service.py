@@ -42,7 +42,8 @@ def call_groq(prompt):
         try:
             r = http_requests.post('https://api.groq.com/openai/v1/chat/completions',
                 headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
-                json={'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': 1000},
+                json={'model': model, 'messages': [{'role': 'user', 'content': prompt}],
+                      'reasoning_effort': 'low', 'include_reasoning': False, 'max_completion_tokens': 1500},
                 timeout=30)
             groq_rate_limits[key[-8:]] = {
                 'limit_requests': r.headers.get('x-ratelimit-limit-requests', '?'),

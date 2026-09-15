@@ -29,7 +29,8 @@ def _call_groq(prompt):
                 headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
                 json={'model': 'openai/gpt-oss-20b',
                       'messages': [{'role': 'user', 'content': prompt}],
-                      'max_tokens': 1000},
+                      'reasoning_effort': 'low', 'include_reasoning': False,
+                      'max_completion_tokens': 1500},
                 timeout=45
             )
             if r.status_code == 200:

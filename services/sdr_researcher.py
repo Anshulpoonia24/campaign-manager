@@ -1590,7 +1590,9 @@ def _call_ai(prompt: str, max_tokens: int = 1500) -> str | None:
                 json={
                     'model': 'openai/gpt-oss-20b',
                     'messages': [{'role': 'user', 'content': prompt}],
-                    'max_tokens': max_tokens,
+                    'reasoning_effort': 'low',
+                    'include_reasoning': False,
+                    'max_completion_tokens': max(max_tokens, 1200),
                     'temperature': 0.15,
                 },
                 timeout=35

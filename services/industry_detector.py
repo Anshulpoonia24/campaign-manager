@@ -194,7 +194,9 @@ Rules:
             json={
                 'model': 'openai/gpt-oss-20b',
                 'messages': [{'role': 'user', 'content': prompt}],
-                'max_tokens': 400,
+                'reasoning_effort': 'low',
+                'include_reasoning': False,
+                'max_completion_tokens': 1200,
                 'temperature': 0.1,
             },
             timeout=20
