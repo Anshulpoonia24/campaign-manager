@@ -316,11 +316,12 @@ def _send_email(contact, subject: str, body: str, campaign_id: int) -> tuple:
     """
     try:
         from services.smtp_rotation import (
-            get_next_smtp_account, mark_send_success, mark_send_failure
+            get_next_smtp_account_with_status, mark_send_success, mark_send_failure,
+            SMTPUnavailableReason
         )
         from utils.db import get_setting
 
-        account = get_next_smtp_account()
+        account, unavailable_reason = get_next_smtp_account_with_status()
         if account:
             smtp_server  = account['smtp_server']
             smtp_port    = account['smtp_port']
@@ -345,7 +346,16 @@ def _send_email(contact, subject: str, body: str, campaign_id: int) -> tuple:
             signature    = ''
 
         if not smtp_server or not smtp_user or not smtp_pass:
-            return False, 'SMTP not configured'
+            if unavailable_reason == SMTPUnavailableReason.NONE_CONFIGURED:
+                return False, 'SMTP not configured'
+            elif unavailable_reason == SMTPUnavailableReason.ALL_AT_DAILY_LIMIT:
+                return False, 'Daily send limit reached — all SMTP accounts at capacity'
+            elif unavailable_reason == SMTPUnavailableReason.ALL_LOW_HEALTH:
+                return False, 'No healthy SMTP accounts available — all accounts have degraded health'
+            elif unavailable_reason == SMTPUnavailableReason.ALL_INACTIVE:
+                return False, 'No active SMTP accounts — all accounts are disabled'
+            else:
+                return False, 'SMTP accounts temporarily unavailable'
 
         # Duplicate prevention
         from services.sequence_engine import is_duplicate_sequence_send

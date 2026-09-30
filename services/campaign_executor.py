@@ -539,6 +539,13 @@ def _run_campaign_inner(campaign_id: int, contact_ids: list,
                 _log_bounce(contact, subject, '', campaign_id,
                             f'AI generation failed: {ai_err}', status='failed')
                 continue
+            # Research-based AI subject — falls back to the static `subject` if it fails/empty (never blocks send)
+            try:
+                _ai_subj = _generate_ai_subject(contact)
+                if _ai_subj:
+                    subject = _ai_subj
+            except Exception:
+                pass
         else:
             body = body_template.replace('{company}', contact['company'] or '').replace('{name}', contact['name'] or '')
         body = append_signature(body, current_account.get('signature', ''))
@@ -628,6 +635,28 @@ def _generate_ai_body(contact, body_template: str):
     except Exception as e:
         error_logger.warning(f'[EXEC] AI generation failed for contact {contact.get("id","?")}: {e}')
         return None, f'exception: {str(e)[:100]}'
+
+
+def _generate_ai_subject(contact):
+    """Research-based AI subject line. Returns str, or None so the caller keeps the static subject.
+    Never raises to the caller — a failed subject must never block sending."""
+    try:
+        ctx = (contact['context'] if 'context' in contact.keys() else '') or ''
+        if not ctx.strip():
+            return None
+        from app import generate_ai_subject as _gen
+        from utils.db import get_setting
+        sp = get_setting('subject_prompt') or ''
+        return _gen(
+            name=contact['name'] or '',
+            company=contact['company'] or '',
+            context=ctx,
+            designation=(contact['designation'] if 'designation' in contact.keys() else ''),
+            subject_prompt=sp,
+        )
+    except Exception as e:
+        error_logger.warning(f'[EXEC] AI subject failed for contact {contact.get("id","?")}: {e}')
+        return None
 
 
 def _send_one(contact, subject: str, body: str, campaign_id: int,

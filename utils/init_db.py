@@ -51,6 +51,15 @@ def init_db(get_db, DEFAULT_SETTINGS):
                 conn.commit()
         except Exception:
             pass
+        # One-time: push the US-targeted v2 email prompt to existing installs (safe, runs once via flag)
+        try:
+            _flag = conn.execute("SELECT value FROM settings WHERE key='prompt_us_v2'").fetchone()
+            if not _flag:
+                conn.execute("UPDATE settings SET value=? WHERE key='email_prompt'", (DEFAULT_SETTINGS['email_prompt'],))
+                conn.execute("INSERT INTO settings (key, value) VALUES (?,?)", ('prompt_us_v2', '1'))
+                conn.commit()
+        except Exception:
+            pass
         for rule_key, enabled, delay_days, max_followups in [('no_reply_followup',1,2,3),('opened_multiple_times',1,1,2),('interested_pause',1,0,0),('ooo_retry',1,7,1),('bounce_pause',1,0,0)]:
             existing = conn.execute("SELECT id FROM automation_settings WHERE rule_key=?", (rule_key,)).fetchone()
             if not existing:
@@ -352,6 +361,16 @@ def init_db(get_db, DEFAULT_SETTINGS):
         if old_prompt and needs_update:
             new_prompt = DEFAULT_SETTINGS['email_prompt']
             conn.execute("UPDATE settings SET value=? WHERE key='email_prompt'", (new_prompt,))
+            conn.commit()
+    except Exception:
+        pass
+
+    # One-time: push the US-targeted v2 email prompt to existing installs (safe, runs once via flag)
+    try:
+        _flag = conn.execute("SELECT value FROM settings WHERE key='prompt_us_v2'").fetchone()
+        if not _flag:
+            conn.execute("UPDATE settings SET value=? WHERE key='email_prompt'", (DEFAULT_SETTINGS['email_prompt'],))
+            conn.execute("INSERT INTO settings (key, value) VALUES (?,?)", ('prompt_us_v2', '1'))
             conn.commit()
     except Exception:
         pass

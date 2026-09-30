@@ -1,0 +1,179 @@
+{
+  "pbtResults": {
+    "1. Write bug condition exploration test": {
+      "status": "passed",
+      "failingExample": "All 4 test cases returned \"SMTP not configured\" error regardless of the actual unavailability reason:\n\nTest Case 1 (Daily Limit): Created 2 SMTP accounts with sent_today >= daily_limit\n  - Expected: Specific error about daily limits\n  - Actual: \"SMTP not configured\"\n\nTest Case 2 (Low Health): Created 2 SMTP accounts with health_score = 10/15 (below 20 threshold)\n  - Expected: Specific error about health\n  - Actual: \"SMTP not configured\"\n\nTest Case 3 (Inactive): Created 2 SMTP accounts with active = 0\n  - Expected: Specific error about inactive accounts\n  - Actual: \"SMTP not configured\"\n\nTest Case 4 (Mixed): Created 3 accounts (1 at daily limit, 1 low health, 1 inactive)\n  - Expected: Specific error about temporary unavailability\n  - Actual: \"SMTP not configured\"\n\nRoot cause confirmed: get_next_smtp_account() returns None without indicating why, and _send_email() returns generic \"SMTP not configured\" for all failure scenarios.",
+      "lastRunTimestamp": 1790750179657
+    },
+    "2. Write preservation property tests (BEFORE implementing fix)": {
+      "status": "passed",
+      "lastRunTimestamp": 1790760077015
+    },
+    "3.5 Verify bug condition exploration test now passes": {
+      "status": "passed",
+      "lastRunTimestamp": 1790761819370
+    }
+  },
+  "executionHistory": {
+    "1. Write bug condition exploration test": [
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750002378
+      },
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750014925
+      },
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750198194
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing fix)": [
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750004283
+      },
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750208736
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790760097121
+      }
+    ],
+    "3.1 Add SMTPUnavailableReason constants to smtp_rotation.py": [
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750005529
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790760108495
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790760176844
+      }
+    ],
+    "3.2 Add _get_unavailability_reason() helper function to smtp_rotation.py": [
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750005665
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790760181908
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790760229230
+      }
+    ],
+    "3.3 Add get_next_smtp_account_with_status() function to smtp_rotation.py": [
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750005762
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790760234675
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790760279865
+      }
+    ],
+    "3.4 Update _send_email() in sequence_tasks.py to use status-aware selection": [
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750005845
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790760284861
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790760377330
+      }
+    ],
+    "3.5 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750005931
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790760382765
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790761840149
+      }
+    ],
+    "3.6 Verify preservation tests still pass": [
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750006053
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790761847185
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790762018574
+      }
+    ],
+    "4. Checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "39b87140-c058-430a-908d-9ee37d41c365",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790750006143
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790762026497
+      },
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790762052850
+      }
+    ],
+    "3. Fix for misleading SMTP not configured error": [
+      {
+        "executionId": "64225ef9-55ef-4693-8135-d46ba5017a33",
+        "chatSessionId": "sess_92122c17-a214-44b6-8ef0-f4499a688610",
+        "timestamp": 1790762018702
+      }
+    ]
+  }
+}

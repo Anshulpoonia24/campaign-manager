@@ -351,6 +351,19 @@ conn.execute("SELECT * FROM contacts WHERE workspace_id=?", (wid,))
 
 ## 📝 SESSION NOTES
 
+### 2026-09-16 Session — US-targeted email prompt + AI-generated subject lines
+
+**Goal:** Cold outreach ko US market ke hisaab se sharper + subject bhi AI se personalize.
+
+| File | Change | Why |
+|---|---|---|
+| `app.py` | `DEFAULT_SETTINGS['email_prompt']` naya **US-targeted** prompt se replace — offer ab "savings + speed" frame (US senior hire ~$300k loaded + 90-din wait vs vetted senior engineers ~$35-55/hr, ~65% cheaper, 2-3 weeks). Signal-anchored opening (hiring/funding/growth), buzzwords + "offshore/outsourcing" banned. Migration-safe markers rakhe (`{company_summary}`, `ALWAYS start with`). | Research: US AI eng $95-130+/hr, loaded ~$300k; signal-anchored cold email = 3-5x replies. |
+| `app.py` | Naya `DEFAULT_SETTINGS['subject_prompt']` + `generate_ai_subject()` — AI har contact ke liye chhota (<=6 word) research-based subject banata hai. | Subject open-rate ka sabse bada lever; pehle static tha. |
+| `services/campaign_executor.py` | AI mode mein subject ab AI se; **fail/empty par static `subject_template` fallback** (send kabhi block nahi hota). Naya `_generate_ai_subject()` helper. | Behtar opens, par 100% safe. |
+| `utils/init_db.py` | Safe **run-once** migration (flag `prompt_us_v2`) dono PG + SQLite paths mein — purana saved `email_prompt` ek baar naye se update, phir kabhi nahi (future user edits safe). try/except wrapped. | Existing install ko naya prompt live dena bina kisi custom edit clobber kiye. |
+
+**ATTACHMENT (PPT):** haath NAHI lagaya. Verify kiya — `_send_one` ka attachment code bit-for-bit same (sirf line numbers shift). PPT har mail mein attach hoti rahegi.
+
 ### 2026-09-15 Session — AI pipeline fixes (Groq/Gemini) + bulk-enrich reliability + strict context guard
 
 > Claude (Cowork) session ke through. Files local repo mein deliver ho chuki hain — deploy pending (`git push`).

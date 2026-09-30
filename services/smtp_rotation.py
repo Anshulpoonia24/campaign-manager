@@ -10,6 +10,16 @@ import os
 from datetime import datetime
 from utils.db import get_db
 
+
+class SMTPUnavailableReason:
+    """Constants for why no SMTP account is available."""
+    NONE_CONFIGURED = 'none_configured'
+    ALL_AT_DAILY_LIMIT = 'daily_limit_reached'
+    ALL_LOW_HEALTH = 'low_health'
+    ALL_INACTIVE = 'all_inactive'
+    MIXED_UNAVAILABLE = 'temporarily_unavailable'
+
+
 # Warmup stage daily limits
 WARMUP_LIMITS = {1: 10, 2: 20, 3: 35, 4: 50, 5: 100}
 
@@ -91,6 +101,50 @@ def _col(row, key):
         return row[key]
     except (KeyError, IndexError):
         return None
+
+
+def _get_unavailability_reason():
+    """Diagnose why no SMTP account is available."""
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) FROM smtp_accounts").fetchone()[0]
+    if total == 0:
+        conn.close()
+        return SMTPUnavailableReason.NONE_CONFIGURED
+    
+    active_count = conn.execute(
+        "SELECT COUNT(*) FROM smtp_accounts WHERE active = 1"
+    ).fetchone()[0]
+    if active_count == 0:
+        conn.close()
+        return SMTPUnavailableReason.ALL_INACTIVE
+    
+    healthy_count = conn.execute(
+        "SELECT COUNT(*) FROM smtp_accounts WHERE active = 1 AND health_score > 20"
+    ).fetchone()[0]
+    if healthy_count == 0:
+        conn.close()
+        return SMTPUnavailableReason.ALL_LOW_HEALTH
+    
+    available_count = conn.execute(
+        "SELECT COUNT(*) FROM smtp_accounts WHERE active = 1 AND health_score > 20 AND sent_today < daily_limit"
+    ).fetchone()[0]
+    if available_count == 0:
+        conn.close()
+        return SMTPUnavailableReason.ALL_AT_DAILY_LIMIT
+    
+    conn.close()
+    return SMTPUnavailableReason.MIXED_UNAVAILABLE
+
+
+def get_next_smtp_account_with_status():
+    """
+    Returns (account_dict, None) on success, or (None, reason_string) on failure.
+    Use this function when you need to know WHY no account was available.
+    """
+    account = get_next_smtp_account()
+    if account:
+        return account, None
+    return None, _get_unavailability_reason()
 
 
 def append_signature(body: str, signature: str) -> str:

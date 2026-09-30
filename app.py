@@ -306,29 +306,47 @@ DEFAULT_SETTINGS = {
     'imap_username': os.getenv('IMAP_USERNAME', ''),
     'imap_password': os.getenv('IMAP_PASSWORD', ''),
     'imap_check_interval': os.getenv('IMAP_CHECK_INTERVAL', '180'),
-    'email_prompt': """Write a cold outreach email to {name}, {title} at {company}.
+    'email_prompt': """Write a very short cold outreach email to {name}, {title} at {company}.
 
 COMPANY RESEARCH:
 {company_summary}
 
-KEY SIGNALS:
+BUYING SIGNALS (hiring, funding, growth, launches):
 {key_insights}
 
-PERSONALIZATION:
+PERSONALIZATION ANGLES:
 {personalization_angles}
+
+WHO WE ARE (use lightly, do NOT dump as a list):
+Shiksha Infotech (est. 2009) — a 400+ engineer firm with offices in the US (California & New Jersey) and India. We embed pre-vetted senior software & AI/ML engineers into a client's team.
+
+OFFER — frame as SAVINGS + SPEED, never as an hourly feature list:
+- A senior US engineer costs ~$300k in year-one loaded cost and ~90 days to hire.
+- We place vetted senior engineers from ~$35-55/hr — about 65-70% lower cost — live in your timezone overlap within 2-3 weeks.
 
 RULES:
 1. ALWAYS start with: <p>Hi {name},</p>
-2. Second line: ONE specific fact from the research above. If no research, write: "Came across {company} while researching {industry} companies."
-3. In 1 line connect why they need engineering talent right now.
-4. Pitch Shiksha Infotech using this EXACT HTML block:
-   <b>Shiksha Infotech (Est. 2009) | 400+ engineers | Founded by alumni of top Indian engineering schools | Offices in US and India | We place pre-vetted AI/ML engineers at $30-55/hr (vs $100-150/hr US rates), onboarded in 2-3 weeks.</b>
-5. End with simple CTA - 15 min call.
-6. MAX 4-5 sentences total. Very short.
-7. Casual, founder-to-founder tone.
-8. Do NOT use: impressive, innovative, trajectory, remarkable, truly, genuinely, incredible.
-9. No subject line in body. Output as HTML with <p> tags only.
-10. Do NOT add any signature — it will be added automatically."""
+2. Sentence 1: ONE specific, TRUE fact from the research above — ideally a hiring / funding / growth signal that means they need engineering capacity now. If there is genuinely no research, write: "Came across {company} while looking at {industry} teams that are scaling."
+3. Sentence 2: Connect that signal to the pain — adding senior engineering / AI capacity without the ~$300k + 90-day US hiring cost.
+4. Sentence 3: Introduce Shiksha as the fix with the cost + speed frame (vetted senior engineers, ~65% cheaper, live in 2-3 weeks). Plain and credible, NOT salesy.
+5. Sentence 4: ONE soft CTA, e.g. "Worth a quick 15-min call to see if it fits?"
+6. MAX 90 words total. 4 short sentences.
+7. Tone: calm, specific, founder-to-founder. NOT a mass offshore-staffing blast.
+8. NEVER say "offshore" or "outsourcing" — say "extended team" or "embedded engineers".
+9. NEVER use: impressive, innovative, trajectory, remarkable, truly, genuinely, incredible, revolutionize, cutting-edge, seamless, synergy, game-changer.
+10. No subject line in body. Output as HTML with <p> tags only.
+11. Do NOT add any signature — it will be added automatically.""",
+    'subject_prompt': """Write ONE short cold-email subject line for an email to {name}, {title} at {company}.
+
+COMPANY RESEARCH:
+{company_summary}
+
+RULES:
+- MAX 6 words. Sentence case or lowercase — must look like a personal 1:1 email, NOT marketing.
+- Curiosity or a question. If the research shows a real signal (funding, hiring, growth, launch), anchor the subject to it.
+- Do NOT pitch, do NOT mention price or "engineers for hire".
+- Banned: quotes, emoji, exclamation marks, ALL CAPS, and the words free / offer / best / exclusive / guaranteed.
+- Output ONLY the subject text — no label, no quotes, nothing else."""
 }
 
 
@@ -979,6 +997,35 @@ RULES:
         return body, None
     _log_ai_usage('groq', False)
     return None, err or 'Groq generation failed'
+
+
+def generate_ai_subject(name, company, context='', designation='', subject_prompt=''):
+    """Generate a short cold-email subject from research. Returns a cleaned subject string,
+    or None on failure (caller keeps the static subject as a safe fallback — never blocks send)."""
+    company_summary = (context or '')[:400]
+    if subject_prompt:
+        prompt = (subject_prompt
+            .replace('{name}', name or '')
+            .replace('{title}', designation or 'founder/executive')
+            .replace('{company}', company or '')
+            .replace('{company_summary}', company_summary or f'{company} — no research available'))
+    else:
+        prompt = (f"Write ONE short cold-email subject line for an email to {name} at {company}. "
+                  f"RESEARCH: {company_summary or 'none'}. "
+                  "Max 6 words, sentence case, curiosity or a question, no quotes/emoji/pitch. "
+                  "Output ONLY the subject text.")
+    system = 'You write short, human, curiosity-driven cold-email subject lines. Output only the subject text, nothing else.'
+    subj, err = call_groq(prompt, system=system)
+    if not subj:
+        return None
+    # Clean: first line only, strip quotes / "Subject:" label, cap length
+    s = subj.strip().splitlines()[0].strip().strip('"').strip("'").strip()
+    if s.lower().startswith('subject:'):
+        s = s.split(':', 1)[1].strip()
+    words = s.split()
+    if len(words) > 9:
+        s = ' '.join(words[:9])
+    return s[:80].strip() or None
 
 
 # Round-robin pointer so consecutive emails don't all hammer the first key
